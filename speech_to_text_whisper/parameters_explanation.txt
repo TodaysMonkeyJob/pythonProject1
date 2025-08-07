@@ -1,0 +1,128 @@
+Initializes an audio recorder and  transcription for AudioToTextRecorder
+
+Args:
+- model (str, default="tiny"): Specifies the size of the transcription
+    model to use or the path to a converted model directory.
+    Valid options are 'tiny', 'tiny.en', 'base', 'base.en',
+    'small', 'small.en', 'medium', 'medium.en', 'large-v1',
+    'large-v2'.
+    If a specific size is provided, the model is downloaded
+    from the Hugging Face Hub.
+- download_root (str, default=None): Specifies the root path were the Whisper models
+  are downloaded to. When empty, the default is used.
+- language (str, default=""): Language code for speech-to-text engine.
+    If not specified, the model will attempt to detect the language
+    automatically.
+- compute_type (str, default="default"): Specifies the type of
+    computation to be used for transcription.
+    See https://opennmt.net/CTranslate2/quantization.html.
+- input_device_index (int, default=0): The index of the audio input
+    device to use.
+- gpu_device_index (int, default=0): Device ID to use.
+    The model can also be loaded on multiple GPUs by passing a list of
+    IDs (e.g. [0, 1, 2, 3]). In that case, multiple transcriptions can
+    run in parallel when transcribe() is called from multiple Python
+    threads
+- device (str, default="cuda"): Device for model to use. Can either be
+    "cuda" or "cpu".
+- on_recording_start (callable, default=None): Callback function to be
+    called when recording of audio to be transcripted starts.
+- on_recording_stop (callable, default=None): Callback function to be
+    called when recording of audio to be transcripted stops.
+- on_transcription_start (callable, default=None): Callback function
+    to be called when transcription of audio to text starts.
+- ensure_sentence_starting_uppercase (bool, default=True): Ensures
+    that every sentence detected by the algorithm starts with an
+    uppercase letter.
+- ensure_sentence_ends_with_period (bool, default=True): Ensures that
+    every sentence that doesn't end with punctuation such as "?", "!"
+    ends with a period
+- spinner (bool, default=True): Show spinner animation with current
+    state.
+- log_level (int, default='WARNING'): Logging level.
+- batch_size (int, default=16): Batch size for the main transcription
+- silero_sensitivity (float, default=SILERO_SENSITIVITY): Sensitivity
+    for the Silero Voice Activity Detection model ranging from 0
+    (least sensitive) to 1 (most sensitive). Default is 0.5.
+- silero_use_onnx (bool, default=False): Enables usage of the
+    pre-trained model from Silero in the ONNX (Open Neural Network
+    Exchange) format instead of the PyTorch format. This is
+    recommended for faster performance.
+- silero_deactivity_detection (bool, default=False): Enables the Silero
+    model for end-of-speech detection. More robust against background
+    noise. Utilizes additional GPU resources but improves accuracy in
+    noisy environments. When False, uses the default WebRTC VAD,
+    which is more sensitive but may continue recording longer due
+    to background sounds.
+- webrtc_sensitivity (int, default=WEBRTC_SENSITIVITY): Sensitivity
+    for the WebRTC Voice Activity Detection engine ranging from 0
+    (least aggressive / most sensitive) to 3 (most aggressive,
+    least sensitive). Default is 3.
+- post_speech_silence_duration (float, default=0.2): Duration in
+    seconds of silence that must follow speech before the recording
+    is considered to be completed. This ensures that any brief
+    pauses during speech don't prematurely end the recording.
+- min_gap_between_recordings (float, default=1.0): Specifies the
+    minimum time interval in seconds that should exist between the
+    end of one recording session and the beginning of another to
+    prevent rapid consecutive recordings.
+- min_length_of_recording (float, default=1.0): Specifies the minimum
+    duration in seconds that a recording session should last to ensure
+    meaningful audio capture, preventing excessively short or
+    fragmented recordings.
+- pre_recording_buffer_duration (float, default=0.2): Duration in
+    seconds for the audio buffer to maintain pre-roll audio
+    (compensates speech activity detection latency)
+- on_vad_start (callable, default=None): Callback function to be called
+    when the system detected the start of voice activity presence.
+- on_vad_stop (callable, default=None): Callback function to be called
+    when the system detected the stop (end) of voice activity presence.
+- on_vad_detect_start (callable, default=None): Callback function to
+    be called when the system listens for voice activity. This is not
+    called when VAD actually happens (use on_vad_start for this), but
+    when the system starts listening for it.
+- on_vad_detect_stop (callable, default=None): Callback function to be
+    called when the system stops listening for voice activity. This is
+    not called when VAD actually stops (use on_vad_stop for this), but
+    when the system stops listening for it.
+- on_recorded_chunk (callable, default=None): Callback function to be
+    called when a chunk of audio is recorded. The function is called
+    with the recorded audio chunk as its argument.
+- debug_mode (bool, default=False): If set to True, the system will
+    print additional debug information to the console.
+- handle_buffer_overflow (bool, default=True): If set to True, the system
+    will log a warning when an input overflow occurs during recording and
+    remove the data from the buffer.
+- beam_size (int, default=5): The beam size to use for beam search
+    decoding.
+- buffer_size (int, default=512): The buffer size to use for audio
+    recording. Changing this may break functionality.
+- sample_rate (int, default=16000): The sample rate to use for audio
+    recording. Changing this will very probably functionality (as the
+    WebRTC VAD model is very sensitive towards the sample rate).
+- initial_prompt (str or iterable of int, default=None): Initial
+    prompt to be fed to the main transcription model.
+- suppress_tokens (list of int, default=[-1]): Tokens to be suppressed
+    from the transcription output.
+- early_transcription_on_silence (int, default=0): If set, the
+    system will transcribe audio faster when silence is detected.
+    Transcription will start after the specified milliseconds, so
+    keep this value lower than post_speech_silence_duration.
+    Ideally around post_speech_silence_duration minus the estimated
+    transcription time with the main model.
+    If silence lasts longer than post_speech_silence_duration, the
+    recording is stopped, and the transcription is submitted. If
+    voice activity resumes within this period, the transcription
+    is discarded. Results in faster final transcriptions to the cost
+    of additional GPU load due to some unnecessary final transcriptions.
+- allowed_latency_limit (int, default=100): Maximal amount of chunks
+    that can be unprocessed in queue before discarding chunks.
+- no_log_file (bool, default=False): Skips writing of debug log file.
+- faster_whisper_vad_filter (bool, default=True): If set to True,
+    the system will additionally use the VAD filter from the faster_whisper library
+    for voice activity detection. This filter is more robust against
+    background noise but requires additional GPU resources.
+
+Raises:
+    Exception: Errors related to initializing transcription
+    model or audio recording.
