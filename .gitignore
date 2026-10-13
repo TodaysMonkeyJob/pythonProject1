@@ -1,2 +1,21 @@
+# Secrets
 .env
+.env.*
+
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Downloaded models, speaker samples, runtime output
 model/
+speech_to_text_whisper/voices/
+*.log
+test.xlsx
+
+# Claude Code local overrides
+.claude/settings.local.json
