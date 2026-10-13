@@ -985,15 +985,20 @@ class AudioToTextRecorder:
                         self.on_recorded_chunk(data)
 
                     if self.handle_buffer_overflow:
+                        current_size = self._audio_queue_size()
                         # Handle queue overflow
-                        if (self.audio_queue.qsize() > self.allowed_latency_limit):
+                        if current_size is not None and current_size > self.allowed_latency_limit:
                             logger.warning("Audio queue size exceeds "
                                            "latency limit. Current size: "
-                                           f"{self.audio_queue.qsize()}. "
+                                           f"{current_size}. "
                                            "Discarding old audio chunks.")
 
-                        while (self.audio_queue.qsize() > self.allowed_latency_limit):
-                            data = self.audio_queue.get()
+                            while current_size > self.allowed_latency_limit:
+                                try:
+                                    self.audio_queue.get_nowait()
+                                except queue.Empty:
+                                    break
+                                current_size -= 1
 
                 except BrokenPipeError:
                     logger.error("BrokenPipeError _recording_worker", exc_info=True)
@@ -1154,6 +1159,21 @@ class AudioToTextRecorder:
             # PyTorch's mp.Queue doesn't have a specific Empty exception
             # so we catch any exception that might occur when the queue is empty
             pass
+
+    def _audio_queue_size(self):
+        """
+        Returns the approximate audio queue size.
+
+        :return: Queue size, or None where mp.Queue.qsize() is not implemented (macOS)
+        """
+        try:
+            return self.audio_queue.qsize()
+        except NotImplementedError:
+            if not getattr(self, "_qsize_unsupported_logged", False):
+                logger.warning("Audio queue size is unavailable on this platform; "
+                               "buffer overflow handling is skipped.")
+                self._qsize_unsupported_logged = True
+            return None
 
     def _is_voice_active(self):
         """
