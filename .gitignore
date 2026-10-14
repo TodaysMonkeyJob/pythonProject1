@@ -1,6 +1,7 @@
 # Secrets
 .env
 .env.*
+!.env.example
 
 # IDE
 .idea/
@@ -16,6 +17,8 @@ model/
 speech_to_text_whisper/voices/
 *.log
 test.xlsx
+logs/
+exports/
 
 # Claude Code local overrides
 .claude/settings.local.json

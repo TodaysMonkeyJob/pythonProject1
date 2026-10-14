@@ -21,6 +21,21 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   - `records.py` — helper script that records a 5 s reference voice sample.
   - `audio_recorder_testing.py` — old/experimental recorder (wake words, porcupine). Not imported.
   - `parameters_explanation.txt` — recorder parameter reference (partly outdated).
+- `core/` — IoT security framework (Linear project fixit-mobile, Step 0 / TOD-11):
+  - `events.py` — pydantic `Event` (unified schema: event_id, timestamp UTC ms `Z`, source, type, severity,
+    payload, confidence), `make_event()`, `to_json()`/`from_json()`. New event types go into `EVENT_TYPES`.
+  - `bus.py` — `multiprocessing.Queue` carrying events as JSON strings (`publish`/`receive`, `CONTROL_STOP`).
+  - `logger.py` — `JsonlLogger`: `logs/YYYY-MM-DD/<module>.jsonl`, UTC daily rotation, total size cap
+    (oldest days deleted first, current day never).
+  - `config.py` — `load_config()`: `config.yaml` + secrets from env/`.env` via `ENV_MAP`; fails fast on
+    missing sections or `required_env`.
+  - `module.py` — `BaseModule`: `setup/step/teardown` loop, heartbeat every 5 s, stops on `"stop"`.
+- `modules/<name>/__init__.py` exposes `run(event_queue, control_queue, config)`.
+  - `modules/gas` — adapter; real sensor code plugs in via `gas.reader: "pkg.module:function"`
+    (default `simulated`). Publishes `gas_reading` + `alert` per threshold.
+  - `modules/audio` — wraps `AudioToTextRecorder` (listener thread) → `speech` events; start it in a
+    non-daemon process (the recorder spawns children).
+- `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
 - `system_setup/logger_setup.py` — shared logger: `init_logger()` + `set_logger_params(logger, log_file,
   log_level, no_log_file)`. Re-created after the original was lost; keep this signature stable.
 - `analyzing_whisper_models.py` — plots from hard-coded experiment data.
