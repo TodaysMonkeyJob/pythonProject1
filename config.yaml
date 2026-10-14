@@ -1,0 +1,77 @@
+# IoT security system configuration.
+# Secrets (Azure keys, dashboard credentials) are NOT stored here — see .env.example.
+
+logging:
+  dir: logs
+  max_total_mb: 2048        # total cap for logs/; oldest days are deleted first
+  check_every: 100          # re-check the cap after N writes per module
+
+vision:
+  enabled: true
+  camera: picamera2         # picamera2 | opencv
+  device_index: 0
+  resolution: [640, 480]
+  fps: 10
+  model: yolov8n
+  input_size: 320
+  confidence_threshold: 0.5
+  motion_threshold: 0.02    # fraction of changed pixels
+  scene_active_timeout: 10  # seconds without a person/motion before scene goes inactive
+  max_cpu_temp: 80          # lower FPS above this temperature (°C)
+
+actions:
+  enabled: true
+  pose_every_n_frames: 3
+  min_confidence: 0.6
+  labels: [sitting, standing, walking, smoking]
+
+identity:
+  enabled: true
+  faces_dir: data/faces
+  match_threshold: 0.6
+  unknown_label: unknown
+
+audio:
+  enabled: true
+  recorder:                 # kwargs for speech_to_text_whisper.AudioToTextRecorder
+    language: en
+    api_connection: true
+    spinner: false
+    log_level: WARNING
+
+gas:
+  enabled: true
+  poll_interval: 1.0        # seconds
+  reader: simulated         # "simulated" or "package.module:function" returning {sensor: value}
+  sensors:                  # thresholds are placeholders until the exact sensors are confirmed
+    mq2:
+      unit: ppm
+      warning: 300
+      critical: 1000
+    mq7:
+      unit: ppm
+      warning: 35
+      critical: 200
+    mq135:
+      unit: ppm
+      warning: 400
+      critical: 1000
+
+aggregator:
+  enabled: true
+  window_seconds: 30
+  export_dir: exports
+  export_csv: true
+
+llm:
+  enabled: true
+  chat_deployment: gpt-4o-mini   # Azure deployment name
+  whisper_deployment: whisper-1
+  prompts_dir: prompts
+  request_timeout: 30
+  outbox_dir: exports/outbox     # snapshots queued while offline
+
+dashboard:
+  enabled: true
+  host: 0.0.0.0
+  port: 8080
