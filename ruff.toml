@@ -1,5 +1,6 @@
 line-length = 120
 target-version = "py312"
+extend-exclude = ["modules/gas/legacy"]
 
 [lint]
 select = ["E", "F", "W", "B", "NPY"]

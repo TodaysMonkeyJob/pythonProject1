@@ -19,6 +19,7 @@ speech_to_text_whisper/voices/
 test.xlsx
 logs/
 exports/
+models/
 
 # Claude Code local overrides
 .claude/settings.local.json
