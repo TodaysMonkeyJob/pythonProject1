@@ -1,0 +1,251 @@
+{
+  "voltages": [
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0,
+    1.1,
+    1.2,
+    1.3,
+    1.4,
+    1.5
+  ],
+  "class_names": [
+    "ethanol",
+    "ammonia",
+    "acetone",
+    "toluol",
+    "clean_air"
+  ],
+  "sklearn_version": "1.9.1",
+  "trained_at": "2026-10-15T14:33:22+00:00",
+  "data": {
+    "path": "data/gas/data.xls",
+    "original_rows": 144,
+    "train_rows": 115,
+    "test_rows": 29,
+    "augmented_train_rows": 111,
+    "class_counts": {
+      "ethanol": 35,
+      "ammonia": 36,
+      "acetone": 33,
+      "toluol": 36,
+      "clean_air": 4
+    },
+    "test_set": "original rows only, split before augmentation (stratified, random_state=42)"
+  },
+  "classifier": {
+    "selected": "SVC",
+    "selection": "best macro-F1 on the test set (optimistic for the selected model)",
+    "test_f1_macro": 1.0,
+    "test_accuracy": 1.0,
+    "repeated_splits": {
+      "n_splits": 10,
+      "test_f1_macro_mean": 0.9971,
+      "test_f1_macro_std": 0.0086,
+      "test_f1_macro_min": 0.9713
+    },
+    "report": {
+      "ethanol": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 7.0
+      },
+      "ammonia": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 7.0
+      },
+      "acetone": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 7.0
+      },
+      "toluol": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 7.0
+      },
+      "clean_air": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 1.0
+      },
+      "accuracy": 1.0,
+      "macro avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 29.0
+      },
+      "weighted avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 29.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        7,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        7,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        7,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        7,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "all_models": {
+      "SVC": {
+        "best_params": {
+          "C": 0.1,
+          "gamma": 100,
+          "kernel": "poly"
+        },
+        "cv_f1_macro": 0.9759,
+        "test_f1_macro": 1.0,
+        "test_accuracy": 1.0
+      },
+      "GradientBoostingClassifier": {
+        "best_params": {
+          "learning_rate": 0.05,
+          "n_estimators": 200
+        },
+        "cv_f1_macro": 0.8069,
+        "test_f1_macro": 0.8834,
+        "test_accuracy": 0.8621
+      },
+      "KNeighborsClassifier": {
+        "best_params": {
+          "n_neighbors": 5
+        },
+        "cv_f1_macro": 0.7009,
+        "test_f1_macro": 0.781,
+        "test_accuracy": 0.7241
+      },
+      "DecisionTreeClassifier": {
+        "best_params": {
+          "max_depth": 10
+        },
+        "cv_f1_macro": 0.7509,
+        "test_f1_macro": 0.8045,
+        "test_accuracy": 0.7586
+      }
+    }
+  },
+  "concentration": {
+    "per_gas": {
+      "ethanol": {
+        "model": "SVR",
+        "best_params": {
+          "C": 100,
+          "epsilon": 0.01,
+          "gamma": "scale"
+        },
+        "cv_mae_pct": 0.0103,
+        "test_mae_pct": 0.0176,
+        "n_test": 7,
+        "conc_range_pct": [
+          0.0,
+          13.6
+        ]
+      },
+      "ammonia": {
+        "model": "SVR",
+        "best_params": {
+          "C": 100,
+          "epsilon": 0.01,
+          "gamma": "scale"
+        },
+        "cv_mae_pct": 0.0108,
+        "test_mae_pct": 0.0056,
+        "n_test": 7,
+        "conc_range_pct": [
+          0.3,
+          10.8
+        ]
+      },
+      "acetone": {
+        "model": "SVR",
+        "best_params": {
+          "C": 100,
+          "epsilon": 0.01,
+          "gamma": "scale"
+        },
+        "cv_mae_pct": 0.0121,
+        "test_mae_pct": 0.0044,
+        "n_test": 7,
+        "conc_range_pct": [
+          0.0,
+          13.2
+        ]
+      },
+      "toluol": {
+        "model": "SVR",
+        "best_params": {
+          "C": 100,
+          "epsilon": 0.01,
+          "gamma": "scale"
+        },
+        "cv_mae_pct": 0.0074,
+        "test_mae_pct": 0.0066,
+        "n_test": 7,
+        "conc_range_pct": [
+          0.0,
+          9.0
+        ]
+      }
+    },
+    "end_to_end_test_mae_pct": 0.0082
+  },
+  "runtime": {
+    "inference_ms": {
+      "mean": 0.327,
+      "p95": 0.35
+    },
+    "model_size_mb": {
+      "gas_classifier.joblib": 0.005,
+      "gas_concentration.joblib": 0.012
+    },
+    "note": "measured on the training machine; re-check on the Raspberry Pi"
+  }
+}

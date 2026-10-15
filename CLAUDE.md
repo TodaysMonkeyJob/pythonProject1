@@ -31,8 +31,13 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     missing sections or `required_env`.
   - `module.py` — `BaseModule`: `setup/step/teardown` loop, heartbeat every 5 s, stops on `"stop"`.
 - `modules/<name>/__init__.py` exposes `run(event_queue, control_queue, config)`.
-  - `modules/gas` — adapter; real sensor code plugs in via `gas.reader: "pkg.module:function"`
-    (default `simulated`). Publishes `gas_reading` + `alert` per threshold.
+  - `modules/gas` — gas classifier (TOD-19). `data.py` loads `data/gas/data.xls` (4 sheets = gases, row = R at
+    16 gate voltages Ug 0.0..1.5 V, col 0 = C %; C = 0 rows → class `clean_air`) and writes `data_clean.xlsx` /
+    `replay_demo.csv`. `train.py` splits ORIGINAL rows first, augments the train part only, grid-searches
+    scaled models → `models/*.joblib` (git-ignored) + `reports/gas_metrics.json`. `inference.py` →
+    `GasPredictor` (no matplotlib). `worker.py` → `run()`, replay or sensor mode
+    (`gas.reader: "pkg.module:function"` returning 16 values), publishes `gas_reading` + `alert`.
+    `legacy/gas_model.py` — original research script, reference only (excluded from ruff).
   - `modules/audio` — wraps `AudioToTextRecorder` (listener thread) → `speech` events; start it in a
     non-daemon process (the recorder spawns children).
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
@@ -54,8 +59,14 @@ python main.py                      # run (needs a microphone and speech_to_text
 python analyzing_whisper_models.py  # plots
 python results.py                   # xlsx analysis
 ```
-- No tests, linters, formatters or CI yet. Pre-commit check for now:
-  `python3 -m py_compile $(git ls-files '*.py')`.
+```bash
+pip install -r requirements-dev.txt     # pytest, ruff
+python -m pytest                        # tests/ (no microphone, models or network needed)
+ruff check core modules tests           # lint new code only
+python -m modules.gas.data              # regenerate data/gas/data_clean.xlsx + replay_demo.csv
+python -m modules.gas.train             # train gas models (~10 s) → models/, reports/
+```
+- Legacy files have many pre-existing ruff findings (star imports etc.); don't mass-fix them. No CI yet.
 
 ## Gotchas
 - `speech_to_text_whisper/voices/` must exist with at least one `.wav`, or `SpeakerRecognizer` fails.
@@ -65,6 +76,8 @@ python results.py                   # xlsx analysis
 - `numpy<2.0.0` and `torch~=2.3.0` are pinned on purpose (torch 2.3 is built against numpy 1.x).
   `pandas~=2.3` keeps it that way — pandas 3 pulls numpy 2 and breaks scipy/torch. Run `pip check` after changes.
 - The recorder writes `IoTsecuritySTTx.log` to cwd (git-ignored).
+- Gas models are pickles tied to the scikit-learn version: retrain after upgrading sklearn
+  (`GasPredictor` logs a warning on mismatch). `SVC(probability=True)` is deprecated in sklearn 1.9.
 
 ## Secrets & config
 - Azure OpenAI: env vars `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`.
@@ -83,7 +96,7 @@ python results.py                   # xlsx analysis
 - Tasks are tracked in Linear. One branch per task from up-to-date `origin/master`: `feature/tod-<N>`.
 - Never commit or push directly to `master`.
 - Commit message: `TOD-<N>: <imperative summary>` (subject ≤72 chars; body optional).
-- Before committing: py_compile (later `pytest`) must pass; show the diff.
+- Before committing: `pytest` and `ruff` (on new/changed code) must pass; show the diff.
 - `git commit` only after confirmation; `git push` and PRs only on explicit request.
 
 ## Do not touch
