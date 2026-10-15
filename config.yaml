@@ -46,9 +46,35 @@ vision:
 
 actions:
   enabled: true
-  pose_every_n_frames: 3
-  min_confidence: 0.6
-  labels: [sitting, standing, walking, smoking]
+  pose_model: models/yolo11n-pose_ncnn_model   # python -m modules.vision.export --model yolo11n-pose.pt
+  imgsz: 320
+  pose_conf: 0.4            # person detection confidence of the pose model
+  keypoint_conf: 0.4        # keypoints below this are ignored
+  action_fps: 5             # pose runs at most this often, and only when a person is in frame
+  match_iou: 0.3            # pose box ↔ tracked person box
+  window_sec: 2.5           # keypoint history per track
+  vote_threshold: 0.7       # action confirmed when it wins ≥ 70 % of known frames in the window
+  min_votes: 3
+  track_lost_sec: 10
+  torso_vertical_max: 25    # deg from vertical → upright
+  lying_torso_min: 60       # deg from vertical → lying (possible fall)
+  standing_knee_min: 160    # deg, straight legs
+  sitting_knee_range: [40, 130]   # 40° covers sitting on the floor
+  thigh_horizontal_max: 45  # deg from horizontal
+  frame_edge_margin: 0.02   # legs hidden + box at the bottom edge = cut by the frame (unknown), else furniture (sitting)
+  sitting_height_ratio: 0.75   # bbox height vs this track's standing height
+  walking_speed: 0.3        # bbox centre speed, body heights / s
+  walking_scale_rate: 0.25  # |d ln(box height)/dt| — walking towards / away from the camera
+  speed_window_sec: 1.0
+  ankle_alternations_min: 2
+  ankle_deadband: 0.03
+  mouth_radius: 0.35        # wrist-to-mouth distance in torso lengths: hand reaches the mouth
+  mouth_release: 0.6        # hand counts as gone above this (hysteresis)
+  mouth_episode_max_sec: 5  # longer contact (head resting on the hands) is not a puff
+  smoking_window_sec: 30
+  smoking_min_count: 3      # wrist-near-mouth episodes per window → possible_smoking
+  gas_window_sec: 60        # gas rise within this window → gas_confirmed
+  gas_rise_pct: 0.5
 
 identity:
   enabled: true

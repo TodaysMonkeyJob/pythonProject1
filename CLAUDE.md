@@ -43,6 +43,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `yolo_interval_sec`; publishes `motion`, `object_detected` (appeared/disappeared), `scene_active` on
     changes only; writes annotated JPEG + raw frame + person boxes to `SharedFrameBuffer` (shared memory).
     `export.py` → NCNN model, `bench.py` → FPS/RAM report.
+    `actions.py` (F2, TOD-13) → `ActionRecognizer`: pose (`pose.py`, yolo11n-pose) on shared frames with persons,
+    rule-based standing/sitting/walking/lying + `possible_smoking` (`gas_confirmed` from gas events forwarded
+    via the control queue); `action` events only on change. `eval_actions.py` → labelled-video accuracy.
   - `modules/audio` — wraps `AudioToTextRecorder` (listener thread) → `speech` events; start it in a
     non-daemon process (the recorder spawns children).
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
@@ -73,6 +76,8 @@ python -m modules.gas.train             # train gas models (~10 s) → models/, 
 python -m modules.vision.export         # yolo11n.pt → models/yolo11n_ncnn_model
 python -m modules.vision.bench --source synthetic   # vision FPS/RAM (on the Pi: camera)
 YOLO_TEST_MODEL=yolo11n.pt python -m pytest -k real_yolo   # optional test with a real model
+python -m modules.vision.demo 0 --pose-model yolo11n-pose.pt   # webcam: objects + actions
+YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 ```
 - Legacy files have many pre-existing ruff findings (star imports etc.); don't mass-fix them. No CI yet.
 

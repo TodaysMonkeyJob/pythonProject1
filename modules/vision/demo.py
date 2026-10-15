@@ -21,6 +21,7 @@ from system_setup.logger_setup import init_logger, set_logger_params
 parser = argparse.ArgumentParser()
 parser.add_argument("device", nargs="?", default="0")
 parser.add_argument("--model", default="yolo11n.pt")
+parser.add_argument("--pose-model", help="also run action recognition (F2), e.g. yolo11n-pose.pt")
 parser.add_argument("--no-window", action="store_true")
 parser.add_argument("--seconds", type=float, default=0, help="stop after N seconds (0 = until q / Ctrl+C)")
 args = parser.parse_args()
@@ -37,11 +38,21 @@ detector = VisionDetector(events, control, config)
 thread = threading.Thread(target=detector.run, daemon=True)
 thread.start()
 
+actions_control = queue.Queue()
+if args.pose_model:
+    from modules.vision.actions import ActionRecognizer
+
+    config["actions"]["pose_model"] = args.pose_model
+    threading.Thread(target=ActionRecognizer(events, actions_control, config).run, daemon=True).start()
+
 buffer, started = None, time.monotonic()
 try:
     while thread.is_alive():
         while not events.empty():
-            event = Event.from_json(events.get())
+            raw_event = events.get()
+            event = Event.from_json(raw_event)
+            if args.pose_model and event.type == "object_detected":
+                actions_control.put(raw_event)  # what the orchestrator will do: forward to F2
             if event.type != "heartbeat":
                 print(f"{event.timestamp}  {event.type:16} {event.payload}")
         if buffer is None:
@@ -63,6 +74,7 @@ except KeyboardInterrupt:
     pass
 finally:
     control.put(CONTROL_STOP)
+    actions_control.put(CONTROL_STOP)
     thread.join(timeout=5)
     if buffer is not None:
         buffer.unlink()
