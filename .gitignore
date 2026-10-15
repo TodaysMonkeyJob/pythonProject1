@@ -20,6 +20,8 @@ test.xlsx
 logs/
 exports/
 models/
+*.pt
+*_ncnn_model/
 
 # Claude Code local overrides
 .claude/settings.local.json

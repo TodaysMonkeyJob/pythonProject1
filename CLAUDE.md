@@ -38,6 +38,11 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `GasPredictor` (no matplotlib). `worker.py` → `run()`, replay or sensor mode
     (`gas.reader: "pkg.module:function"` returning 16 values), publishes `gas_reading` + `alert`.
     `legacy/gas_model.py` — original research script, reference only (excluded from ruff).
+  - `modules/vision` — camera module (TOD-12), see `modules/vision/README.md`. `detector.py` →
+    `VisionDetector`: MOG2 motion every frame, YOLO + ByteTrack (`yolo.py`) only on motion or every
+    `yolo_interval_sec`; publishes `motion`, `object_detected` (appeared/disappeared), `scene_active` on
+    changes only; writes annotated JPEG + raw frame + person boxes to `SharedFrameBuffer` (shared memory).
+    `export.py` → NCNN model, `bench.py` → FPS/RAM report.
   - `modules/audio` — wraps `AudioToTextRecorder` (listener thread) → `speech` events; start it in a
     non-daemon process (the recorder spawns children).
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
@@ -65,6 +70,9 @@ python -m pytest                        # tests/ (no microphone, models or netwo
 ruff check core modules tests           # lint new code only
 python -m modules.gas.data              # regenerate data/gas/data_clean.xlsx + replay_demo.csv
 python -m modules.gas.train             # train gas models (~10 s) → models/, reports/
+python -m modules.vision.export         # yolo11n.pt → models/yolo11n_ncnn_model
+python -m modules.vision.bench --source synthetic   # vision FPS/RAM (on the Pi: camera)
+YOLO_TEST_MODEL=yolo11n.pt python -m pytest -k real_yolo   # optional test with a real model
 ```
 - Legacy files have many pre-existing ruff findings (star imports etc.); don't mass-fix them. No CI yet.
 
@@ -76,6 +84,10 @@ python -m modules.gas.train             # train gas models (~10 s) → models/, 
 - `numpy<2.0.0` and `torch~=2.3.0` are pinned on purpose (torch 2.3 is built against numpy 1.x).
   `pandas~=2.3` keeps it that way — pandas 3 pulls numpy 2 and breaks scipy/torch. Run `pip check` after changes.
 - The recorder writes `IoTsecuritySTTx.log` to cwd (git-ignored).
+- Installing ultralytics without constraints upgrades numpy to 2.x and torch: keep `torchvision~=0.18.0`
+  in requirements. Ultralytics auto-installs missing extras at runtime (`lap`, `ncnn`) — pin them instead.
+- Shared memory (`SharedFrameBuffer`) is not cleaned up by process exit; stale blocks live until reboot
+  or `unlink()`. On macOS the name must be ≤ 30 chars.
 - Gas models are pickles tied to the scikit-learn version: retrain after upgrading sklearn
   (`GasPredictor` logs a warning on mismatch). `SVC(probability=True)` is deprecated in sklearn 1.9.
 
