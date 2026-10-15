@@ -8,16 +8,41 @@ logging:
 
 vision:
   enabled: true
-  camera: picamera2         # picamera2 | opencv
-  device_index: 0
+  camera: auto              # auto (picamera2 if installed, else OpenCV) | picamera2 | opencv
+  device: 0                 # OpenCV: camera index or a video file path (replay)
+  replay_realtime: true     # video file: play at `fps` instead of as fast as possible
+  replay_loop: true
   resolution: [640, 480]
-  fps: 10
-  model: yolov8n
-  input_size: 320
-  confidence_threshold: 0.5
-  motion_threshold: 0.02    # fraction of changed pixels
-  scene_active_timeout: 10  # seconds without a person/motion before scene goes inactive
-  max_cpu_temp: 80          # lower FPS above this temperature (°C)
+  fps: 15
+  reconnect_max_backoff_sec: 30
+
+  # Motion (every frame): MOG2 background subtraction + contour area filter
+  motion_min_area: 800      # px², contours smaller than this are ignored
+  motion_history: 300
+  motion_var_threshold: 25
+  motion_warmup_frames: 30  # background model warm-up, no motion reported
+  motion_end_sec: 2.0       # no motion for this long → motion "end"
+
+  # Objects: YOLO + ByteTrack, only on motion or every yolo_interval_sec
+  model: models/yolo11n_ncnn_model   # python -m modules.vision.export; "yolo11n.pt" works on a dev machine
+  imgsz: 320
+  confidence_threshold: 0.4
+  classes: null             # null = all COCO classes, or a list of class ids
+  tracker: bytetrack.yaml
+  yolo_interval_sec: 3.0
+  track_lost_sec: 10.0      # track not seen for this long → "disappeared"
+  reid_iou: 0.5             # new track id overlapping a known track of the same class → same object
+
+  scene_timeout_sec: 10     # scene_active → false after this long without motion or objects
+
+  # Shared memory for F2/F3/F7
+  shared_buffer: iot_vision # shared memory name (≤ 30 chars on macOS)
+  shared_fps: 10            # how often the annotated JPEG / raw frame are refreshed
+  jpeg_quality: 80
+
+  log_events: true          # also write camera events to logs/YYYY-MM-DD/camera.jsonl
+  stats_interval_sec: 30    # log average FPS
+  max_cpu_temp: 80          # °C, reserved for thermal throttling
 
 actions:
   enabled: true
