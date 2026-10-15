@@ -25,3 +25,6 @@ models/
 
 # Claude Code local overrides
 .claude/settings.local.json
+
+# Third-party test videos (copyrighted, keep local; labels.csv and README are tracked)
+data/human_behaviour_video/*.mp4
