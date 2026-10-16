@@ -6,8 +6,14 @@ Local voice speech-to-text: microphone → VAD (WebRTC + Silero) → Whisper tra
 Plus scripts that compare Whisper models (accuracy / latency / memory).
 
 ## Architecture
-- `main.py` — entry point: `AudioToTextRecorder(api_connection=False)` looping `recorder.text(cb)`.
-  The docstring below the code holds raw experiment logs, not code.
+- `main.py` — orchestrator entry point (F4 / TOD-15): `python main.py [--only gas,vision]` runs every enabled module
+  in its own process (`core/orchestrator.py`). The original standalone recorder is `python -m speech_to_text_whisper`.
+- `core/orchestrator.py` — `Orchestrator`: `DEFAULT_MODULES` (name → `pkg.mod:run`, config section, forwarded event
+  types), spawn processes, router (every event → `logs/<date>/events.jsonl` + fan-out to subscribers' control
+  queues), watchdog (dead process or 3 missed heartbeats → restart with backoff, `system` `alert`), graceful
+  SIGINT/SIGTERM, creates/unlinks the vision shared buffer. Modules whose model files are missing are skipped with
+  a hint; F5–F7 are picked up automatically once `modules.aggregator` / `modules.llm` / `modules.dashboard` have `run`.
+  Module names must equal the `BaseModule.name` (heartbeats are matched by it). `deploy/iot-guard.service` — systemd.
 - `speech_to_text_whisper/` — the package:
   - `audio_recorder.py` — `AudioToTextRecorder`: orchestrates processes/threads (`torch.multiprocessing`),
     audio capture (PyAudio), recording state, halo spinner.
@@ -53,8 +59,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `enroll_face --from-unknown`) enrolls the person, moves the crops, writes `aliases.json`, relabels live tracks.
     Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id). F2/F3 events go
     to `logs/<date>/actions.jsonl` / `identity.jsonl`.
-  - `modules/audio` — wraps `AudioToTextRecorder` (listener thread) → `speech` events; start it in a
-    non-daemon process (the recorder spawns children).
+  - `modules/audio/mic_controller.py` — F4 microphone: STANDBY (RMS + webrtcvad on 30 ms frames, nothing recorded)
+    / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`);
+    `mic_state` events (source system). `modules/audio:run` is the legacy `AudioToTextRecorder` wrapper.
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
 - `system_setup/logger_setup.py` — shared logger: `init_logger()` + `set_logger_params(logger, log_file,
   log_level, no_log_file)`. Re-created after the original was lost; keep this signature stable.
@@ -70,7 +77,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python main.py                      # run (needs a microphone and speech_to_text_whisper/voices/*.wav)
+python -m speech_to_text_whisper    # standalone recorder (needs a microphone and speech_to_text_whisper/voices/*.wav)
 python analyzing_whisper_models.py  # plots
 python results.py                   # xlsx analysis
 ```
@@ -83,6 +90,7 @@ python -m modules.gas.train             # train gas models (~10 s) → models/, 
 python -m modules.vision.export         # yolo11n.pt → models/yolo11n_ncnn_model
 python -m modules.vision.bench --source synthetic   # vision FPS/RAM (on the Pi: camera)
 YOLO_TEST_MODEL=yolo11n.pt python -m pytest -k real_yolo   # optional test with a real model
+python main.py                          # whole system (Ctrl+C to stop); events → logs/<date>/events.jsonl
 python -m modules.vision.demo 0 --pose-model yolo11n-pose.pt   # webcam: objects + actions
 YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 ```
