@@ -13,14 +13,13 @@ forwards them as event JSON strings.
 """
 import collections
 import math
-import time
 from dataclasses import dataclass, field, fields
 from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from core.events import Event
-from core.module import BaseModule
+from modules.vision.consumer import SharedFrameConsumer
 from modules.vision.pose import (L_ANKLE, R_ANKLE, Pose, PoseEstimator, knee_angle, legs_visible,
                                  thigh_angle_from_horizontal, torso_angle, visible, wrist_distances)
 from modules.vision.shared_frame import SharedFrameBuffer
@@ -356,7 +355,7 @@ class ActionEngine:
         return payload, "critical" if gas_confirmed else "warning", round(confidence, 2)
 
 
-class ActionRecognizer(BaseModule):
+class ActionRecognizer(SharedFrameConsumer):
     """
     Reads frames and person boxes from the vision shared buffer, runs pose only when a person is present
     and publishes ``action`` events.
@@ -366,15 +365,10 @@ class ActionRecognizer(BaseModule):
 
     def __init__(self, event_queue, control_queue, config: Dict[str, Any], pose_estimator=None,
                  frame_buffer: Optional[SharedFrameBuffer] = None):
-        super().__init__(event_queue, control_queue, config)
         self.cfg = config.get("actions", {})
-        self.vision_cfg = config.get("vision", {})
+        super().__init__(event_queue, control_queue, config, self.cfg.get("action_fps", 5), frame_buffer)
         self.engine = ActionEngine(ActionConfig.from_dict(self.cfg))
         self.pose_estimator = pose_estimator
-        self.frame_buffer = frame_buffer
-        self.interval_sec = 1.0 / float(self.cfg.get("action_fps", 5))
-        self._last_frame_id = 0
-        self._next_poll = 0.0
 
     def setup(self) -> None:
         if self.pose_estimator is None:
@@ -382,52 +376,17 @@ class ActionRecognizer(BaseModule):
                                                 self.cfg.get("pose_conf", 0.4), self.cfg.get("keypoint_conf", 0.4))
             self.pose_estimator.load()
 
-    def teardown(self) -> None:
-        if self.frame_buffer is not None:
-            self.frame_buffer.close()
-
-    def handle_control(self, message: Any) -> None:
-        """Forwarded bus events (JSON strings) update gas evidence and drop disappeared tracks."""
-        if isinstance(message, str) and message.startswith("{"):
-            try:
-                self.engine.on_event(Event.from_json(message), time.time())
-            except ValueError as e:
-                logger.debug(f"Ignoring malformed forwarded event: {e}")
-        else:
-            super().handle_control(message)
-
-    def step(self) -> None:
-        now = time.monotonic()
-        if now < self._next_poll:
-            time.sleep(min(0.05, self._next_poll - now))
-            return
-        self._next_poll = now + self.interval_sec
-        if self.frame_buffer is None and not self._attach():
-            self._next_poll = now + 1.0
-            return
-        frame = self.frame_buffer.read_raw()
-        if frame is None or frame[0] == self._last_frame_id:
-            return
-        self.process(*frame)
+    def on_event(self, event: Event, now: float) -> None:
+        """Forwarded bus events update gas evidence and drop disappeared tracks."""
+        self.engine.on_event(event, now)
 
     def process(self, frame_id: int, timestamp: float, frame: np.ndarray, meta: Dict[str, Any]) -> None:
         """Runs pose for one shared frame and publishes the resulting events."""
-        self._last_frame_id = frame_id
         persons = meta.get("persons", [])
         poses = self.pose_estimator.estimate(frame) if persons else []
         frame_size = (frame.shape[1], frame.shape[0])
         for payload, severity, confidence in self.engine.update(timestamp, persons, poses, frame_size):
             self.emit("action", payload, severity=severity, confidence=confidence)
-
-    def _attach(self) -> bool:
-        width, height = self.vision_cfg.get("resolution", [640, 480])
-        try:
-            self.frame_buffer = SharedFrameBuffer.attach(self.vision_cfg.get("shared_buffer", "iot_vision"),
-                                                         width, height)
-        except FileNotFoundError:
-            logger.debug("Vision shared buffer not available yet")
-            return False
-        return True
 
 
 def run(event_queue, control_queue, config):

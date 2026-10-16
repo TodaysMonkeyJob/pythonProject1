@@ -46,6 +46,11 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `actions.py` (F2, TOD-13) → `ActionRecognizer`: pose (`pose.py`, yolo11n-pose) on shared frames with persons,
     rule-based standing/sitting/walking/lying + `possible_smoking` (`gas_confirmed` from gas events forwarded
     via the control queue); `action` events only on change. `eval_actions.py` → labelled-video accuracy.
+    `identity.py` (F3, TOD-14) → `IdentityRecognizer`: YuNet + SFace on person boxes, `faces.npz` database
+    (`tools/enroll_face.py`), `person_identified` known / `unknown_N` / `not_visible` on change. F2 and F3 share
+    `consumer.SharedFrameConsumer`. `tools/eval_faces.py` → accuracy / false accepts on a face folder.
+    `identity_store.py`: unknown people saved to `data/faces/unknown/unknown_N/`; renaming that folder (or
+    `enroll_face --from-unknown`) enrolls the person, moves the crops, writes `aliases.json`, relabels live tracks.
   - `modules/audio` — wraps `AudioToTextRecorder` (listener thread) → `speech` events; start it in a
     non-daemon process (the recorder spawns children).
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
@@ -121,4 +126,5 @@ YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 - `.idea/` (local IDE settings, git-ignored).
 - `multi_model_sentence_data.xlsx`, `speech_to_text_whisper/warmup_audio.wav` — data/binaries.
 - `speech_to_text_whisper/voices/`, `model/` — reference voices and model cache (never commit).
+- `data/faces/` — face photos and embeddings (biometric data, git-ignored, never commit).
 - `speech_to_text_whisper/audio_recorder_testing.py` — leave as is.

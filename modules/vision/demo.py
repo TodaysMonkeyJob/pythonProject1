@@ -22,6 +22,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("device", nargs="?", default="0")
 parser.add_argument("--model", default="yolo11n.pt")
 parser.add_argument("--pose-model", help="also run action recognition (F2), e.g. yolo11n-pose.pt")
+parser.add_argument("--identity", action="store_true",
+                    help="also run face identification (F3); enroll people first with tools.enroll_face")
 parser.add_argument("--no-window", action="store_true")
 parser.add_argument("--seconds", type=float, default=0, help="stop after N seconds (0 = until q / Ctrl+C)")
 args = parser.parse_args()
@@ -45,14 +47,21 @@ if args.pose_model:
     config["actions"]["pose_model"] = args.pose_model
     threading.Thread(target=ActionRecognizer(events, actions_control, config).run, daemon=True).start()
 
+identity_control = queue.Queue()
+if args.identity:
+    from modules.vision.identity import IdentityRecognizer
+
+    threading.Thread(target=IdentityRecognizer(events, identity_control, config).run, daemon=True).start()
+
 buffer, started = None, time.monotonic()
 try:
     while thread.is_alive():
         while not events.empty():
             raw_event = events.get()
             event = Event.from_json(raw_event)
-            if args.pose_model and event.type == "object_detected":
-                actions_control.put(raw_event)  # what the orchestrator will do: forward to F2
+            if event.type == "object_detected":
+                actions_control.put(raw_event)  # what the orchestrator will do: forward to F2 / F3
+                identity_control.put(raw_event)
             if event.type != "heartbeat":
                 print(f"{event.timestamp}  {event.type:16} {event.payload}")
         if buffer is None:
@@ -75,6 +84,7 @@ except KeyboardInterrupt:
 finally:
     control.put(CONTROL_STOP)
     actions_control.put(CONTROL_STOP)
+    identity_control.put(CONTROL_STOP)
     thread.join(timeout=5)
     if buffer is not None:
         buffer.unlink()

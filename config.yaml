@@ -78,9 +78,29 @@ actions:
 
 identity:
   enabled: true
+  detector_model: models/face_detection_yunet_2023mar.onnx    # python -m modules.vision.face_models
+  recognizer_model: models/face_recognition_sface_2021dec.onnx
+  db_path: data/faces/faces.npz   # python -m tools.enroll_face --name <name> --images data/faces/<name>/
+  identity_fps: 2           # shared frames per second checked for new / unidentified tracks
+  face_threshold: 0.45      # SFace cosine ≥ this → known person; LFW: 100 % known, 0 % strangers accepted
+  unknown_threshold: 0.45   # cosine ≥ this → same unknown_N as earlier in the session
+  retry_sec: 2.0            # retry unknown / not visible tracks this often
+  detection_score: 0.8      # YuNet face score
+  min_face_size: 40         # px
+  face_region: 0.6          # face centre must be in the top 60 % of the person box
+  box_padding: 0.1
+  track_lost_sec: 10
+  max_unknowns: 200
+  debug_dir: null           # set a folder to save aligned face crops (debug only — biometric data!)
+  # Unknown people: kept on disk so they can be named later. Rename data/faces/unknown/unknown_3 → Oleh
+  # (or move it to data/faces/Oleh) and within sync_sec the person is enrolled and recognised.
+  save_unknowns: true
   faces_dir: data/faces
-  match_threshold: 0.6
-  unknown_label: unknown
+  unknown_dir: data/faces/unknown
+  unknown_max_images: 10    # face crops kept per unknown person
+  unknown_retention_days: 30   # unknown folders not seen for this long are deleted (consent / GDPR)
+  aliases_path: data/faces/aliases.json   # unknown_N → name, for components that stored the old label
+  sync_sec: 5               # how often renames and an externally updated faces.npz are picked up
 
 audio:
   enabled: true
