@@ -1,6 +1,15 @@
 # IoT security system configuration.
 # Secrets (Azure keys, dashboard credentials) are NOT stored here — see .env.example.
 
+orchestrator:               # main.py (F4)
+  missed_heartbeats: 3      # × 5 s without a heartbeat → restart the module
+  startup_grace_sec: 120    # time for a module to load models before heartbeats are required
+  max_restart_backoff_sec: 60
+  stop_timeout_sec: 10      # graceful stop on Ctrl+C / SIGTERM, then terminate
+  log_events: true          # every event → logs/YYYY-MM-DD/events.jsonl
+  modules: {}               # per module: {enabled: false} / {target: "pkg.mod:run"} / {subscribe: [...]}
+                            # e.g. audio: {target: "modules.audio:run"} for the legacy recorder
+
 logging:
   dir: logs
   max_total_mb: 2048        # total cap for logs/; oldest days are deleted first
@@ -24,7 +33,7 @@ vision:
   motion_end_sec: 2.0       # no motion for this long → motion "end"
 
   # Objects: YOLO + ByteTrack, only on motion or every yolo_interval_sec
-  model: models/yolo11n_ncnn_model   # python -m modules.vision.export; "yolo11n.pt" works on a dev machine
+  model: yolo11n.pt         # downloaded automatically; on the Pi: python -m modules.vision.export → models/yolo11n_ncnn_model
   imgsz: 320
   confidence_threshold: 0.4
   classes: null             # null = all COCO classes, or a list of class ids
@@ -46,7 +55,7 @@ vision:
 
 actions:
   enabled: true
-  pose_model: models/yolo11n-pose_ncnn_model   # python -m modules.vision.export --model yolo11n-pose.pt
+  pose_model: yolo11n-pose.pt   # on the Pi: python -m modules.vision.export --model yolo11n-pose.pt → models/yolo11n-pose_ncnn_model
   imgsz: 320
   pose_conf: 0.4            # person detection confidence of the pose model
   keypoint_conf: 0.4        # keypoints below this are ignored
@@ -110,7 +119,22 @@ identity:
 
 audio:
   enabled: true
-  recorder:                 # kwargs for speech_to_text_whisper.AudioToTextRecorder
+  mic:                      # modules/audio/mic_controller.py (F4): standby / active microphone
+    device: null            # sounddevice input device (null = default)
+    sample_rate: 16000
+    frame_ms: 30            # webrtcvad frame: 10 / 20 / 30 ms
+    vad_aggressiveness: 2   # 0 (lenient) … 3 (strict)
+    sound_threshold_db: -35 # dBFS; a louder frame wakes the microphone
+    sound_cooldown_sec: 5   # at most one `sound` event per this many seconds
+    idle_timeout_sec: 15    # back to standby after this long without scene / loud sound / speech
+    preroll_sec: 0.5
+    silence_end_sec: 0.8    # a speech segment ends after this much silence
+    max_segment_sec: 30
+    min_speech_sec: 0.3     # shorter blips are not sent to Whisper
+    whisper_backend: azure  # azure (llm.whisper_deployment, .env keys) | local (faster-whisper) | none
+    local_model: base
+    language: null          # e.g. en / uk; null = auto-detect
+  recorder:                 # legacy speech_to_text_whisper.AudioToTextRecorder (modules/audio:run)
     language: en
     api_connection: true
     spinner: false

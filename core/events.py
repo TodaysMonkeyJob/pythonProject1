@@ -25,6 +25,7 @@ EVENT_TYPES = (
     "llm_decision",
     "heartbeat",
     "scene_active",
+    "mic_state",
 )
 EventType = Literal[EVENT_TYPES]
 

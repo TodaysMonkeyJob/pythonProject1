@@ -1,0 +1,28 @@
+# systemd unit for the IoT security system (Raspberry Pi OS).
+# Install:
+#   sudo cp deploy/iot-guard.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now iot-guard
+# Logs: journalctl -u iot-guard -f      Events: <WorkingDirectory>/logs/YYYY-MM-DD/events.jsonl
+# Adjust User / WorkingDirectory if the repo is not in /home/pi/pythonProject1.
+[Unit]
+Description=IoT security system (camera, gas, audio orchestrator)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+SupplementaryGroups=video audio
+WorkingDirectory=/home/pi/pythonProject1
+ExecStart=/home/pi/pythonProject1/.venv/bin/python main.py
+# main.py stops every module on SIGTERM (camera and microphone released, shared memory freed)
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
