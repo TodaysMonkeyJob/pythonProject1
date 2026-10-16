@@ -158,7 +158,7 @@ events to the control queue; `disappeared` drops the track.
 python -m modules.vision.face_models                                # download the two ONNX models
 python -m tools.enroll_face --name Oleh --images data/faces/Oleh/   # or --camera 0 --frames 10
 python -m tools.enroll_face --list                                  # / --remove Oleh
-python -m modules.vision.demo 0 --identity                          # live check
+python -m modules.vision.demo 0                                     # live check (identity on by default)
 python -m tools.eval_faces data/faces --people 5 --enroll 5         # accuracy / false accepts
 ```
 
