@@ -139,8 +139,10 @@ Acceptance set: 10 videos, 2 per action (standing, sitting, walking, lying, poss
 
 ## Person identification (F3 / TOD-14)
 
-`IdentityRecognizer` (own process, `identity.identity_fps` = 2) reads the shared frame + `persons`, looks for a
-face (YuNet) in the top part of each person box and compares its SFace embedding with `faces.npz` (cosine).
+`IdentityRecognizer` (own process, `identity.identity_fps` = 2) reads the shared frame + `persons`, detects all
+faces in the frame once (YuNet) and shares them out one-to-one over the person boxes (`assign_faces`: the face
+must be centred in the top part of the box; best-fitting pairs first), so with several people — or overlapping /
+huge boxes — nobody gets someone else's face. Each assigned face's SFace embedding is compared with `faces.npz`.
 
 * known (similarity ≥ `face_threshold` 0.45) → identified once, no more work for that track;
 * otherwise `unknown_N` — embeddings of unknown faces are cached in memory for the session, so the same

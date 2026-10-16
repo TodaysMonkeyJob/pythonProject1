@@ -93,7 +93,8 @@ identity:
   detection_score: 0.8      # YuNet face score
   min_face_size: 40         # px
   face_region: 0.6          # face centre must be in the top 60 % of the person box
-  box_padding: 0.1
+  box_padding: 0.1          # face centre may lie this much (box fraction) above the box
+  max_face_offset: 0.35     # face centre within ±35 % of the box width from its centre
   track_lost_sec: 10
   max_unknowns: 200
   debug_dir: null           # set a folder to save aligned face crops (debug only — biometric data!)

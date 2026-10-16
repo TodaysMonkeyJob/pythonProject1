@@ -29,8 +29,8 @@ def near(base, seed, noise=0.3):
     return normalize(base + noise * np.random.default_rng(10_000 + seed).normal(size=128) / np.sqrt(128))
 
 
-def face_row(x=40, y=30, size=60, score=0.95):
-    """YuNet row relative to the search crop."""
+def face_row(x=170, y=70, size=60, score=0.95):
+    """YuNet row in frame coordinates; the default sits at the head of PERSON_BOX."""
     row = np.zeros(15, np.float32)
     row[:4] = (x, y, size, size)
     row[-1] = score
@@ -182,7 +182,7 @@ def test_face_filters():
     assert labels(engine.update(0.0, FRAME, [person(2)])) == [(2, NOT_VISIBLE)]
     faces.rows = [face_row(score=0.5)]                       # low detector score
     assert labels(engine.update(0.0, FRAME, [person(3)])) == [(3, NOT_VISIBLE)]
-    faces.rows = [face_row(size=20), face_row(x=10, size=70)]
+    faces.rows = [face_row(size=20), face_row(x=165, size=70)]
     assert labels(engine.update(0.0, FRAME, [person(4)])) == [(4, "Oleh")]
 
 
