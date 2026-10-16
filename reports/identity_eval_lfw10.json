@@ -1,0 +1,57 @@
+{
+  "root": "LFW (lfw_funneled, sklearn.datasets.fetch_lfw_people)",
+  "known_people": [
+    "George_W_Bush",
+    "Colin_Powell",
+    "Tony_Blair",
+    "Donald_Rumsfeld",
+    "Gerhard_Schroeder",
+    "Ariel_Sharon",
+    "Hugo_Chavez",
+    "Junichiro_Koizumi",
+    "Jean_Chretien",
+    "John_Ashcroft"
+  ],
+  "enrolled_per_person": 3,
+  "known_test_images": 300,
+  "stranger_images": 1000,
+  "stranger_people": 5739,
+  "detection_failures": 0,
+  "face_ms": {
+    "mean": 11.62,
+    "p95": 12.86
+  },
+  "config_threshold": 0.45,
+  "by_threshold": [
+    {
+      "threshold": 0.3,
+      "known_accuracy": 1.0,
+      "false_accept_rate": 0.126
+    },
+    {
+      "threshold": 0.363,
+      "known_accuracy": 1.0,
+      "false_accept_rate": 0.02
+    },
+    {
+      "threshold": 0.4,
+      "known_accuracy": 1.0,
+      "false_accept_rate": 0.003
+    },
+    {
+      "threshold": 0.45,
+      "known_accuracy": 1.0,
+      "false_accept_rate": 0.0
+    },
+    {
+      "threshold": 0.5,
+      "known_accuracy": 1.0,
+      "false_accept_rate": 0.0
+    },
+    {
+      "threshold": 0.55,
+      "known_accuracy": 0.993,
+      "false_accept_rate": 0.0
+    }
+  ]
+}

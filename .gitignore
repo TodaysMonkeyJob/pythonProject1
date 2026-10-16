@@ -20,6 +20,8 @@ test.xlsx
 logs/
 exports/
 models/
+# Face photos and embeddings (biometric data, never commit)
+data/faces/
 *.pt
 *_ncnn_model/
 

@@ -15,6 +15,10 @@ Camera → motion detection on every frame (MOG2) → YOLO + ByteTrack only on m
 | `pose.py` | `PoseEstimator` (yolo11n-pose, 17 COCO keypoints) + skeleton geometry (joint/torso angles) |
 | `actions.py` | F2: `ActionEngine` rules + `ActionRecognizer` module (reads the shared buffer) |
 | `eval_actions.py` | F2 acceptance: labelled videos → `reports/actions_eval.json` |
+| `identity.py` | F3: `FaceEngine` (YuNet + SFace), `FaceDatabase` (`faces.npz`), `IdentityEngine`, `IdentityRecognizer` |
+| `identity_store.py` | `UnknownStore` (unknown people on disk, rename → promotion) and `AliasRegistry` (`aliases.json`) |
+| `face_models.py` | `python -m modules.vision.face_models` → YuNet / SFace ONNX into `models/` (SHA-256 checked) |
+| `consumer.py` | `SharedFrameConsumer`: base for F2 / F3 processes reading the shared buffer |
 | `bench.py` | `python -m modules.vision.bench` → `reports/vision_benchmark.json` |
 
 ## Events (source `camera`, only on changes)
@@ -132,3 +136,73 @@ Acceptance set: 10 videos, 2 per action (standing, sitting, walking, lying, poss
 | Date | Machine | Videos passed | Mean score |
 |---|---|---|---|
 | *to be measured* | | | |
+
+## Person identification (F3 / TOD-14)
+
+`IdentityRecognizer` (own process, `identity.identity_fps` = 2) reads the shared frame + `persons`, looks for a
+face (YuNet) in the top part of each person box and compares its SFace embedding with `faces.npz` (cosine).
+
+* known (similarity ≥ `face_threshold` 0.45) → identified once, no more work for that track;
+* otherwise `unknown_N` — embeddings of unknown faces are cached in memory for the session, so the same
+  stranger keeps the same label on a new track; an unknown track can later be upgraded to a known name;
+* no face (turned away, too small, low score) → `not_visible`, retried every `retry_sec` while the track lives;
+* identified tracks are re-checked every `verify_sec` (5 s; unknown ones every `retry_sec`): F1 can keep the
+  same `track_id` when another person takes the same place, so after `switch_confirmations` (2) checks that
+  see a different face the label changes (`previous` = old label). A check that sees the same person is cheap
+  and stores nothing new, except more samples for an unknown person (up to `unknown_max_images`);
+* events are written to `logs/YYYY-MM-DD/identity.jsonl` (F2: `actions.jsonl`).
+
+```json
+{"track_id": 7, "identity": "Oleh", "known": true, "similarity": 0.71, "previous": "not_visible"}
+```
+
+Severity is `warning` for `unknown_N`, `info` otherwise. The orchestrator forwards `object_detected`
+events to the control queue; `disappeared` drops the track.
+
+```bash
+python -m modules.vision.face_models                                # download the two ONNX models
+python -m tools.enroll_face --name Oleh --images data/faces/Oleh/   # or --camera 0 --frames 10
+python -m tools.enroll_face --list                                  # / --remove Oleh
+python -m modules.vision.demo 0                                     # live check (identity on by default)
+python -m tools.eval_faces data/faces --people 5 --enroll 5         # accuracy / false accepts
+```
+
+### Naming unknown people
+
+Unknown people are saved to `data/faces/unknown/unknown_N/` (up to 10 aligned face crops, `embeddings.npy`,
+`meta.json`); labels survive restarts and numbers are never reused. To name someone, either
+
+* rename the folder: `data/faces/unknown/unknown_3` → `data/faces/unknown/Oleh` (or move it to `data/faces/Oleh`), or
+* run `python -m tools.enroll_face --from-unknown unknown_3 --name Oleh`.
+
+Within `sync_sec` (5 s) the running identity process:
+
+1. adds the stored embeddings to `faces.npz` (merged if Oleh is already enrolled) and reloads it,
+2. moves the crops to `data/faces/Oleh/` (`unknown_3_face_001.jpg`, … + `unknown_3_meta.json`),
+3. records `"unknown_3": "Oleh"` in `data/faces/aliases.json` — `AliasRegistry.resolve()` lets F5 / F7 / reports map
+   labels they stored earlier; event logs are not rewritten (they stay an audit trail),
+4. publishes `person_identified` with `"renamed_from": "unknown_3"`: one notice (`track_id: null`) and one per live
+   track that had the old label,
+5. recognises Oleh as known from then on (new tracks, new sessions).
+
+`faces.npz` and `aliases.json` changed by another process (e.g. `tools.enroll_face`) are reloaded the same way.
+
+**Privacy.** `data/faces/` (photos, `faces.npz`, unknown people) is git-ignored and stays on the device; only the
+label reaches the bus (and Azure). Unknown people did not consent: their folders are deleted after
+`unknown_retention_days` (30) without a sighting, and `save_unknowns: false` turns storing off. Enroll only people
+who gave written consent (thesis ethics section).
+
+### Results
+
+LFW, frontal press photos (`tools/eval_faces.py`, reports `reports/identity_eval_lfw*.json`):
+
+| Setup | Threshold 0.363 | 0.40 | **0.45 (default)** | 0.55 |
+|---|---|---|---|---|
+| 5 people × 5 enrolled photos, 150 tests / 500 strangers | 100 % / 0.8 % FA | 100 % / 0.2 % | **100 % / 0 %** | 99.3 % / 0 % |
+| 10 people × 3 enrolled photos, 300 tests / 1000 strangers | 100 % / 2.0 % | 100 % / 0.3 % | **100 % / 0 %** | 99.3 % / 0 % |
+
+(known accuracy / false accept rate; detection failures 0; YuNet + SFace ≈ 12 ms per face on the dev Mac.)
+
+F1 frame rate with the identity process running next to it (same video, separate processes): 11.5–11.6 FPS
+without, 11.2–12.2 FPS with — within measurement noise (target: ≤ 20 % drop). Re-check both on the Pi, and with
+the real camera: faces smaller than `min_face_size` (40 px) at the mounting distance end up `not_visible`.
