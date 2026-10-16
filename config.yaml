@@ -131,7 +131,9 @@ audio:
     silence_end_sec: 0.8    # a speech segment ends after this much silence
     max_segment_sec: 30
     min_speech_sec: 0.3     # shorter blips are not sent to Whisper
-    whisper_backend: azure  # azure (llm.whisper_deployment, .env keys) | local (faster-whisper) | none
+    whisper_backend: azure  # azure: Azure first (llm.whisper_deployment, .env keys), local model if it fails
+                            # local: only faster-whisper on the device | none: no transcription
+    azure_retry_sec: 300    # after an Azure failure use the local model, try Azure again after this long
     local_model: base
     language: null          # e.g. en / uk; null = auto-detect
   recorder:                 # legacy speech_to_text_whisper.AudioToTextRecorder (modules/audio:run)
