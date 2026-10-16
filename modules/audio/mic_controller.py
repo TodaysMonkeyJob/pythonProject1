@@ -204,6 +204,7 @@ class MicController(BaseModule):
         if self.vad is None:
             self.vad = webrtc_vad(int(self.cfg.get("vad_aggressiveness", 2)), self.sample_rate)
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper")
+        self.executor.submit(self._warm_up)  # in the Whisper thread: start-up and scene handling stay fast
         self._open_source()
 
     def teardown(self) -> None:
@@ -288,6 +289,14 @@ class MicController(BaseModule):
                 self.transcriber = lambda audio, sample_rate: {"text": "", "language": None}
         return self.transcriber
 
+    def _warm_up(self) -> None:
+        try:
+            warm_up = getattr(self._get_transcriber(), "warm_up", None)
+            if warm_up:
+                warm_up()
+        except Exception as e:
+            logger.error(f"Whisper warm-up failed: {e}")
+
     def _transcribe(self, segment: np.ndarray, duration: float) -> None:
         try:
             result = self._get_transcriber()(segment, self.sample_rate)
@@ -296,7 +305,8 @@ class MicController(BaseModule):
             return
         text = (result.get("text") or "").strip()
         if text:
-            self.emit("speech", {"text": text, "language": result.get("language"), "duration_sec": duration})
+            self.emit("speech", {"text": text, "language": result.get("language"), "duration_sec": duration,
+                                 "backend": result.get("backend")})
 
     def _open_source(self) -> None:
         try:

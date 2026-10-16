@@ -60,7 +60,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id). F2/F3 events go
     to `logs/<date>/actions.jsonl` / `identity.jsonl`.
   - `modules/audio/mic_controller.py` — F4 microphone: STANDBY (RMS + webrtcvad on 30 ms frames, nothing recorded)
-    / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`);
+    / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`
+    with `backend`). `whisper_backend: azure` falls back to local faster-whisper when keys are missing or a request
+    fails (Azure retried after `azure_retry_sec`); `local` = local only;
     `mic_state` events (source system). `modules/audio:run` is the legacy `AudioToTextRecorder` wrapper.
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
 - `system_setup/logger_setup.py` — shared logger: `init_logger()` + `set_logger_params(logger, log_file,
