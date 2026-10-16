@@ -48,7 +48,8 @@ class IdentityConfig:
     detection_score: float = 0.8        # YuNet score
     min_face_size: int = 40             # px, smaller faces are not recognised reliably
     face_region: float = 0.6            # face centre must lie in the top part of the person box
-    box_padding: float = 0.1            # search area around the person box
+    box_padding: float = 0.1            # face centre may lie this much (box fraction) outside the person box
+    max_face_offset: float = 0.35       # |face centre − box centre| / box width; larger = someone else's face
     track_lost_sec: float = 10.0
     max_unknowns: int = 200
     debug_dir: Optional[str] = None
@@ -103,6 +104,47 @@ def largest_face(faces: np.ndarray, min_size: int = 0) -> Optional[np.ndarray]:
     """
     candidates = [f for f in faces if f[2] >= min_size and f[3] >= min_size]
     return max(candidates, key=lambda f: f[2] * f[3]) if candidates else None
+
+
+def face_fit(face: np.ndarray, bbox: Sequence[float], cfg: "IdentityConfig") -> Optional[float]:
+    """
+    How well a face belongs to a person box (lower = better).
+
+    :return: Cost, or None when the face can't be this person's (outside the head region of the box)
+    """
+    x1, y1, x2, y2 = bbox
+    width, height = max(1.0, x2 - x1), max(1.0, y2 - y1)
+    fx, fy = face[0] + face[2] / 2, face[1] + face[3] / 2
+    dx = abs(fx - (x1 + x2) / 2) / width
+    dy = (fy - y1) / height
+    if dx > cfg.max_face_offset or dy < -cfg.box_padding or dy > cfg.face_region:
+        return None
+    # Centred, high in the box, and a face size that suits the box (≈ 30 % of an upper-body box width)
+    return dx + 0.5 * max(0.0, dy) + 0.2 * abs(float(np.log(max(face[2], 1.0) / width / 0.3)))
+
+
+def assign_faces(persons: Sequence[Dict[str, Any]], faces: np.ndarray,
+                 cfg: "IdentityConfig") -> Dict[int, np.ndarray]:
+    """
+    One-to-one assignment of detected faces to person boxes (greedy by face_fit cost).
+
+    :param persons: [{"track_id", "bbox"}]
+    :param faces: YuNet rows in frame coordinates
+    :return: {track_id: face row}
+    """
+    pairs = []
+    for person in persons:
+        for index, face in enumerate(faces):
+            cost = face_fit(face, person["bbox"], cfg)
+            if cost is not None:
+                pairs.append((cost, int(person["track_id"]), index))
+    assigned, used_faces = {}, set()
+    for _cost, track_id, index in sorted(pairs):
+        if track_id in assigned or index in used_faces:
+            continue
+        assigned[track_id] = faces[index]
+        used_faces.add(index)
+    return assigned
 
 
 class FaceDatabase:
@@ -219,40 +261,48 @@ class IdentityEngine:
         :param persons: [{"track_id", "bbox"}] from the vision module
         :return: [(payload, severity, confidence)] for the events to publish
         """
-        out = []
+        out, due = [], []
         for person in persons:
-            track_id = int(person["track_id"])
-            track = self.tracks.setdefault(track_id, TrackIdentity())
+            track = self.tracks.setdefault(int(person["track_id"]), TrackIdentity())
             track.last_seen = now
-            settled = track.identity not in (None, NOT_VISIBLE)
             interval = self.cfg.verify_sec if track.known else self.cfg.retry_sec
-            if now - track.last_attempt < interval:
-                continue
-            track.last_attempt = now
-            track.attempts += 1
-            event = self._verify(track_id, track, frame, person["bbox"]) if settled \
-                else self._first_identification(track_id, track, frame, person["bbox"])
-            if event:
-                out.append(event)
+            if now - track.last_attempt >= interval:
+                due.append(person)
+        if due:
+            # Faces are detected once per frame and shared out one-to-one over ALL persons in the frame, so a face
+            # inside an overlapping (or huge) box of someone else is never taken for that person
+            assigned = assign_faces(persons, self._detect_faces(frame), self.cfg)
+            for person in due:
+                track_id = int(person["track_id"])
+                track = self.tracks[track_id]
+                track.last_attempt = now
+                track.attempts += 1
+                face = assigned.get(track_id)
+                found = None if face is None else (self.faces.embed(frame, face), frame, face)
+                settled = track.identity not in (None, NOT_VISIBLE)
+                event = self._verify(track_id, track, found) if settled \
+                    else self._first_identification(track_id, track, found)
+                if event:
+                    out.append(event)
         for track_id in [t for t, s in self.tracks.items() if now - s.last_seen > self.cfg.track_lost_sec]:
             del self.tracks[track_id]
         return out
 
-    def _first_identification(self, track_id: int, track: TrackIdentity, frame: np.ndarray, bbox: Sequence[int]):
-        found = self._find_face(frame, bbox)
+    def _first_identification(self, track_id: int, track: TrackIdentity, found):
         if found is None:
             if track.identity is None:
                 return self._set(track_id, track, NOT_VISIBLE, False, 0.0)
             return None
         return self._set(track_id, track, *self._label(*found))
 
-    def _verify(self, track_id: int, track: TrackIdentity, frame: np.ndarray, bbox: Sequence[int]):
+    def _verify(self, track_id: int, track: TrackIdentity, found):
         """
         Re-checks an identified track: the tracker may keep the id when another person takes the same place.
         The label changes only after ``switch_confirmations`` consecutive checks see a different face; a check
         that sees the same person has no side effects (nothing is stored for it).
+
+        :param found: (embedding, image, face row) of the face assigned to this person, or None
         """
-        found = self._find_face(frame, bbox)
         if found is None:
             return None  # face turned away: keep the label
         embedding = found[0]
@@ -359,21 +409,13 @@ class IdentityEngine:
                              "renamed_from": old_label}, "info", round(track.similarity, 3)))
         return out
 
-    def _find_face(self, frame: np.ndarray, bbox: Sequence[int]):
+    def _detect_faces(self, frame: np.ndarray) -> np.ndarray:
         """
-        :return: (embedding, crop, face row) for the person's face, or None when no usable face is visible
+        :return: YuNet rows (frame coordinates) passing the score and size limits
         """
-        crop, _ = self._search_area(frame, bbox)
-        if crop.size == 0:
-            return None
-        faces = [f for f in self.faces.detect(crop) if f[-1] >= self.cfg.detection_score]
-        # Only faces in the upper part of the person box (not a second person's face overlapping the box)
-        top_limit = self.cfg.face_region * crop.shape[0]
-        faces = [f for f in faces if f[1] + f[3] / 2 <= top_limit]
-        face = largest_face(np.array(faces).reshape(-1, 15), self.cfg.min_face_size)
-        if face is None:
-            return None
-        return self.faces.embed(crop, face), crop, face
+        faces = [f for f in self.faces.detect(frame)
+                 if f[-1] >= self.cfg.detection_score and min(f[2], f[3]) >= self.cfg.min_face_size]
+        return np.array(faces, np.float32).reshape(-1, 15)
 
     def _label(self, embedding: np.ndarray, crop: np.ndarray, face: np.ndarray) -> Tuple[str, bool, float]:
         """Known name or unknown_N for a face; unknown faces are stored."""
@@ -387,13 +429,6 @@ class IdentityEngine:
                 self.store.save(label, embedding, aligned)
         self._debug_save(crop, face, label)
         return label, known, similarity
-
-    def _search_area(self, frame: np.ndarray, bbox: Sequence[int]) -> Tuple[np.ndarray, Tuple[int, int]]:
-        x1, y1, x2, y2 = bbox
-        pad_x, pad_y = int(self.cfg.box_padding * (x2 - x1)), int(self.cfg.box_padding * (y2 - y1))
-        x1, y1 = max(0, x1 - pad_x), max(0, y1 - pad_y)
-        x2, y2 = min(frame.shape[1], x2 + pad_x), min(frame.shape[0], y2 + pad_y)
-        return frame[y1:y2, x1:x2], (x1, y1)
 
     def _unknown_label(self, embedding: np.ndarray) -> str:
         best, best_similarity = None, self.cfg.unknown_threshold
