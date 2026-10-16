@@ -101,7 +101,7 @@ def test_largest_face_respects_min_size():
 
 # --- engine -----------------------------------------------------------------------------------------------------
 
-def test_known_person_identified_once():
+def test_known_person_identified_once_then_only_verified():
     engine, faces = make_engine()
     faces.rows, faces.embedding = [face_row()], near(OLEH, 5)
     events = []
@@ -111,7 +111,7 @@ def test_known_person_identified_once():
     payload, severity, confidence = events[0]
     assert payload["known"] is True and payload["previous"] is None and payload["similarity"] > 0.8
     assert severity == "info" and confidence == payload["similarity"]
-    assert faces.detect_calls == 1                          # no more recognition once known
+    assert faces.detect_calls == 4                          # once + a cheap re-check every verify_sec (5 s)
 
 
 def test_face_not_visible_then_recognised():

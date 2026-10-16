@@ -41,7 +41,10 @@ class IdentityConfig:
     """Thresholds; every field can be overridden from the ``identity`` config section."""
     face_threshold: float = 0.45        # cosine ≥ this → known person (SFace reference: 0.363)
     unknown_threshold: float = 0.45     # cosine ≥ this → same unknown person as before
-    retry_sec: float = 2.0
+    retry_sec: float = 2.0              # retry not_visible tracks this often
+    verify_sec: float = 5.0             # re-check already identified tracks (another person may take the place)
+    verify_margin: float = 0.10         # face still "the same person" down to threshold - margin
+    switch_confirmations: int = 2       # consecutive different-person checks before a track's label changes
     detection_score: float = 0.8        # YuNet score
     min_face_size: int = 40             # px, smaller faces are not recognised reliably
     face_region: float = 0.6            # face centre must lie in the top part of the person box
@@ -174,6 +177,7 @@ class TrackIdentity:
     last_attempt: float = float("-inf")
     last_seen: float = 0.0
     attempts: int = 0
+    different_checks: int = 0           # consecutive verifications that saw another face
 
 
 @dataclass
@@ -220,27 +224,85 @@ class IdentityEngine:
             track_id = int(person["track_id"])
             track = self.tracks.setdefault(track_id, TrackIdentity())
             track.last_seen = now
-            if track.known or now - track.last_attempt < self.cfg.retry_sec:
+            settled = track.identity not in (None, NOT_VISIBLE)
+            interval = self.cfg.verify_sec if track.known else self.cfg.retry_sec
+            if now - track.last_attempt < interval:
                 continue
             track.last_attempt = now
             track.attempts += 1
-            label, known, similarity = self._identify(frame, person["bbox"])
-            if label == NOT_VISIBLE and track.identity not in (None, NOT_VISIBLE):
-                continue  # keep the earlier identification while the face is turned away
-            if not known and track.identity is not None and track.identity.startswith("unknown_"):
-                continue  # an unknown track keeps its label; it can only be upgraded to a known person
-            if label != track.identity:
-                previous = track.identity
-                track.identity, track.known, track.similarity = label, known, similarity
-                severity = "info" if known or label == NOT_VISIBLE else "warning"
-                payload = {"track_id": track_id, "identity": label, "known": known,
-                           "similarity": round(similarity, 3), "previous": previous}
-                out.append((payload, severity, round(similarity, 3) if label != NOT_VISIBLE else None))
-            else:
-                track.similarity = max(track.similarity, similarity)
+            event = self._verify(track_id, track, frame, person["bbox"]) if settled \
+                else self._first_identification(track_id, track, frame, person["bbox"])
+            if event:
+                out.append(event)
         for track_id in [t for t, s in self.tracks.items() if now - s.last_seen > self.cfg.track_lost_sec]:
             del self.tracks[track_id]
         return out
+
+    def _first_identification(self, track_id: int, track: TrackIdentity, frame: np.ndarray, bbox: Sequence[int]):
+        found = self._find_face(frame, bbox)
+        if found is None:
+            if track.identity is None:
+                return self._set(track_id, track, NOT_VISIBLE, False, 0.0)
+            return None
+        return self._set(track_id, track, *self._label(*found))
+
+    def _verify(self, track_id: int, track: TrackIdentity, frame: np.ndarray, bbox: Sequence[int]):
+        """
+        Re-checks an identified track: the tracker may keep the id when another person takes the same place.
+        The label changes only after ``switch_confirmations`` consecutive checks see a different face; a check
+        that sees the same person has no side effects (nothing is stored for it).
+        """
+        found = self._find_face(frame, bbox)
+        if found is None:
+            return None  # face turned away: keep the label
+        embedding = found[0]
+        name, similarity = self.database.match(embedding)
+        if name == track.identity and similarity >= self.cfg.face_threshold:
+            track.different_checks = 0
+            track.similarity = max(track.similarity, similarity)
+            return None
+        if not track.known and name is not None and similarity >= self.cfg.face_threshold:
+            track.different_checks = 0
+            return self._set(track_id, track, name, True, similarity)  # unknown upgraded (e.g. just enrolled)
+        reference, threshold = self._reference(track)
+        if reference is not None and float(reference @ embedding) >= threshold - self.cfg.verify_margin:
+            track.different_checks = 0
+            if not track.known:  # same stranger: keep collecting samples for naming them later
+                unknown = next(u for u in self.unknowns if u.label == track.identity)
+                unknown.embedding = normalize(unknown.embedding * unknown.count + embedding)
+                unknown.count += 1
+                if self.store is not None:
+                    crop, face = found[1], found[2]
+                    aligned = self.faces.aligned_crop(crop, face) if hasattr(self.faces, "aligned_crop") else None
+                    self.store.save(track.identity, embedding, aligned)
+            return None
+        track.different_checks += 1
+        if track.different_checks < self.cfg.switch_confirmations:
+            return None
+        track.different_checks = 0
+        return self._set(track_id, track, *self._label(*found))
+
+    def _reference(self, track: TrackIdentity) -> Tuple[Optional[np.ndarray], float]:
+        """
+        :return: (embedding of the track's current identity, its matching threshold) or (None, 0)
+        """
+        if track.known and track.identity in self.database.names:
+            return self.database.embeddings[self.database.names.index(track.identity)], self.cfg.face_threshold
+        unknown = next((u for u in self.unknowns if u.label == track.identity), None)
+        if unknown is not None:
+            return unknown.embedding, self.cfg.unknown_threshold
+        return None, 0.0
+
+    def _set(self, track_id: int, track: TrackIdentity, label: str, known: bool, similarity: float):
+        if label == track.identity:
+            track.similarity = max(track.similarity, similarity)
+            return None
+        previous = track.identity
+        track.identity, track.known, track.similarity = label, known, similarity
+        severity = "info" if known or label == NOT_VISIBLE else "warning"
+        payload = {"track_id": track_id, "identity": label, "known": known,
+                   "similarity": round(similarity, 3), "previous": previous}
+        return payload, severity, round(similarity, 3) if label != NOT_VISIBLE else None
 
     def sync(self) -> List[Tuple[Dict[str, Any], str, Optional[float]]]:
         """
@@ -297,18 +359,24 @@ class IdentityEngine:
                              "renamed_from": old_label}, "info", round(track.similarity, 3)))
         return out
 
-    def _identify(self, frame: np.ndarray, bbox: Sequence[int]) -> Tuple[str, bool, float]:
+    def _find_face(self, frame: np.ndarray, bbox: Sequence[int]):
+        """
+        :return: (embedding, crop, face row) for the person's face, or None when no usable face is visible
+        """
         crop, _ = self._search_area(frame, bbox)
         if crop.size == 0:
-            return NOT_VISIBLE, False, 0.0
+            return None
         faces = [f for f in self.faces.detect(crop) if f[-1] >= self.cfg.detection_score]
         # Only faces in the upper part of the person box (not a second person's face overlapping the box)
         top_limit = self.cfg.face_region * crop.shape[0]
         faces = [f for f in faces if f[1] + f[3] / 2 <= top_limit]
         face = largest_face(np.array(faces).reshape(-1, 15), self.cfg.min_face_size)
         if face is None:
-            return NOT_VISIBLE, False, 0.0
-        embedding = self.faces.embed(crop, face)
+            return None
+        return self.faces.embed(crop, face), crop, face
+
+    def _label(self, embedding: np.ndarray, crop: np.ndarray, face: np.ndarray) -> Tuple[str, bool, float]:
+        """Known name or unknown_N for a face; unknown faces are stored."""
         name, similarity = self.database.match(embedding)
         if name is not None and similarity >= self.cfg.face_threshold:
             label, known = name, True

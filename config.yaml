@@ -75,6 +75,7 @@ actions:
   smoking_min_count: 3      # wrist-near-mouth episodes per window → possible_smoking
   gas_window_sec: 60        # gas rise within this window → gas_confirmed
   gas_rise_pct: 0.5
+  log_events: true          # write action events to logs/YYYY-MM-DD/actions.jsonl
 
 identity:
   enabled: true
@@ -85,6 +86,10 @@ identity:
   face_threshold: 0.45      # SFace cosine ≥ this → known person; LFW: 100 % known, 0 % strangers accepted
   unknown_threshold: 0.45   # cosine ≥ this → same unknown_N as earlier in the session
   retry_sec: 2.0            # retry unknown / not visible tracks this often
+  verify_sec: 5.0           # re-check identified people: another person may take the same place (same track id)
+  verify_margin: 0.10       # still the same face down to threshold − margin
+  switch_confirmations: 2   # consecutive "different face" checks before the label changes
+  log_events: true          # write person_identified events to logs/YYYY-MM-DD/identity.jsonl
   detection_score: 0.8      # YuNet face score
   min_face_size: 40         # px
   face_region: 0.6          # face centre must be in the top 60 % of the person box

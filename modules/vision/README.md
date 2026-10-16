@@ -145,7 +145,12 @@ face (YuNet) in the top part of each person box and compares its SFace embedding
 * known (similarity ≥ `face_threshold` 0.45) → identified once, no more work for that track;
 * otherwise `unknown_N` — embeddings of unknown faces are cached in memory for the session, so the same
   stranger keeps the same label on a new track; an unknown track can later be upgraded to a known name;
-* no face (turned away, too small, low score) → `not_visible`, retried every `retry_sec` while the track lives.
+* no face (turned away, too small, low score) → `not_visible`, retried every `retry_sec` while the track lives;
+* identified tracks are re-checked every `verify_sec` (5 s; unknown ones every `retry_sec`): F1 can keep the
+  same `track_id` when another person takes the same place, so after `switch_confirmations` (2) checks that
+  see a different face the label changes (`previous` = old label). A check that sees the same person is cheap
+  and stores nothing new, except more samples for an unknown person (up to `unknown_max_images`);
+* events are written to `logs/YYYY-MM-DD/identity.jsonl` (F2: `actions.jsonl`).
 
 ```json
 {"track_id": 7, "identity": "Oleh", "known": true, "similarity": 0.71, "previous": "not_visible"}

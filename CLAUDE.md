@@ -51,6 +51,8 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `consumer.SharedFrameConsumer`. `tools/eval_faces.py` → accuracy / false accepts on a face folder.
     `identity_store.py`: unknown people saved to `data/faces/unknown/unknown_N/`; renaming that folder (or
     `enroll_face --from-unknown`) enrolls the person, moves the crops, writes `aliases.json`, relabels live tracks.
+    Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id). F2/F3 events go
+    to `logs/<date>/actions.jsonl` / `identity.jsonl`.
   - `modules/audio` — wraps `AudioToTextRecorder` (listener thread) → `speech` events; start it in a
     non-daemon process (the recorder spawns children).
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.

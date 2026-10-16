@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from core.events import Event
+from core.logger import JsonlLogger
 from core.module import BaseModule
 from modules.vision.shared_frame import SharedFrameBuffer
 from system_setup.logger_setup import init_logger
@@ -30,6 +31,18 @@ class SharedFrameConsumer(BaseModule):
         self.interval_sec = 1.0 / float(fps)
         self._last_frame_id = 0
         self._next_poll = 0.0
+        self.event_log: Optional[JsonlLogger] = None
+        module_cfg = config.get(self.name, {})
+        if module_cfg.get("log_events", True) and "logging" in config:
+            log_cfg = config["logging"]
+            self.event_log = JsonlLogger(self.name, log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048))
+
+    def emit(self, type: str, payload=None, severity: str = "info", confidence=None):
+        """Publishes on the bus and writes the event to logs/YYYY-MM-DD/<module>.jsonl."""
+        event = super().emit(type, payload, severity=severity, confidence=confidence)
+        if self.event_log is not None:
+            self.event_log.write(event)
+        return event
 
     def process(self, frame_id: int, timestamp: float, frame: np.ndarray, meta: Dict[str, Any]) -> None:
         """Handles one new shared frame; subclasses override."""
@@ -41,6 +54,8 @@ class SharedFrameConsumer(BaseModule):
     def teardown(self) -> None:
         if self.frame_buffer is not None:
             self.frame_buffer.close()
+        if self.event_log is not None:
+            self.event_log.close()
 
     def handle_control(self, message: Any) -> None:
         if isinstance(message, str) and message.startswith("{"):
