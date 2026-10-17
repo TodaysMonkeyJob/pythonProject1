@@ -94,6 +94,9 @@ class VisionDetector(BaseModule):
         self._camera_ok: Optional[bool] = None
         self.last_stats: Dict[str, float] = {}
 
+    def heartbeat_payload(self) -> Dict[str, Any]:
+        return dict(self.last_stats)
+
     def setup(self) -> None:
         cfg = self.cfg
         width, height = cfg.get("resolution", [640, 480])

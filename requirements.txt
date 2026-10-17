@@ -32,3 +32,5 @@ torchvision~=0.18.0
 lap~=0.5.13
 ncnn>=1.0.20260526
 jsonschema~=4.26
+fastapi~=0.143
+uvicorn~=0.54

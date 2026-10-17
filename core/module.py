@@ -73,12 +73,16 @@ class BaseModule:
         self.publish(event)
         return event
 
+    def heartbeat_payload(self) -> Dict[str, Any]:
+        """Extra status shown on the dashboard (e.g. FPS, microphone state); override in modules."""
+        return {}
+
     def heartbeat(self) -> None:
         """Publishes a heartbeat event (source='system') if HEARTBEAT_INTERVAL has passed."""
         now = time.monotonic()
         if now - self._last_heartbeat >= HEARTBEAT_INTERVAL:
             self._last_heartbeat = now
-            self.publish(make_event("system", "heartbeat", {"module": self.name}))
+            self.publish(make_event("system", "heartbeat", {"module": self.name, **self.heartbeat_payload()}))
 
     def poll_control(self) -> None:
         """Drains the control queue without blocking."""
