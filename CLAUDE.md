@@ -95,10 +95,18 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   - `modules/audio/mic_controller.py` — F4 microphone: STANDBY (RMS + webrtcvad on 30 ms frames, nothing recorded)
     / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`
     with `backend`). `whisper_backend: azure` falls back to local faster-whisper when keys are missing or a request
-    fails (Azure retried after `azure_retry_sec`); `local` = local only;
-    `mic_state` events (source system). `speaker_id: true` → `modules/audio/speaker.py` (SpeechBrain ECAPA voice
-    embedding in the registry, `speech` gets `person_id` / `speaker`) + voice ↔ face linking from forwarded
-    `object_detected` / `person_identified`. `modules/audio:run` is the legacy `AudioToTextRecorder` wrapper.
+    fails (Azure retried after `azure_retry_sec`); `azure_only` = cloud only, no fallback; `local` = local only;
+    `WhisperOptions` (both backends): fixed `language` or detection restricted to `languages` (Azure re-asks in the
+    first one), beam 5, no `condition_on_previous_text`, hallucination filter (silence / compression ratio / known
+    phrases); `whisper_max_backlog` skips stale segments on a slow Pi. Target device is the Pi: no GPU-only paths.
+    `mic_state` events (source system). F10 (TOD-21) `speaker_id: true`: `modules/audio/speaker.py`
+    `SpeakerAnalyzer` (16 kHz + 80 Hz high-pass + loudness norm, 1.5 s / 0.75 s windows, ECAPA in mini-batches,
+    agglomerative cosine clustering + split pass → speaker turns; per cluster `registry.rank()` → known / unknown_N /
+    uncertain; clean single-speaker chunks enrich the profile) and `modules/audio/attribution.py` (Whisper segments
+    aligned / split to turns; `TranscriptLog` → `logs/<date>/transcripts.jsonl` + `.txt`). One `speech` event per
+    segment: `person_id`, `speaker_name`, `speaker_score`, `speaker_status`, `text`, `start`/`end`, `location_id`,
+    `device_id`. Voice ↔ face linking from forwarded `object_detected` / `person_identified`.
+    `tools/calibrate_voice.py` → EER + suggested `identity.voice_threshold`. `modules/audio:run` is the legacy `AudioToTextRecorder` wrapper.
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
 - `system_setup/logger_setup.py` — shared logger: `init_logger()` + `set_logger_params(logger, log_file,
   log_level, no_log_file)`. Re-created after the original was lost; keep this signature stable.
@@ -132,6 +140,7 @@ python -m tools.test_llm --dry-run      # GPT example cases: tokens / cost; with
 python -m modules.vision.demo 0 --pose-model yolo11n-pose.pt   # webcam: objects + actions
 python -m tools.identity list                 # F9 registry: rename unknown_3 Oleh / merge / delete / history
 python -m tools.enroll --name Oleh --faces data/faces/Oleh/ --voice speech_to_text_whisper/voices/oleh.wav
+python -m tools.calibrate_voice --audio <dir>/<name>/*.wav   # voice_threshold from EER (≥ 2 people)
 YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 ```
 - Legacy files have many pre-existing ruff findings (star imports etc.); don't mass-fix them. No CI yet.
@@ -177,5 +186,6 @@ YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 - `multi_model_sentence_data.xlsx`, `speech_to_text_whisper/warmup_audio.wav` — data/binaries.
 - `speech_to_text_whisper/voices/`, `model/` — reference voices and model cache (never commit).
 - `data/faces/`, `data/identity.db*` — face photos, face / voice embeddings (biometric data, git-ignored, never
-  commit). Tests must use `tmp_path` registries, never the default `data/identity.db`.
+  commit). Tests must use `tmp_path` registries and log dirs: `tests/conftest.py` fails the run if real
+  `data/identity.db*` or `logs/*/*` change. Never delete them without checking — they hold the user's live data.
 - `speech_to_text_whisper/audio_recorder_testing.py` — leave as is.

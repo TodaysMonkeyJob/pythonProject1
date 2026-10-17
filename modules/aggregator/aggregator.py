@@ -29,7 +29,7 @@ logger = init_logger()
 
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "snapshot.schema.json")
 CSV_FIELDS = ["timestamp", "source", "type", "severity", "track_id", "identity", "action", "text", "gas_ppm",
-              "confidence"]
+              "confidence", "person_id", "speaker_name", "speaker_score", "location_id", "device_id"]
 PPM_PER_PERCENT = 10_000
 
 
@@ -151,7 +151,9 @@ class SceneState:
         elif event.type == "speech":
             entry = {"t": hms(event), "text": p.get("text", ""), "language": p.get("language")}
             if p.get("person_id"):
-                entry.update(person_id=p["person_id"], speaker=p.get("speaker"))
+                entry.update(person_id=p["person_id"], speaker=p.get("speaker_name") or p.get("speaker"))
+            elif p.get("speaker_status") == "uncertain":
+                entry["speaker"] = "?"                                    # overlapping / too short to tell
             self.speech.append(entry)
         elif event.type == "sound":
             self.sounds.append({"t": hms(event), "label": p.get("label", "loud_noise"), "db": p.get("rms_db", 0)})
@@ -213,7 +215,7 @@ class SnapshotBuilder:
             "objects": state.objects_seen[:30],
             "speech": [{**s, "text": s["text"][:cfg.max_text_chars],
                         **({"speaker": (names(s["person_id"], s.get("speaker")) or "")[:64]} if s.get("person_id")
-                           else {})}
+                           else {"speaker": s["speaker"]} if s.get("speaker") else {})}
                        for s in state.speech[-20:]],
             "sounds": state.sounds[-20:],
             "gas": self._gas(state),
@@ -327,12 +329,19 @@ class EventCsv:
             "track_id": p.get("track_id", ""), "identity": p.get("identity", ""), "action": p.get("action", ""),
             "text": text, "gas_ppm": int(round(gas_pct * PPM_PER_PERCENT)) if isinstance(gas_pct, (int, float)) else "",
             "confidence": "" if event.confidence is None else event.confidence,
+            "person_id": p.get("person_id") or "", "speaker_name": p.get("speaker_name") or "",
+            "speaker_score": p.get("speaker_score", ""), "location_id": p.get("location_id") or "",
+            "device_id": p.get("device_id") or "",
         })
         self._file.flush()
 
     def _open(self, day: str) -> None:
         self.close()
         path = os.path.join(self.export_dir, f"events_{day}.csv")
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            with open(path, encoding="utf-8") as f:
+                if f.readline().strip() != ",".join(CSV_FIELDS):   # written by an older version: don't mix columns
+                    path = os.path.join(self.export_dir, f"events_{day}_v2.csv")
         new = not os.path.exists(path) or os.path.getsize(path) == 0
         self._file = open(path, "a", newline="", encoding="utf-8")
         self._writer = csv.DictWriter(self._file, fieldnames=CSV_FIELDS)

@@ -44,7 +44,7 @@ def make(**mic_cfg):
         calls.append(len(audio) / sample_rate)
         return {"text": "hello there", "language": "en"}
 
-    cfg = {"audio": {"mic": {"idle_timeout_sec": 15, "sound_threshold_db": -35, **mic_cfg}}}
+    cfg = {"audio": {"mic": {"idle_timeout_sec": 15, "sound_threshold_db": -35, "transcript_log": False, **mic_cfg}}}
     controller = MicController(queue.Queue(), queue.Queue(), cfg, frame_source=mic,
                                vad=lambda frame: rms_dbfs(frame) > -30, transcriber=transcriber, clock=clock)
     controller.setup()
@@ -133,8 +133,11 @@ def test_speech_in_standby_is_not_recorded_until_active():
     controller.executor.shutdown(wait=True)
     assert len(calls) == 1 and calls[0] < 30 * 0.03 + 0.5 + 0.9           # the waking frame started the segment
     speech = [e for e in drain(controller) + events if e.type == "speech"]
-    assert speech and speech[0].payload == {"text": "hello there", "language": "en", "backend": None,
-                                            "duration_sec": pytest.approx(calls[0], abs=0.01)}
+    payload = speech[0].payload
+    assert {k: payload[k] for k in ("text", "language", "backend")} == {"text": "hello there", "language": "en",
+                                                                         "backend": None}
+    assert payload["duration_sec"] == pytest.approx(calls[0], abs=0.01) and payload["location_id"] == "home"
+    assert payload["start"] < payload["end"] and payload["device_id"].startswith("mic-")
     assert speech[0].source == "audio"
 
 
@@ -201,6 +204,10 @@ def test_create_transcriber_backends():
     assert callable(local) and hasattr(local, "warm_up")
     with pytest.raises(ValueError):
         create_transcriber({"audio": {"mic": {"whisper_backend": "magic"}}})
+    from modules.llm.azure_client import MissingCredentials
+
+    with pytest.raises(MissingCredentials):                                   # cloud only: no silent local fallback
+        create_transcriber({"audio": {"mic": {"whisper_backend": "azure_only"}}, "llm": {}})
 
 
 class Recorder:

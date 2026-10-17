@@ -213,7 +213,8 @@ def test_csv_rows_header_rotation_and_pandas(tmp_path):
     day1 = pd.read_csv(tmp_path / "exports" / "events_2026-10-14.csv", encoding="utf-8")
     day2 = pd.read_csv(tmp_path / "exports" / "events_2026-10-15.csv", encoding="utf-8")
     assert list(day1.columns) == ["timestamp", "source", "type", "severity", "track_id", "identity", "action",
-                                  "text", "gas_ppm", "confidence"]
+                                  "text", "gas_ppm", "confidence", "person_id", "speaker_name", "speaker_score",
+                                  "location_id", "device_id"]
     assert len(day1) == len(scene_events()) and len(day2) == 1
     assert day2.loc[0, "text"] == "Добраніч"
     speech = day1[day1["type"] == "speech"].iloc[0]
@@ -276,3 +277,18 @@ def test_critical_event_reaches_outbox_within_two_seconds(tmp_path):
         orch.shutdown()
     assert row["trigger"] == "critical_event"
     assert row["created_at"] - sent_at <= 2.0
+
+
+def test_csv_speaker_columns_and_old_header_is_not_mixed(tmp_path):
+    exports = tmp_path / "exports"
+    exports.mkdir()
+    (exports / "events_2026-10-14.csv").write_text("timestamp,source,type\n2026-10-14T01:00:00.000Z,gas,x\n")
+    aggregator, clock = make(tmp_path)
+    speech = make_event("audio", "speech", {"text": "Close the door", "person_id": "p1", "speaker_name": "Oleh",
+                                            "speaker_score": 0.62, "location_id": "warehouse", "device_id": "mic-mac"})
+    feed(aggregator, clock, [at("2026-10-14T12:00:00.000Z", speech)])
+    aggregator.close()
+    row = pd.read_csv(exports / "events_2026-10-14_v2.csv", encoding="utf-8").iloc[0]
+    assert (row["person_id"], row["speaker_name"], row["speaker_score"], row["location_id"], row["device_id"]) == \
+        ("p1", "Oleh", 0.62, "warehouse", "mic-mac")
+    assert (exports / "events_2026-10-14.csv").read_text().count("\n") == 2            # old file untouched

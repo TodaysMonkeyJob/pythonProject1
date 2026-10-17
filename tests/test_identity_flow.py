@@ -13,11 +13,12 @@ from core.identity import IdentityRegistry
 from modules.aggregator.aggregator import Aggregator
 from modules.aggregator.digest import snapshot_digest
 from modules.audio.mic_controller import MicController
-from modules.audio.speaker import SpeakerIdentifier
-from tests.test_identity_registry import OLEH_FACE, OLEH_VOICE, face, voice
+from modules.audio.speaker import SpeakerAnalyzer
+from tests.test_identity_registry import OLEH_FACE, OLEH_VOICE, face
+from tests.test_speaker import fake_embed, fake_mask, tone
 
 REPO = Path(__file__).resolve().parent.parent
-SEGMENT = np.zeros(32000, np.int16)                     # 2 s at 16 kHz (the fake embedder ignores the samples)
+SEGMENT = (tone(220, 2.0) * 32767).astype(np.int16)    # 2 s of "voice A" (see tests/test_speaker.py)
 
 
 class Wall:
@@ -28,13 +29,15 @@ class Wall:
         return self.now
 
 
-def audio_module(tmp_path, embedding=OLEH_VOICE):
+def audio_module(tmp_path):
     registry = IdentityRegistry(str(tmp_path / "identity.db"))
     face_id = registry.create_unknown("face", OLEH_FACE)
     registry.rename(face_id, "Oleh")
     wall = Wall()
-    speaker = SpeakerIdentifier(registry, lambda audio, sr: voice(int(wall.now), embedding, noise=0.2))
-    config = {"audio": {"mic": {}}, "identity": {"link_min_cooccurrences": 3}}
+    speaker = SpeakerAnalyzer(registry, fake_embed, fake_mask)
+    config = {"audio": {"mic": {"device_id": "mic-test"}}, "identity": {"link_min_cooccurrences": 3,
+                                                                        "location_id": "office"},
+              "logging": {"dir": str(tmp_path / "logs")}}
     module = MicController(queue.Queue(), queue.Queue(), config, frame_source=object(), vad=lambda f: False,
                            transcriber=lambda audio, sr: {"text": "привіт", "language": "uk"}, speaker=speaker,
                            wall_clock=wall)
@@ -65,13 +68,15 @@ def test_voice_of_the_person_alone_in_view_gets_their_name(tmp_path):
     control(module, "person_identified", {"track_id": 4, "person_id": oleh, "identity": "Oleh"})
     for _ in range(3):
         say(module, wall)
-    speakers = [e.payload["speaker"] for e in speech_events(module)]
-    assert speakers == ["unknown_2", "unknown_2", "Oleh"]                       # linked on the 3rd segment
-    assert registry.counts[oleh] == {"face": 1, "voice": 3}                     # all 3 samples moved
+    events = speech_events(module)
+    assert [e.payload["speaker_name"] for e in events] == ["unknown_2", "unknown_2", "Oleh"]   # linked on the 3rd
+    assert events[0].payload["speaker_status"] == "unknown" and events[2].payload["speaker_status"] == "known"
+    assert (events[0].payload["location_id"], events[0].payload["device_id"]) == ("office", "mic-test")
+    assert registry.counts[oleh]["face"] == 1 and registry.counts[oleh]["voice"] >= 1
     control(module, "object_detected", {"track_id": 4, "class": "person", "state": "disappeared"})
     say(module, wall)                                                           # off camera
     (event,) = speech_events(module)
-    assert event.payload["speaker"] == "Oleh" and event.payload["person_id"] == oleh
+    assert event.payload["speaker_name"] == "Oleh" and event.payload["person_id"] == oleh
     assert "link_voice" in [h["action"] for h in registry.history()]
 
 
@@ -83,17 +88,33 @@ def test_two_people_in_view_keep_the_voice_separate(tmp_path):
         control(module, "person_identified", {"track_id": track, "person_id": person})
     for _ in range(5):
         say(module, wall)
-    assert {e.payload["speaker"] for e in speech_events(module)} == {"unknown_3"}
+    assert {e.payload["speaker_name"] for e in speech_events(module)} == {"unknown_3"}
 
 
 def test_short_segments_and_disabled_speaker(tmp_path):
     module, _, _, wall = audio_module(tmp_path)
     module._transcribe(SEGMENT[:8000], 0.5, wall.now)                           # 0.5 s: too short
     (event,) = speech_events(module)
-    assert "speaker" not in event.payload
-    off = MicController(queue.Queue(), queue.Queue(), {"audio": {"mic": {}}}, frame_source=object(),
-                        transcriber=lambda audio, sr: {"text": "x"})
-    assert off.speaker is False and off._speaker_of(SEGMENT, 2.0, 0.0) == {}
+    assert event.payload["speaker_status"] == "uncertain" and event.payload["person_id"] is None
+    off = MicController(queue.Queue(), queue.Queue(), {"audio": {"mic": {"transcript_log": False}}},
+                        frame_source=object(), transcriber=lambda audio, sr: {"text": "x"})
+    assert off.speaker is False and off._diarize(SEGMENT, 2.0) is None
+    off._transcribe(SEGMENT, 2.0, 100.0)
+    (plain,) = speech_events(off)
+    assert "speaker_status" not in plain.payload and plain.payload["start"].endswith("Z")
+
+
+def test_transcript_files_follow_the_registry(tmp_path):
+    module, registry, _, wall = audio_module(tmp_path)
+    say(module, wall)
+    (event,) = speech_events(module)
+    registry.rename(event.payload["person_id"], "Ivan")
+    say(module, wall)
+    module.teardown()
+    (day,) = (tmp_path / "logs").iterdir()
+    lines = (day / "transcripts.txt").read_text(encoding="utf-8").splitlines()
+    assert "[office · mic-test] unknown_2: \"привіт\"" in lines[0] and "] Ivan: " in lines[1]
+    assert len((day / "transcripts.jsonl").read_text().splitlines()) == 2
 
 
 # --- aggregator: names resolved at snapshot time ----------------------------------------------------------------
@@ -109,7 +130,8 @@ def test_snapshot_uses_the_current_name(tmp_path):
     aggregator.on_event(make_event("camera", "person_identified", {"track_id": 3, "person_id": pid,
                                                                    "identity": "unknown_1", "known": False}))
     aggregator.on_event(make_event("audio", "speech", {"text": "добрий день", "language": "uk",
-                                                       "person_id": voice_id, "speaker": "unknown_2"}))
+                                                       "person_id": voice_id, "speaker_name": "unknown_2",
+                                                       "speaker_status": "unknown"}))
     other = IdentityRegistry(str(tmp_path / "identity.db"))                    # the dashboard renames
     other.rename(pid, "Oleh")
     other.merge(voice_id, pid)

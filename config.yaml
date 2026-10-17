@@ -99,7 +99,7 @@ identity:                   # F3 faces + F9 unified identity registry (faces and
   identity_fps: 2           # shared frames per second checked for new / unidentified tracks
   face_threshold: 0.45      # SFace cosine ≥ this → known person; LFW: 100 % known, 0 % strangers accepted
   unknown_threshold: 0.45   # cosine ≥ this → the same unknown_N as earlier (also after a restart)
-  voice_threshold: 0.30     # ECAPA cosine ≥ this → the same voice
+  voice_threshold: 0.30     # ECAPA cosine ≥ this → the same voice (python -m tools.calibrate_voice → EER)
   max_embeddings: 20        # best samples kept per person and modality (centroid = their mean)
   link_min_cooccurrences: 3 # a new voice heard while ONE person is alone in view this often → linked to that face
   link_presence_ratio: 0.8  # … for at least 80 % of the speech segment
@@ -133,16 +133,40 @@ audio:
     idle_timeout_sec: 15    # back to standby after this long without scene / loud sound / speech
     preroll_sec: 0.5
     silence_end_sec: 0.8    # a speech segment ends after this much silence
-    max_segment_sec: 30
+    max_segment_sec: 15     # shorter chunks → text sooner, less work per Whisper call on the Pi
     min_speech_sec: 0.3     # shorter blips are not sent to Whisper
-    whisper_backend: azure  # azure: Azure first (llm.whisper_deployment, .env keys), local model if it fails
-                            # local: only faster-whisper on the device | none: no transcription
-    azure_retry_sec: 300    # after an Azure failure use the local model, try Azure again after this long
-    local_model: base
-    language: null          # e.g. en / uk; null = auto-detect
-    speaker_id: true        # F9: voice embeddings (SpeechBrain ECAPA) → speaker name in `speech` events
-    speaker_min_sec: 1.0    # shorter segments get no speaker
+    whisper_backend: azure  # azure: Azure (llm.whisper_deployment, .env keys) — the main path on the Pi, no CPU load;
+                            # the local model only when offline / no keys (Azure retried after azure_retry_sec)
+                            # azure_only: no local fallback | local: only faster-whisper | none: no transcription
+    azure_retry_sec: 300
+    local_model: base       # Pi fallback: base ≈ 0.5× real time; small is ~2× more accurate but ≈ real time on a Pi 5
+    language: null          # a fixed language (e.g. uk) beats detection; null = detect among `languages`
+    languages: [uk, en]     # detection restricted to these (auto-detect over ~100 languages gave ru/cs/pl/… for uk)
+    whisper_beam_size: 5
+    whisper_prompt: null    # names / domain words to bias spelling, e.g. "Oleh, датчик газу, камера"
+    whisper_condition_on_previous_text: false   # true makes Whisper repeat itself after one mistake
+    whisper_no_speech_max: 0.6      # drop a segment that is probably silence (no_speech_prob above this …
+    whisper_logprob_min: -1.0       # … and avg_logprob below this)
+    whisper_compression_max: 2.4    # drop repetitive text ("I don't know, I don't know, …")
+    hallucination_phrases: null     # null = built-in list ("дякую за перегляд", "субтитры сделал", …)
+    whisper_cpu_threads: 4  # Raspberry Pi 5: 4 cores
+    whisper_max_backlog: 2  # skip a segment when 2 newer ones already wait: stays near real time on a slow device
+    speaker_id: true        # F9/F10: who said what — diarization + SpeechBrain ECAPA voices in the identity registry
     speaker_model_dir: model/speechbrain
+    speaker_device: auto    # auto = MPS on a Mac if it works, else CPU (Pi) | cpu | mps
+    speaker_batch_size: 8   # windows per ECAPA pass (big CPU batches are much slower)
+    speaker_window_sec: 1.5 # sliding window for speaker embeddings …
+    speaker_hop_sec: 0.75   # … and its hop (on a slow Pi 1.5 halves the work)
+    speaker_min_speech_sec: 0.8   # windows with less VAD speech are skipped
+    speaker_cluster_distance: 0.75   # cosine distance joining windows into one speaker (ECAPA: same ≤ 0.8, other ≥ 0.85)
+    speaker_split_similarity: 0.35   # a cluster whose halves are less similar is split into two speakers
+    speaker_ambiguous_margin: 0.08   # a window this close to two speakers = overlapping speech → uncertain
+    speaker_match_margin: 0.05       # two registry voices this close → uncertain (never the wrong known person)
+    min_speaker_sec: 1.0    # a speaker with less speech in the chunk → uncertain, not stored
+    speaker_enrich_min_sec: 2.0      # single-speaker chunks this long …
+    speaker_enrich_min_snr_db: 10    # … and this clean improve the person's voice profile
+    transcript_log: true    # logs/<date>/transcripts.jsonl + transcripts.txt ("[time] [location · device] Name: text")
+    device_id: null         # null = mic-<hostname>
   recorder:                 # legacy speech_to_text_whisper.AudioToTextRecorder (modules/audio:run)
     language: en
     api_connection: true

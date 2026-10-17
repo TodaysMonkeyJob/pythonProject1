@@ -112,7 +112,8 @@ function describe(ev) {
     case "person_identified": return [`#${p.track_id ?? "—"} `, nameSpan(p.person_id, p.identity),
                                       p.previous ? ` (було ${p.previous})` : ""];
     case "action": return `#${p.track_id} ${p.action}${p.gas_confirmed ? " + газ" : ""}`;
-    case "speech": return p.person_id ? [nameSpan(p.person_id, p.speaker), `: "${p.text}"`] : `"${p.text}"`;
+    case "speech": return p.person_id ? [nameSpan(p.person_id, p.speaker_name || p.speaker), `: "${p.text}"`]
+                                      : `${p.speaker_status === "uncertain" ? "?: " : ""}"${p.text}"`;
     case "sound": return `${p.rms_db} dB`;
     case "gas_reading": return `${p.gas} ${p.concentration_pct}% ${p.trend}`;
     case "alert": return [p.reason, p.gas || p.module || ""].join(" ");
@@ -146,9 +147,14 @@ for (const id of ["f-source", "f-severity"]) $(id).onchange = () => [...$("event
 
 function addTranscript(ev) {
   const row = el("div", "row");
-  row.append(el("time", "", hms(ev.timestamp)), el("span", "muted", (ev.payload.language || "") + " "));
-  if (ev.payload.person_id) row.append(nameSpan(ev.payload.person_id, ev.payload.speaker), document.createTextNode(": "));
-  row.append(el("span", "", ev.payload.text));
+  const p = ev.payload, where = [p.location_id, p.device_id].filter(Boolean).join(" · ");
+  row.append(el("time", "", hms(p.start || ev.timestamp)), el("span", "muted", (where ? `[${where}] ` : "") + (p.language || "") + " "));
+  if (p.person_id) {
+    const who = nameSpan(p.person_id, p.speaker_name || p.speaker);
+    if (p.speaker_score !== undefined) who.title = `${p.speaker_status}, score ${p.speaker_score}`;
+    row.append(who, document.createTextNode(": "));
+  } else if (p.speaker_status === "uncertain") row.append(el("span", "muted", "?: "));
+  row.append(el("span", "", p.text));
   prepend($("transcripts"), row);
 }
 
