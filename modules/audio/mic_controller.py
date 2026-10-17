@@ -11,14 +11,18 @@ Microphone controller (F4): STANDBY / ACTIVE state machine in front of Whisper.
 
 Every switch is a ``mic_state`` event (source ``system``); a loud sound in standby is a ``sound`` event.
 
-Speaker identification (F9, ``speaker_id``): each transcribed segment ≥ ``speaker_min_sec`` gets a voice embedding
-matched in the identity registry (``speech`` payload ``person_id`` / ``speaker``). Forwarded ``object_detected`` /
-``person_identified`` events tell who is in view, so a new voice is linked to the face of the person who is alone in
-view while speaking (``core.cooccurrence``).
+Speaker-attributed transcripts (F9 / F10, ``speaker_id``): each chunk is diarized (``speaker.SpeakerAnalyzer``:
+windows → ECAPA → clusters → registry), Whisper segments are aligned to the speaker turns (``attribution.align``)
+and published as one ``speech`` event per segment — who (``person_id``, ``speaker_name``, ``speaker_score``,
+``speaker_status`` known / unknown / uncertain), what (``text``), when (``start`` / ``end``), where (``location_id``,
+``device_id``) — and written to ``logs/<date>/transcripts.jsonl`` + ``transcripts.txt``. Forwarded
+``object_detected`` / ``person_identified`` events tell who is in view, so a new voice is linked to the face of the
+person who is alone in view while speaking (``core.cooccurrence``).
 """
 import collections
 import math
 import queue
+import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -200,7 +204,10 @@ class MicController(BaseModule):
         self.clock = clock
         self.wall_clock = wall_clock
         identity = config.get("identity", {})
-        self.presence = PresenceTracker(identity.get("location_id") or "home", clock=wall_clock)
+        self.location_id = identity.get("location_id") or "home"
+        self.device_id = cfg.get("device_id") or f"mic-{socket.gethostname().split('.')[0]}"
+        self.presence = PresenceTracker(self.location_id, clock=wall_clock)
+        self.transcript_log = None
         self.speaker = speaker if speaker is not None or cfg.get("speaker_id", False) else False
         self.linker: Optional[VoiceFaceLinker] = None
         if self.speaker:
@@ -235,6 +242,8 @@ class MicController(BaseModule):
                 logger.debug(f"Error closing microphone: {e}")
         if self.executor is not None:
             self.executor.shutdown(wait=True, cancel_futures=True)
+        if self.transcript_log is not None:
+            self.transcript_log.close()
 
     def handle_control(self, message: Any) -> None:
         """
@@ -302,7 +311,7 @@ class MicController(BaseModule):
         duration = round(len(segment) / self.sample_rate, 2)
         with self._lock:
             self.transcriptions += 1
-        self.executor.submit(self._transcribe, segment, duration, self.wall_clock())
+        self.executor.submit(self._transcribe, segment, duration, self.wall_clock(), self.transcriptions)
 
     def _get_transcriber(self):
         """Created on the first segment (in the Whisper thread), so start-up stays fast."""
@@ -317,15 +326,14 @@ class MicController(BaseModule):
         return self.transcriber
 
     def _get_speaker(self):
-        """SpeakerIdentifier on the shared identity registry, created in the Whisper thread; None when off."""
+        """SpeakerAnalyzer on the shared identity registry, created in the Whisper thread; None when off."""
         if self.speaker is None:
             from core.identity import registry_from_config
-            from modules.audio.speaker import SpeakerIdentifier, ecapa_embedder
+            from modules.audio.speaker import analyzer_from_config
 
             try:
                 registry = registry_from_config(self.config.get("identity", {}), publish=self.publish)
-                embedder = ecapa_embedder(self.cfg.get("speaker_model_dir", "model/speechbrain"))
-                self.speaker = SpeakerIdentifier(registry, embedder, float(self.cfg.get("speaker_min_sec", 1.0)))
+                self.speaker = analyzer_from_config(registry, self.cfg)
                 self._attach_linker(registry)
             except Exception as e:  # e.g. speechbrain missing: transcripts keep working, just without a speaker
                 logger.error(f"Speaker identification unavailable ({e}); transcripts will have no speaker")
@@ -347,37 +355,93 @@ class MicController(BaseModule):
         if self.speaker is not False:
             self._get_speaker()
 
-    def _transcribe(self, segment: np.ndarray, duration: float, ended_at: Optional[float] = None) -> None:
+    def _transcribe(self, segment: np.ndarray, duration: float, ended_at: Optional[float] = None,
+                    number: Optional[int] = None) -> None:
+        """
+        :param number: Submission number; a segment with ``whisper_max_backlog`` newer ones already waiting is skipped,
+                       so a slow device (local Whisper on the Pi) stays near real time instead of falling behind
+        """
+        from modules.audio.attribution import Segment, align, iso, whisper_segments
+
+        backlog = int(self.cfg.get("whisper_max_backlog", 2))
+        if number is not None and backlog > 0 and self.transcriptions - number >= backlog:
+            logger.warning(f"Whisper is {self.transcriptions - number} segments behind: "
+                           f"skipping a {duration} s segment")
+            return
         try:
             result = self._get_transcriber()(segment, self.sample_rate)
         except Exception as e:
             logger.error(f"Whisper failed for a {duration} s segment: {e}")
             return
-        text = (result.get("text") or "").strip()
-        if text:
-            payload = {"text": text, "language": result.get("language"), "duration_sec": duration,
-                       "backend": result.get("backend")}
-            payload.update(self._speaker_of(segment, duration, ended_at or self.wall_clock()))
-            self.emit("speech", payload)
+        segments = whisper_segments(result, duration)
+        if not segments:
+            return
+        chunk_start = (ended_at or self.wall_clock()) - duration
+        diarization = self._diarize(segment, duration)
+        if diarization is None:
+            attributed = [Segment(s.start, s.end, s.text) for s in segments]
+        else:
+            attributed = align(segments, diarization.turns)
+            self._link_voices(diarization, chunk_start)
+        base = {"language": result.get("language"), "backend": result.get("backend"),
+                "device_id": self.device_id, "location_id": self.location_id}
+        for piece in attributed:
+            payload = {"text": piece.text, **base, "duration_sec": round(piece.end - piece.start, 2),
+                       "start": iso(chunk_start + piece.start), "end": iso(chunk_start + piece.end)}
+            if diarization is not None:
+                who = diarization.speaker(piece.cluster)
+                payload.update(person_id=who.person_id, speaker_name=who.name, speaker_score=who.score,
+                               speaker_status=who.status)
+            event = self.emit("speech", payload)
+            self._log_transcript(event)
 
-    def _speaker_of(self, segment: np.ndarray, duration: float, ended_at: float) -> Dict[str, Any]:
-        """:return: {"person_id", "speaker", "speaker_score"} or {} (off, segment too short, error)"""
-        speaker = self._get_speaker() if self.speaker is not False else None
-        if speaker is None:
-            return {}
+    def _diarize(self, segment: np.ndarray, duration: float):
+        """:return: ``speaker.Diarization`` or None (speaker identification off / failed)"""
+        analyzer = self._get_speaker() if self.speaker is not False else None
+        if analyzer is None:
+            return None
         try:
-            found = speaker.identify(segment, self.sample_rate)
-            if found is None:
-                return {}
-            with self._lock:
-                linked = self.linker.on_segment(found["person_id"], None, ended_at - duration, ended_at)
-            if linked is not None:
-                found.update(person_id=linked.payload["person_id"], speaker=linked.payload["display_name"])
-                logger.info(f"Voice linked to {found['speaker']} (alone in view while speaking)")
-            return {k: found[k] for k in ("person_id", "speaker", "speaker_score")}
+            started = time.monotonic()
+            diarization = analyzer.analyze(segment, self.sample_rate)
+            logger.debug(f"Diarized {duration:.1f} s in {time.monotonic() - started:.2f} s: "
+                         f"{len(diarization.speakers)} speaker(s), {len(diarization.turns)} turn(s)")
+            return diarization
         except Exception as e:
             logger.error(f"Speaker identification failed: {e}")
-            return {}
+            return None
+
+    def _link_voices(self, diarization, chunk_start: float) -> None:
+        """Feeds the voice ↔ face linker once per speaker of the chunk (its longest turn)."""
+        if self.linker is None:
+            return
+        for cluster, who in diarization.speakers.items():
+            turns = [t for t in diarization.turns if t.cluster == cluster]
+            if who.person_id is None or not turns:
+                continue
+            longest = max(turns, key=lambda t: t.end - t.start)
+            with self._lock:
+                linked = self.linker.on_segment(who.person_id, self.location_id, chunk_start + longest.start,
+                                                chunk_start + longest.end)
+            if linked is not None:
+                who.person_id, who.name = linked.payload["person_id"], linked.payload["display_name"]
+                who.status = "known" if self.speaker.registry.is_known(who.person_id) else "unknown"
+                logger.info(f"Voice linked to {who.name} (alone in view while speaking)")
+
+    def _log_transcript(self, event) -> None:
+        if not self.cfg.get("transcript_log", True):
+            return
+        if self.transcript_log is None:
+            from modules.audio.attribution import TranscriptLog
+
+            log_cfg = self.config.get("logging", {})
+            registry = getattr(self.speaker, "registry", None) if self.speaker else None
+            self.transcript_log = TranscriptLog(log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048),
+                                                resolve_name=(lambda pid, name: registry.name(pid, name))
+                                                if registry is not None else None)
+        try:
+            self.transcript_log.write(event)
+        except OSError as e:
+            logger.error(f"Transcript log not written: {e}")
 
     def _open_source(self) -> None:
         try:

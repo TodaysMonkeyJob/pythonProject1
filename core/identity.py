@@ -227,6 +227,15 @@ class IdentityRegistry:
             threshold = self.face_threshold if modality == "face" else self.voice_threshold
         return (pids[best] if similarity >= threshold else None), similarity
 
+    def rank(self, modality: str, vector, k: int = 2) -> List[Tuple[str, float]]:
+        """:return: The k most similar live persons as [(person_id, similarity)], best first"""
+        pids, matrix = self.centroids.get(modality, ([], None))
+        if not pids:
+            return []
+        similarities = matrix @ normalize(vector)
+        order = np.argsort(-similarities)[:k]
+        return [(pids[i], float(similarities[i])) for i in order]
+
     def match_face(self, vector, threshold: Optional[float] = None,
                    known: Optional[bool] = None) -> Tuple[Optional[str], float]:
         return self.match("face", vector, threshold, known)
