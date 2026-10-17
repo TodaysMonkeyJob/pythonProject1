@@ -71,6 +71,13 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     (`incidents.IncidentRecorder`): `exports/incidents/<id>.zip` with summary.txt (digests + timeline),
     incident.json, events.jsonl (2 min before … 15 s after) and annotated camera frames sampled from the vision
     shared buffer; repeated critical events extend the open incident; size-capped. Only `incident_id` reaches GPT.
+  - `modules/llm/` — F6 (TOD-17): `worker.LLMWorker` reads the SQLite outbox and sends only `digest` (text, ~100
+    tokens) with `prompts/security_analyst.md` (~290 tokens) to `gpt_client.GPTClient` (`llm.gpt_deployment`,
+    JSON mode with fallback, one clarification retry, token + cost accounting) → `llm_decision` event
+    (risk_level, summary in Ukrainian, recommended_action, reasons, follow_up). Critical snapshots immediately,
+    regular ones once per `min_llm_interval_sec` (older ones skipped). Offline / 429 / 5xx → backoff, rows stay
+    pending; no keys → idles. `azure_client.create_client` is shared with Whisper (AzureOpenAI when
+    AZURE_OPENAI_API_VERSION is set, else the v1 `OpenAI(base_url=…)`). `tools/test_llm.py` (`--dry-run`) — 10 cases.
   - `modules/audio/mic_controller.py` — F4 microphone: STANDBY (RMS + webrtcvad on 30 ms frames, nothing recorded)
     / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`
     with `backend`). `whisper_backend: azure` falls back to local faster-whisper when keys are missing or a request
@@ -105,6 +112,7 @@ python -m modules.vision.export         # yolo11n.pt → models/yolo11n_ncnn_mod
 python -m modules.vision.bench --source synthetic   # vision FPS/RAM (on the Pi: camera)
 YOLO_TEST_MODEL=yolo11n.pt python -m pytest -k real_yolo   # optional test with a real model
 python main.py                          # whole system (Ctrl+C to stop); events → logs/<date>/events.jsonl
+python -m tools.test_llm --dry-run      # GPT example cases: tokens / cost; without --dry-run needs .env keys
 python -m modules.vision.demo 0 --pose-model yolo11n-pose.pt   # webcam: objects + actions
 YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 ```

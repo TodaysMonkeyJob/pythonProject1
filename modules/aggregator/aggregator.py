@@ -364,6 +364,8 @@ class Aggregator:
 
     def critical_reason(self, event: Event) -> Optional[str]:
         p = event.payload
+        if event.source == "llm":
+            return None  # GPT decisions about a snapshot must not trigger new snapshots
         if event.type == "action" and p.get("action") in self.cfg.immediate_actions:
             return f"{p['action']} #{p.get('track_id')}"
         if event.severity == "critical":

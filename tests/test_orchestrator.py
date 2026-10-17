@@ -137,7 +137,7 @@ def test_person_enters_mic_active_within_one_second(tmp_path):
 def test_module_specs_from_config():
     config = load_config()
     names = [s.name for s in Orchestrator.module_specs(config)]
-    assert names == ["gas", "vision", "actions", "identity", "audio", "aggregator"]   # F6, F7 not yet → skipped
+    assert names == ["gas", "vision", "actions", "identity", "audio", "aggregator", "llm"]   # F7 not yet → skipped
     config["identity"]["enabled"] = False
     config["orchestrator"]["modules"] = {"gas": {"enabled": False}, "audio": {"target": "modules.audio:run"}}
     specs = {s.name: s for s in Orchestrator.module_specs(config)}

@@ -186,13 +186,24 @@ aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
     max_frames: 40
     max_total_mb: 1024      # oldest archives are deleted above this
 
-llm:
+llm:                        # F6: GPT analysis of snapshot digests (Azure OpenAI, keys in .env)
   enabled: true
-  chat_deployment: gpt-4o-mini   # Azure deployment name
-  whisper_deployment: whisper-1
+  gpt_deployment: gpt-4.1-mini   # Azure deployment name; "gpt-4" (= gpt-4.1) gives the same decisions at ~5.6× the cost
+  whisper_deployment: whisper
+  prompt: security_analyst  # prompts/<name>.md
   prompts_dir: prompts
+  temperature: 0.2
+  max_output_tokens: 300
+  min_llm_interval_sec: 300 # regular snapshots at most this often (critical ones immediately)
+  poll_sec: 1.0
   request_timeout: 30
-  outbox_dir: exports/outbox     # snapshots queued while offline
+  max_retries: 1            # SDK retries; the worker backs off itself
+  max_backoff_sec: 300      # offline / 429 / 5xx: wait 2, 4, 8 … up to this, snapshots stay pending
+  max_attempts: 3           # invalid answers before a snapshot is given up (status failed)
+  price_per_1k_input: 0.0004     # USD, gpt-4.1-mini list price — update to your Azure price list
+  price_per_1k_output: 0.0016
+  # AZURE_OPENAI_API_VERSION set → AzureOpenAI client (endpoint = https://<resource>.openai.azure.com/);
+  # not set → v1 endpoint https://<resource>.openai.azure.com/openai/v1/
 
 dashboard:
   enabled: true
