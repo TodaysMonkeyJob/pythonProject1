@@ -19,6 +19,7 @@
     },
     "trigger": {"type": "string", "enum": ["interval", "critical_event"]},
     "reason": {"type": "string", "maxLength": 120, "description": "What caused a critical_event snapshot"},
+    "incident_id": {"type": "string", "pattern": "^\\d{8}-\\d{6}-[0-9a-f]{4}$", "description": "Local incident archive (exports/incidents/<id>.zip); never sent itself"},
     "people": {
       "type": "array",
       "maxItems": 20,

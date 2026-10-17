@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.events import Event
 from core.module import BaseModule
+from modules.aggregator.digest import snapshot_digest
+from modules.aggregator.incidents import IncidentRecorder
 from modules.aggregator.outbox import Outbox
 from system_setup.logger_setup import init_logger
 
@@ -180,7 +182,8 @@ class SnapshotBuilder:
                                                          format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER)
         self.cfg = cfg
 
-    def build(self, state: SceneState, trigger: str, now: float, reason: Optional[str] = None) -> Dict[str, Any]:
+    def build(self, state: SceneState, trigger: str, now: float, reason: Optional[str] = None,
+              incident_id: Optional[str] = None) -> Dict[str, Any]:
         cfg = self.cfg
         people = sorted(state.people.values(), key=lambda p: (not p.present, -p.last_seen))[:20]
         snapshot: Dict[str, Any] = {
@@ -203,6 +206,8 @@ class SnapshotBuilder:
             del snapshot["system"]["mic_state"]
         if reason:
             snapshot["reason"] = reason[:120]
+        if incident_id:
+            snapshot["incident_id"] = incident_id
         self.shrink(snapshot)
         self.validator.validate(snapshot)
         return snapshot
@@ -335,6 +340,9 @@ class Aggregator:
         self.csv = EventCsv(export_dir) if agg.get("export_csv", True) else None
         self.builder = SnapshotBuilder(self.cfg, agg.get("schema_path", SCHEMA_PATH))
         self.clock, self.local_now = clock, local_now
+        incidents = agg.get("incidents", {}) or {}
+        self.incidents = IncidentRecorder({"dir": os.path.join(export_dir, "incidents"), **incidents}, clock) \
+            if incidents.get("enabled", True) else None
         self.state = SceneState(clock())
         self.last_snapshot = clock()
         self.last_immediate = float("-inf")
@@ -345,6 +353,8 @@ class Aggregator:
         now = self.clock()
         if self.csv is not None:
             self.csv.write(event)
+        if self.incidents is not None:
+            self.incidents.add_event(event)
         self.state.apply(event, now)
         reason = self.critical_reason(event)
         if reason:
@@ -366,6 +376,8 @@ class Aggregator:
     def tick(self) -> Optional[Dict[str, Any]]:
         """Produces a due snapshot (critical first, then the regular interval). :return: the snapshot or None"""
         now = self.clock()
+        if self.incidents is not None:
+            self.incidents.tick()
         if self.pending_reason and now - self.last_immediate >= self.cfg.immediate_cooldown_sec:
             reason, self.pending_reason = self.pending_reason, None
             self.last_immediate = now
@@ -377,9 +389,19 @@ class Aggregator:
             self.state.reset_window(now)                                   # empty window: nothing to report
         return None
 
+    def add_frame(self, jpeg: bytes) -> None:
+        """Annotated camera frame for incident archives (only kept locally)."""
+        if self.incidents is not None:
+            self.incidents.add_frame(jpeg)
+
     def snapshot(self, trigger: str, now: float, reason: Optional[str] = None) -> Dict[str, Any]:
-        snapshot = self.builder.build(self.state, trigger, now, reason)
-        self.outbox.add(snapshot, trigger, created_at=now)
+        incident_id = self.incidents.start(reason or trigger) \
+            if self.incidents is not None and trigger == "critical_event" else None
+        snapshot = self.builder.build(self.state, trigger, now, reason, incident_id)
+        digest = snapshot_digest(snapshot, incident_id)
+        if incident_id:
+            self.incidents.attach(snapshot, digest)
+        self.outbox.add(snapshot, trigger, created_at=now, digest=digest)
         if self.write_files:
             os.makedirs(self.snapshot_dir, exist_ok=True)
             name = f"{snapshot['window']['to'].replace(':', '').replace('-', '')}_{snapshot['snapshot_id'][:8]}.json"
@@ -391,6 +413,8 @@ class Aggregator:
         return snapshot
 
     def close(self) -> None:
+        if self.incidents is not None:
+            self.incidents.finish()                                       # an open incident is not lost
         if self.csv is not None:
             self.csv.close()
         self.outbox.close()
@@ -400,9 +424,13 @@ class AggregatorModule(BaseModule):
     name = "aggregator"
     source = "system"
 
-    def __init__(self, event_queue, control_queue, config: Dict[str, Any], aggregator: Optional[Aggregator] = None):
+    def __init__(self, event_queue, control_queue, config: Dict[str, Any], aggregator: Optional[Aggregator] = None,
+                 frame_buffer=None):
         super().__init__(event_queue, control_queue, config)
         self.aggregator = aggregator
+        self.frame_buffer = frame_buffer
+        self._last_frame_id = 0
+        self._next_attach = 0.0
 
     def setup(self) -> None:
         if self.aggregator is None:
@@ -411,6 +439,8 @@ class AggregatorModule(BaseModule):
     def teardown(self) -> None:
         if self.aggregator is not None:
             self.aggregator.close()
+        if self.frame_buffer is not None:
+            self.frame_buffer.close()
 
     def handle_control(self, message: Any) -> None:
         """Every bus event arrives here (the orchestrator forwards all types to the aggregator)."""
@@ -424,7 +454,32 @@ class AggregatorModule(BaseModule):
 
     def step(self) -> None:
         self.aggregator.tick()
+        self._sample_frame()
         time.sleep(0.1)
+
+    def _sample_frame(self) -> None:
+        """Feeds the incident recorder with an annotated frame every frame_interval_sec."""
+        incidents = self.aggregator.incidents
+        if incidents is None or not incidents.wants_frame:
+            return
+        if self.frame_buffer is None:
+            if time.monotonic() < self._next_attach:
+                return
+            self._next_attach = time.monotonic() + 5
+            vision = self.config.get("vision", {})
+            if not vision.get("shared_buffer"):
+                return
+            from modules.vision.shared_frame import SharedFrameBuffer
+
+            width, height = vision.get("resolution", [640, 480])
+            try:
+                self.frame_buffer = SharedFrameBuffer.attach(vision["shared_buffer"], width, height)
+            except FileNotFoundError:
+                return
+        frame = self.frame_buffer.read_annotated()
+        if frame is not None and frame[0] != self._last_frame_id:
+            self._last_frame_id = frame[0]
+            self.aggregator.add_frame(frame[2])
 
 
 def run(event_queue, control_queue, config):

@@ -175,6 +175,16 @@ aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
   immediate_actions: [possible_smoking, lying]   # besides any severity=critical event
   unknown_alert_hours: null # e.g. ["22:00", "06:00"]: an unknown person then triggers a snapshot
   immediate_cooldown_sec: 3 # at most one critical snapshot per this many seconds (later ones are batched)
+  # GPT gets only the text digest (outbox.digest, ~100 tokens); nothing below is ever sent.
+  incidents:                # local archive per critical situation for later human analysis
+    enabled: true
+    dir: exports/incidents  # <id>.zip: summary.txt, incident.json, events.jsonl, frames/*.jpg
+    context_sec: 120        # events before the trigger
+    post_sec: 15            # keep collecting after the trigger (extended by further critical events)
+    pre_frames_sec: 30      # annotated camera frames before the trigger …
+    frame_interval_sec: 2   # … one every 2 s
+    max_frames: 40
+    max_total_mb: 1024      # oldest archives are deleted above this
 
 llm:
   enabled: true
