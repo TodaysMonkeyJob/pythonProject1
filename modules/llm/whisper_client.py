@@ -2,8 +2,8 @@
 Speech-to-text for speech segments from the microphone controller.
 
 Backends (``audio.mic.whisper_backend``):
-  * ``azure`` — Azure OpenAI Whisper (same client as ``speech_to_text_whisper.transcription_worker``):
-    ``OpenAI(api_key=AZURE_OPENAI_API_KEY, base_url=AZURE_OPENAI_ENDPOINT)``, model ``llm.whisper_deployment``.
+  * ``azure`` — Azure OpenAI Whisper (client from ``modules.llm.azure_client``, shared with GPT),
+    model ``llm.whisper_deployment``.
     Falls back to the local model automatically: without keys it is local from the start; when an Azure request
     fails (offline, auth, timeout) that segment is transcribed locally and Azure is retried after
     ``audio.mic.azure_retry_sec``;
@@ -27,6 +27,17 @@ from system_setup.logger_setup import init_logger
 logger = init_logger()
 
 Transcriber = Callable[[np.ndarray, int], Dict[str, Any]]
+# Azure returns language names ("english"), faster-whisper ISO codes ("en"): events use the codes
+LANGUAGE_CODES = {"english": "en", "ukrainian": "uk", "russian": "ru", "polish": "pl", "german": "de",
+                  "french": "fr", "spanish": "es", "italian": "it", "portuguese": "pt", "czech": "cs",
+                  "slovak": "sk", "romanian": "ro", "hungarian": "hu", "turkish": "tr", "chinese": "zh",
+                  "japanese": "ja", "korean": "ko", "arabic": "ar"}
+
+
+def language_code(language: Optional[str]) -> Optional[str]:
+    if not language:
+        return None
+    return LANGUAGE_CODES.get(language.lower(), language.lower())
 
 
 def _wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
@@ -36,14 +47,10 @@ def _wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
 
 
 def azure_transcriber(config: Dict[str, Any]) -> Transcriber:
-    from openai import OpenAI
+    from modules.llm.azure_client import create_client
 
     llm = config.get("llm", {})
-    if not llm.get("azure_api_key") or not llm.get("azure_endpoint"):
-        raise RuntimeError("Azure Whisper needs AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT (.env)")
-    # Few retries / a short timeout: on failure the local model takes over instead of waiting
-    client = OpenAI(api_key=llm["azure_api_key"], base_url=llm["azure_endpoint"],
-                    timeout=float(llm.get("request_timeout", 30)), max_retries=int(llm.get("max_retries", 1)))
+    client = create_client(llm)
     model = llm.get("whisper_deployment", "whisper-1")
     language = config.get("audio", {}).get("mic", {}).get("language")
 
@@ -52,7 +59,7 @@ def azure_transcriber(config: Dict[str, Any]) -> Transcriber:
         result = client.audio.transcriptions.create(model=model, file=("speech.wav", _wav_bytes(audio, sample_rate)),
                                                     response_format="verbose_json", **kwargs)
         return {"text": (getattr(result, "text", "") or "").strip(),
-                "language": getattr(result, "language", None) or language, "backend": "azure"}
+                "language": language_code(getattr(result, "language", None) or language), "backend": "azure"}
 
     return transcribe
 

@@ -73,6 +73,11 @@ class Outbox:
         self.db.execute("UPDATE outbox SET status = 'failed', attempts = attempts + 1, last_error = ? WHERE id = ?",
                         (error[:500], snapshot_id))
 
+    def mark_skipped(self, snapshot_id: str, reason: str) -> None:
+        """Not sent on purpose (e.g. a newer regular snapshot replaced it); never retried."""
+        self.db.execute("UPDATE outbox SET status = 'failed', attempts = 999, last_error = ? WHERE id = ?",
+                        (f"skipped: {reason}"[:500], snapshot_id))
+
     def counts(self) -> Dict[str, int]:
         return dict(self.db.execute("SELECT status, COUNT(*) FROM outbox GROUP BY status").fetchall())
 

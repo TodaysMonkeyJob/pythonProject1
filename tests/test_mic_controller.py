@@ -275,3 +275,10 @@ def test_speech_event_shows_backend():
     controller.executor.shutdown(wait=True)
     (speech,) = [e for e in drain(controller) if e.type == "speech"]
     assert speech.payload["backend"] == "local"
+
+
+def test_language_names_become_codes():
+    from modules.llm.whisper_client import language_code
+
+    assert language_code("english") == "en" and language_code("Ukrainian") == "uk"
+    assert language_code("en") == "en" and language_code(None) is None

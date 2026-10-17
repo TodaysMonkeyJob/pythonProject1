@@ -36,7 +36,7 @@ DEFAULT_MODULES = {
     "identity": ("modules.vision.identity:run", "identity", ["object_detected"]),
     "audio": ("modules.audio.mic_controller:run", "audio", ["scene_active"]),
     "aggregator": ("modules.aggregator:run", "aggregator", ["*"]),
-    "llm": ("modules.llm:run", "llm", ["*"]),
+    "llm": ("modules.llm:run", "llm", []),          # works from the SQLite outbox
     "dashboard": ("modules.dashboard:run", "dashboard", ["*"]),
 }
 SELF_LOGGING_SECTIONS = ("vision", "actions", "identity")
