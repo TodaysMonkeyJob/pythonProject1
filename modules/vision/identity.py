@@ -1,20 +1,21 @@
 """
-Person identification (F3): OpenCV YuNet face detection + SFace embeddings, cosine similarity against the
-local known-people database (``faces.npz``, built by ``tools/enroll_face.py``).
+Person identification (F3): OpenCV YuNet face detection + SFace embeddings, matched against the unified identity
+registry (``core.identity.IdentityRegistry``, F9 / TOD-20) that also holds voices.
 
 Each person track is identified once; while it is unknown or its face is not visible, recognition is retried
-every ``retry_sec``. Unknown people get a session label ``unknown_N`` that sticks to the same face (their
-embeddings are cached in memory only). A ``person_identified`` event is published when a track's label
-changes::
+every ``retry_sec``, identified tracks are re-verified every ``verify_sec``. A stranger becomes an ``unknown_N``
+person in the registry (stable across restarts, one counter for faces and voices). A ``person_identified`` event
+is published when a track's label changes::
 
-    {"track_id": 7, "identity": "Oleh", "known": true, "similarity": 0.71, "previous": "not_visible"}
+    {"track_id": 7, "person_id": "3f2a…", "identity": "Oleh", "known": true, "similarity": 0.71,
+     "previous": "not_visible"}
 
-Unknown people are kept in ``identity.unknown_dir`` (face crops + embeddings, see ``identity_store``); renaming
-an ``unknown_N`` folder to a name enrolls that person automatically.
+Renaming / merging / deleting happens in one place — the dashboard People page, ``python -m tools.identity`` or the
+registry API — and live tracks are relabelled within ``sync_sec`` (immediately on forwarded ``identity_*`` events).
 
-Privacy: face images and embeddings never leave the device. Only unknown people's crops are stored (for naming
-them later, deleted after ``unknown_retention_days``; ``save_unknowns: false`` disables it), plus debug crops when
-``identity.debug_dir`` is set. Only the label goes to the bus.
+Privacy: face images and embeddings never leave the device. Face crops (thumbnails for the People page) are stored
+in ``identity.faces_dir`` only when ``store_faces`` is on; unknown people not seen for ``unknown_retention_days`` are
+deleted. Only person_id + display name go to the bus.
 """
 import os
 import time
@@ -25,8 +26,8 @@ import cv2
 import numpy as np
 
 from core.events import Event
+from core.identity import IdentityRegistry, registry_from_config
 from modules.vision.consumer import SharedFrameConsumer
-from modules.vision.identity_store import AliasRegistry, UnknownStore
 from modules.vision.shared_frame import SharedFrameBuffer
 from system_setup.logger_setup import init_logger
 
@@ -51,7 +52,7 @@ class IdentityConfig:
     box_padding: float = 0.1            # face centre may lie this much (box fraction) outside the person box
     max_face_offset: float = 0.35       # |face centre − box centre| / box width; larger = someone else's face
     track_lost_sec: float = 10.0
-    max_unknowns: int = 200
+    face_images: int = 10               # face crops kept per person (People page thumbnails)
     debug_dir: Optional[str] = None
 
     @classmethod
@@ -149,7 +150,8 @@ def assign_faces(persons: Sequence[Dict[str, Any]], faces: np.ndarray,
 
 class FaceDatabase:
     """
-    Known people: one averaged embedding per name, stored in an .npz file (names, embeddings, counts).
+    In-memory gallery: one averaged embedding per name, optionally an .npz file (names, embeddings, counts).
+    Used by ``tools/eval_faces.py`` and to import the legacy pre-registry ``faces.npz`` (``legacy_faces``).
     """
 
     def __init__(self, path: Optional[str] = None):
@@ -213,7 +215,8 @@ class FaceDatabase:
 
 @dataclass
 class TrackIdentity:
-    identity: Optional[str] = None
+    person_id: Optional[str] = None     # registry id; None while not identified / face not visible
+    identity: Optional[str] = None      # display name when the event was published (NOT_VISIBLE = no face yet)
     known: bool = False
     similarity: float = 0.0
     last_attempt: float = float("-inf")
@@ -222,39 +225,25 @@ class TrackIdentity:
     different_checks: int = 0           # consecutive verifications that saw another face
 
 
-@dataclass
-class UnknownFace:
-    label: str
-    embedding: np.ndarray
-    count: int = 1
+Result = Tuple[Dict[str, Any], str, Optional[float]]
 
 
 @dataclass
 class IdentityEngine:
     """
     Identification logic: feed frames + person boxes, get event payloads back.
-    ``faces`` is anything with detect(image) and embed(image, face) (FaceEngine in production).
-    With a ``store`` unknown people are kept on disk (``identity_store.UnknownStore``) and renamed folders are
-    promoted to known people by ``sync()``; ``aliases`` maps old unknown labels to names.
+    ``faces`` is anything with detect(image) and embed(image, face) (FaceEngine in production). People — known and
+    ``unknown_N`` — live in the shared ``IdentityRegistry``; face crops are stored when it has a ``faces_dir``.
     """
     faces: Any
-    database: FaceDatabase
+    registry: IdentityRegistry
     cfg: IdentityConfig = field(default_factory=IdentityConfig)
-    store: Optional[UnknownStore] = None
-    aliases: Optional[AliasRegistry] = None
     tracks: Dict[int, TrackIdentity] = field(default_factory=dict)
-    unknowns: List[UnknownFace] = field(default_factory=list)
-    unknown_counter: int = 0
-
-    def __post_init__(self) -> None:
-        if self.store is not None:
-            self.unknowns = [UnknownFace(label, embedding, count) for label, embedding, count in self.store.load()]
 
     def drop(self, track_id: int) -> None:
         self.tracks.pop(track_id, None)
 
-    def update(self, now: float, frame: np.ndarray,
-               persons: Sequence[Dict[str, Any]]) -> List[Tuple[Dict[str, Any], str, Optional[float]]]:
+    def update(self, now: float, frame: np.ndarray, persons: Sequence[Dict[str, Any]]) -> List[Result]:
         """
         :param now: Frame time, seconds
         :param frame: BGR frame
@@ -279,7 +268,7 @@ class IdentityEngine:
                 track.attempts += 1
                 face = assigned.get(track_id)
                 found = None if face is None else (self.faces.embed(frame, face), frame, face)
-                settled = track.identity not in (None, NOT_VISIBLE)
+                settled = track.person_id is not None
                 event = self._verify(track_id, track, found) if settled \
                     else self._first_identification(track_id, track, found)
                 if event:
@@ -288,43 +277,42 @@ class IdentityEngine:
             del self.tracks[track_id]
         return out
 
-    def _first_identification(self, track_id: int, track: TrackIdentity, found):
+    def _first_identification(self, track_id: int, track: TrackIdentity, found) -> Optional[Result]:
         if found is None:
             if track.identity is None:
-                return self._set(track_id, track, NOT_VISIBLE, False, 0.0)
+                return self._set(track_id, track, None, NOT_VISIBLE, False, 0.0)
             return None
         return self._set(track_id, track, *self._label(*found))
 
-    def _verify(self, track_id: int, track: TrackIdentity, found):
+    def _verify(self, track_id: int, track: TrackIdentity, found) -> Optional[Result]:
         """
         Re-checks an identified track: the tracker may keep the id when another person takes the same place.
-        The label changes only after ``switch_confirmations`` consecutive checks see a different face; a check
-        that sees the same person has no side effects (nothing is stored for it).
+        The label changes only after ``switch_confirmations`` consecutive checks see a different face.
 
         :param found: (embedding, image, face row) of the face assigned to this person, or None
         """
         if found is None:
             return None  # face turned away: keep the label
-        embedding = found[0]
-        name, similarity = self.database.match(embedding)
-        if name == track.identity and similarity >= self.cfg.face_threshold:
+        embedding, image, face = found
+        registry = self.registry
+        current = registry.resolve(track.person_id)
+        known_id, similarity = registry.match_face(embedding, self.cfg.face_threshold, known=True)
+        if known_id is not None and known_id == current:
             track.different_checks = 0
             track.similarity = max(track.similarity, similarity)
+            registry.touch(current)
             return None
-        if not track.known and name is not None and similarity >= self.cfg.face_threshold:
+        if not track.known and known_id is not None:
             track.different_checks = 0
-            return self._set(track_id, track, name, True, similarity)  # unknown upgraded (e.g. just enrolled)
-        reference, threshold = self._reference(track)
+            return self._set(track_id, track, known_id, registry.name(known_id), True, similarity)  # just named
+        reference = registry.centroid(current, "face") if current else None
+        threshold = self.cfg.face_threshold if track.known else self.cfg.unknown_threshold
         if reference is not None and float(reference @ embedding) >= threshold - self.cfg.verify_margin:
             track.different_checks = 0
             if not track.known:  # same stranger: keep collecting samples for naming them later
-                unknown = next(u for u in self.unknowns if u.label == track.identity)
-                unknown.embedding = normalize(unknown.embedding * unknown.count + embedding)
-                unknown.count += 1
-                if self.store is not None:
-                    crop, face = found[1], found[2]
-                    aligned = self.faces.aligned_crop(crop, face) if hasattr(self.faces, "aligned_crop") else None
-                    self.store.save(track.identity, embedding, aligned)
+                registry.add_embedding(current, "face", embedding, quality=face_quality(face))
+                self._save_crop(current, image, face)
+            registry.touch(current)
             return None
         track.different_checks += 1
         if track.different_checks < self.cfg.switch_confirmations:
@@ -332,81 +320,44 @@ class IdentityEngine:
         track.different_checks = 0
         return self._set(track_id, track, *self._label(*found))
 
-    def _reference(self, track: TrackIdentity) -> Tuple[Optional[np.ndarray], float]:
-        """
-        :return: (embedding of the track's current identity, its matching threshold) or (None, 0)
-        """
-        if track.known and track.identity in self.database.names:
-            return self.database.embeddings[self.database.names.index(track.identity)], self.cfg.face_threshold
-        unknown = next((u for u in self.unknowns if u.label == track.identity), None)
-        if unknown is not None:
-            return unknown.embedding, self.cfg.unknown_threshold
-        return None, 0.0
-
-    def _set(self, track_id: int, track: TrackIdentity, label: str, known: bool, similarity: float):
-        if label == track.identity:
+    def _set(self, track_id: int, track: TrackIdentity, person_id: Optional[str], label: str, known: bool,
+             similarity: float, renamed: bool = False) -> Optional[Result]:
+        if person_id == track.person_id and label == track.identity and known == track.known:
             track.similarity = max(track.similarity, similarity)
             return None
         previous = track.identity
-        track.identity, track.known, track.similarity = label, known, similarity
+        track.person_id, track.identity, track.known = person_id, label, known
+        track.similarity = similarity if not renamed else track.similarity
         severity = "info" if known or label == NOT_VISIBLE else "warning"
-        payload = {"track_id": track_id, "identity": label, "known": known,
-                   "similarity": round(similarity, 3), "previous": previous}
-        return payload, severity, round(similarity, 3) if label != NOT_VISIBLE else None
+        payload = {"track_id": track_id, "person_id": person_id, "identity": label, "known": known,
+                   "similarity": round(track.similarity, 3), "previous": previous}
+        if renamed:
+            payload["renamed_from"] = previous
+            severity = "info"
+        return payload, severity, round(track.similarity, 3) if label != NOT_VISIBLE else None
 
-    def sync(self) -> List[Tuple[Dict[str, Any], str, Optional[float]]]:
+    def sync(self, force: bool = False) -> List[Result]:
         """
-        Promotes renamed unknown folders to known people and applies aliases added elsewhere (e.g. by
-        ``tools.enroll_face --from-unknown``). Call periodically.
+        Applies registry changes made by other processes (rename / merge / delete from the dashboard or CLI) to the
+        live tracks. Call periodically and on ``identity_*`` bus events.
 
-        :return: Events for the renames (one notice + one per affected live track)
+        :param force: Re-check the tracks even if the database did not change (e.g. after an own purge)
+        :return: Events for the relabelled tracks
         """
+        if not (self.registry.poll() or force):
+            return []
         out = []
-        if self.store is None:
-            return out
-        self.store.purge()
-        for old_label, name, folder in self.store.find_renamed():
-            try:
-                promotion = self.store.promote(old_label, name, folder)
-            except (OSError, ValueError) as e:
-                logger.warning(f"Cannot promote {old_label} → {name}: {e}")
-                continue
-            out += self.apply_rename(old_label, name, promotion.embeddings)
-            logger.info(f"{old_label} renamed to {name}: {len(promotion.embeddings)} embeddings enrolled, "
-                        f"images in {promotion.folder}")
-        if self.aliases is not None:
-            for old_label, name in list(self.aliases.aliases.items()):
-                if any(u.label == old_label for u in self.unknowns):
-                    out += self.apply_rename(old_label, name, np.zeros((0, EMBEDDING_SIZE), np.float32))
-        return out
-
-    def apply_rename(self, old_label: str, name: str,
-                     embeddings: np.ndarray) -> List[Tuple[Dict[str, Any], str, Optional[float]]]:
-        """
-        Makes ``old_label`` a known person everywhere in this process: database, unknown cache, live tracks,
-        alias registry.
-
-        :param embeddings: Stored embeddings of the unknown (the cached mean is used when empty)
-        """
-        cached = next((u for u in self.unknowns if u.label == old_label), None)
-        if len(embeddings) == 0 and cached is not None and name not in self.database.names:
-            embeddings = cached.embedding.reshape(1, -1)
-        if len(embeddings):
-            self.database.add(name, list(embeddings))
-            if self.database.path:
-                self.database.save()
-        self.unknowns = [u for u in self.unknowns if u.label != old_label]
-        if self.aliases is not None and self.aliases.aliases.get(old_label) != name:
-            self.aliases.add(old_label, name)
-
-        out = [({"track_id": None, "identity": name, "known": True, "similarity": None, "previous": old_label,
-                 "renamed_from": old_label}, "info", None)]
         for track_id, track in self.tracks.items():
-            if track.identity == old_label:
-                track.identity, track.known = name, True
-                out.append(({"track_id": track_id, "identity": name, "known": True,
-                             "similarity": round(track.similarity, 3), "previous": old_label,
-                             "renamed_from": old_label}, "info", round(track.similarity, 3)))
+            if track.person_id is None:
+                continue
+            pid = self.registry.resolve(track.person_id)
+            if pid is None:  # deleted: identify again from scratch
+                self.tracks[track_id] = TrackIdentity(last_seen=track.last_seen)
+                continue
+            event = self._set(track_id, track, pid, self.registry.name(pid), self.registry.is_known(pid),
+                              track.similarity, renamed=True)
+            if event:
+                out.append(event)
         return out
 
     def _detect_faces(self, frame: np.ndarray) -> np.ndarray:
@@ -417,38 +368,31 @@ class IdentityEngine:
                  if f[-1] >= self.cfg.detection_score and min(f[2], f[3]) >= self.cfg.min_face_size]
         return np.array(faces, np.float32).reshape(-1, 15)
 
-    def _label(self, embedding: np.ndarray, crop: np.ndarray, face: np.ndarray) -> Tuple[str, bool, float]:
-        """Known name or unknown_N for a face; unknown faces are stored."""
-        name, similarity = self.database.match(embedding)
-        if name is not None and similarity >= self.cfg.face_threshold:
-            label, known = name, True
-        else:
-            label, known = self._unknown_label(embedding), False
-            if self.store is not None:
-                aligned = self.faces.aligned_crop(crop, face) if hasattr(self.faces, "aligned_crop") else None
-                self.store.save(label, embedding, aligned)
-        self._debug_save(crop, face, label)
-        return label, known, similarity
+    def _label(self, embedding: np.ndarray, image: np.ndarray,
+               face: np.ndarray) -> Tuple[str, str, bool, float]:
+        """
+        Known person, an earlier stranger, or a new ``unknown_N`` (created in the registry).
 
-    def _unknown_label(self, embedding: np.ndarray) -> str:
-        best, best_similarity = None, self.cfg.unknown_threshold
-        for unknown in self.unknowns:
-            similarity = float(unknown.embedding @ embedding)
-            if similarity >= best_similarity:
-                best, best_similarity = unknown, similarity
-        if best is not None:
-            best.embedding = normalize(best.embedding * best.count + embedding)
-            best.count += 1
-            return best.label
-        if self.store is not None:
-            label = self.store.next_label()
-        else:
-            self.unknown_counter += 1
-            label = f"unknown_{self.unknown_counter}"
-        self.unknowns.append(UnknownFace(label, embedding))
-        if len(self.unknowns) > self.cfg.max_unknowns:
-            self.unknowns.pop(0)
-        return label
+        :return: (person_id, display name, known, similarity)
+        """
+        registry = self.registry
+        person_id, similarity = registry.match_face(embedding, self.cfg.face_threshold, known=True)
+        known = person_id is not None
+        if not known:
+            person_id, similarity = registry.match_face(embedding, self.cfg.unknown_threshold, known=False)
+            if person_id is not None:
+                registry.add_embedding(person_id, "face", embedding, quality=face_quality(face))
+            else:
+                person_id = registry.create_unknown("face", embedding, quality=face_quality(face))
+            self._save_crop(person_id, image, face)
+        registry.touch(person_id)
+        label = registry.name(person_id)
+        self._debug_save(image, face, label)
+        return person_id, label, known, similarity
+
+    def _save_crop(self, person_id: str, image: np.ndarray, face: np.ndarray) -> None:
+        if self.registry.faces_dir and hasattr(self.faces, "aligned_crop"):
+            self.registry.save_face_crop(person_id, self.faces.aligned_crop(image, face), self.cfg.face_images)
 
     def _debug_save(self, crop: np.ndarray, face: np.ndarray, label: str) -> None:
         if not self.cfg.debug_dir or not hasattr(self.faces, "aligned_crop"):
@@ -458,11 +402,30 @@ class IdentityEngine:
         cv2.imwrite(path, self.faces.aligned_crop(crop, face))
 
 
+def face_quality(face: np.ndarray) -> float:
+    """Detector score × size factor (a 112 px face — SFace input — or larger counts fully)."""
+    return round(float(face[-1]) * min(1.0, float(min(face[2], face[3])) / 112), 4)
+
+
+def open_registry(cfg: Dict[str, Any], publish=None) -> IdentityRegistry:
+    """
+    The identity registry configured in the ``identity`` section; imports a legacy ``faces.npz`` / unknown folders
+    the first time (empty registry).
+    """
+    registry = registry_from_config(cfg, publish)
+    if not registry.persons and cfg.get("legacy_db_path") and os.path.isfile(cfg["legacy_db_path"]):
+        from modules.vision.legacy_faces import migrate
+
+        report = migrate(registry, cfg["legacy_db_path"], cfg.get("legacy_unknown_dir"))
+        logger.warning(f"Imported the legacy face database into {registry.path}: {report}")
+    return registry
+
+
 class IdentityRecognizer(SharedFrameConsumer):
     """
-    Reads frames and person boxes from the vision shared buffer and publishes ``person_identified`` events.
-    Every ``sync_sec`` it applies renamed unknown folders and reloads ``faces.npz`` / ``aliases.json`` when
-    another process (``tools.enroll_face``) changed them.
+    Reads frames and person boxes from the vision shared buffer and publishes ``person_identified`` events
+    (``person_id`` + ``identity`` = display name). Registry changes from other processes (forwarded ``identity_*``
+    events, or every ``sync_sec`` for CLI edits) relabel the live tracks at once.
     """
     name = "identity"
     source = "camera"
@@ -473,48 +436,41 @@ class IdentityRecognizer(SharedFrameConsumer):
         super().__init__(event_queue, control_queue, config, self.cfg.get("identity_fps", 2), frame_buffer)
         self.engine = engine
         self.sync_sec = float(self.cfg.get("sync_sec", 5.0))
+        self.retention_days = float(self.cfg.get("unknown_retention_days", 30))
         self._next_sync = 0.0
-        self._mtimes: Dict[str, float] = {}
+        self._next_purge = 0.0
 
     def setup(self) -> None:
         if self.engine is None:
             cfg = IdentityConfig.from_dict(self.cfg)
             faces = FaceEngine(self.cfg["detector_model"], self.cfg["recognizer_model"], cfg.detection_score)
-            database = FaceDatabase(self.cfg.get("db_path"))
-            if not len(database):
-                logger.warning(f"Face database {self.cfg.get('db_path')} is empty: everyone will be unknown "
-                               f"(python -m tools.enroll_face)")
-            store = aliases = None
-            if self.cfg.get("save_unknowns", True):
-                store = UnknownStore(self.cfg.get("unknown_dir", "data/faces/unknown"),
-                                     self.cfg.get("faces_dir", "data/faces"),
-                                     self.cfg.get("unknown_max_images", 10), self.cfg.get("unknown_retention_days", 30))
-                aliases = AliasRegistry(self.cfg.get("aliases_path", "data/faces/aliases.json"))
-            self.engine = IdentityEngine(faces, database, cfg, store, aliases)
-        self._remember_mtimes()
+            registry = open_registry(self.cfg, publish=self.publish)
+            if not any(p["is_known"] for p in registry.persons.values()):
+                logger.warning("No known people in the identity registry: everyone will be unknown_N (rename them on "
+                               "the dashboard People page, python -m tools.identity, or python -m tools.enroll)")
+            self.engine = IdentityEngine(faces, registry, cfg)
 
     def step(self) -> None:
         now = time.monotonic()
         if now >= self._next_sync:
             self._next_sync = now + self.sync_sec
-            self.sync()
+            self.sync(purge=now >= self._next_purge)
+            if now >= self._next_purge:
+                self._next_purge = now + 3600
         super().step()
 
-    def sync(self) -> None:
-        """Reloads externally changed files, applies renames and publishes their events."""
-        engine = self.engine
-        if self._changed(engine.database.path):
-            engine.database.load(engine.database.path)
-            logger.info(f"Face database reloaded: {len(engine.database)} people")
-        if engine.aliases is not None and self._changed(engine.aliases.path):
-            engine.aliases = AliasRegistry(engine.aliases.path)
-        for payload, severity, confidence in engine.sync():
+    def sync(self, force: bool = False, purge: bool = False) -> None:
+        """Applies registry changes (and the unknown-people retention) to live tracks and publishes the events."""
+        if purge and self.retention_days > 0:
+            force = bool(self.engine.registry.purge_unknowns(self.retention_days)) or force
+        for payload, severity, confidence in self.engine.sync(force):
             self.emit("person_identified", payload, severity=severity, confidence=confidence)
-        self._remember_mtimes()
 
     def on_event(self, event: Event, now: float) -> None:
         if event.type == "object_detected" and event.payload.get("state") == "disappeared":
             self.engine.drop(event.payload.get("track_id"))
+        elif event.type.startswith("identity_"):
+            self.sync(force=True)
 
     def process(self, frame_id: int, timestamp: float, frame: np.ndarray, meta: Dict[str, Any]) -> None:
         persons = meta.get("persons", [])
@@ -523,19 +479,10 @@ class IdentityRecognizer(SharedFrameConsumer):
         for payload, severity, confidence in self.engine.update(timestamp, frame, persons):
             self.emit("person_identified", payload, severity=severity, confidence=confidence)
 
-    def _paths(self) -> List[str]:
-        paths = [self.engine.database.path]
-        if self.engine.aliases is not None:
-            paths.append(self.engine.aliases.path)
-        return [p for p in paths if p]
-
-    def _changed(self, path: Optional[str]) -> bool:
-        if not path or not os.path.isfile(path):
-            return False
-        return os.path.getmtime(path) != self._mtimes.get(path)
-
-    def _remember_mtimes(self) -> None:
-        self._mtimes = {p: os.path.getmtime(p) for p in self._paths() if os.path.isfile(p)}
+    def teardown(self) -> None:
+        super().teardown()
+        if self.engine is not None:
+            self.engine.registry.close()
 
 
 def run(event_queue, control_queue, config):
@@ -543,7 +490,7 @@ def run(event_queue, control_queue, config):
     Module entry point for the orchestrator (own process).
 
     :param event_queue: Bus queue to publish events to
-    :param control_queue: Control messages ("stop") and forwarded object_detected events
+    :param control_queue: Control messages ("stop"), forwarded object_detected and identity_* events
     :param config: Full merged config
     """
     IdentityRecognizer(event_queue, control_queue, config).run()

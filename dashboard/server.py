@@ -10,6 +10,9 @@ Real-time monitoring dashboard (F7): FastAPI + uvicorn in its own process.
 * ``/api/status`` — module heartbeats (alive / age, FPS, mic state), CPU temperature, RAM, CPU load.
 * ``/api/snapshot/{id}`` — what GPT got (``digest``) and the full snapshot JSON from the outbox.
 * ``/api/incident/{id}`` — download the local incident archive (zip).
+* ``/api/persons`` (F9) — the identity registry: ``GET`` list (+ ``aliases`` of merged ids), ``PATCH /{id}``
+  ``{display_name}``, ``POST /{id}/merge`` ``{target_id}``, ``DELETE /{id}``, ``GET /{id}/thumbnail``. The single
+  rename point: changes are published as ``identity_*`` events, so every module and browser updates at once.
 
 HTTP Basic auth with ``DASHBOARD_USER`` / ``DASHBOARD_PASS`` (.env). Without credentials the server only listens on
 127.0.0.1. The web server runs in a background thread; the module loop keeps sending heartbeats and handles "stop",
@@ -25,6 +28,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Annotated, Any, Deque, Dict, List, Optional, Set
 
 from core.events import Event
@@ -72,6 +76,7 @@ class DashboardState:
         self.clients: Set[Any] = set()
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.recent: Deque[str] = collections.deque(maxlen=500)
+        self.registry = None  # core.identity.IdentityRegistry (F9), set by the module
 
     def on_event(self, data: str) -> None:
         """Called in the module thread for every forwarded event (JSON string)."""
@@ -84,6 +89,8 @@ class DashboardState:
             return
         if event.type == "mic_state":
             self.mic_state = event.payload.get("state")
+        elif event.type.startswith("identity_") and self.registry is not None:
+            self.registry.poll()
         self.recent.append(data)
         if self.loop is not None and self.clients:
             asyncio.run_coroutine_threadsafe(self.broadcast(data), self.loop)
@@ -158,10 +165,21 @@ async def mjpeg_frames(vision: Dict[str, Any], fps: float, max_frames: Optional[
             buffer.close()
 
 
+def person_json(person: Dict[str, Any]) -> Dict[str, Any]:
+    def iso(ts):
+        return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if ts else None
+    return {"person_id": person["person_id"], "display_name": person["display_name"], "is_known": person["is_known"],
+            "face_samples": person["face_samples"], "voice_samples": person["voice_samples"],
+            "has_thumbnail": person["has_thumbnail"], "created_at": iso(person["created_at"]),
+            "last_seen": iso(person["last_seen"]), "last_location": person["last_location"]}
+
+
 def create_app(state: DashboardState, config: Dict[str, Any]):
-    from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
-    from fastapi.responses import FileResponse, StreamingResponse
+    from fastapi import Body, Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+    from fastapi.responses import FileResponse, Response, StreamingResponse
     from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
+    from core.identity import NameTaken
 
     cfg = config.get("dashboard", {})
     user, password = cfg.get("user"), cfg.get("password")
@@ -215,6 +233,58 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
             raise HTTPException(404, "unknown incident (still recording, or deleted by the size cap)")
         return FileResponse(path, media_type="application/zip", filename=f"{name}.zip")
 
+    # --- identity registry (F9): the single place to rename / merge / delete people ---------------------------------
+
+    def registry():
+        if state.registry is None:
+            raise HTTPException(503, "identity registry not available")
+        state.registry.poll()
+        return state.registry
+
+    def person_or_404(person_id: str) -> str:
+        pid = registry().resolve(person_id)
+        if pid is None:
+            raise HTTPException(404, "unknown person")
+        return pid
+
+    @app.get("/api/persons", dependencies=[Depends(auth)])
+    def api_persons():
+        reg = registry()
+        aliases = {pid: reg.resolve(pid) for pid, p in reg.persons.items() if p["merged_into"] and reg.resolve(pid)}
+        return {"persons": [person_json(p) for p in reg.list_persons()], "aliases": aliases}
+
+    @app.get("/api/persons/{person_id}/thumbnail", dependencies=[Depends(auth)])
+    def api_thumbnail(person_id: str):
+        path = registry().thumbnail(person_or_404(person_id))
+        if path is None:
+            return Response(placeholder_jpeg("no photo"), media_type="image/jpeg")
+        return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.patch("/api/persons/{person_id}", dependencies=[Depends(auth)])
+    def api_rename(person_id: str, display_name: Annotated[str, Body(embed=True)]):
+        pid = person_or_404(person_id)
+        try:
+            registry().rename(pid, display_name)
+        except NameTaken as e:
+            raise HTTPException(409, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        return person_json(registry().get(pid))
+
+    @app.post("/api/persons/{person_id}/merge", dependencies=[Depends(auth)])
+    def api_merge(person_id: str, target_id: Annotated[str, Body(embed=True)]):
+        source, target = person_or_404(person_id), person_or_404(target_id)
+        try:
+            registry().merge(source, target)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        return person_json(registry().get(target))
+
+    @app.delete("/api/persons/{person_id}", dependencies=[Depends(auth)])
+    def api_delete(person_id: str):
+        registry().delete(person_or_404(person_id))
+        return {"deleted": person_id}
+
     @app.get("/video", dependencies=[Depends(auth)])
     async def video():
         return StreamingResponse(mjpeg_frames(vision, fps), media_type="multipart/x-mixed-replace; boundary=frame")
@@ -265,6 +335,12 @@ class DashboardModule(BaseModule):
             host = "127.0.0.1"
             logger.warning("DASHBOARD_USER / DASHBOARD_PASS not set: dashboard only on http://127.0.0.1 (set them "
                            "in .env to open it from the local network)")
+        try:
+            from core.identity import registry_from_config
+
+            self.state.registry = registry_from_config(self.config.get("identity", {}), publish=self.publish)
+        except Exception as e:  # the rest of the dashboard works without it
+            logger.error(f"Identity registry unavailable: {e}")
         app = create_app(self.state, self.config)
         self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=int(cfg.get("port", 8000)),
                                                     log_level="warning", access_log=False))
@@ -289,6 +365,8 @@ class DashboardModule(BaseModule):
             self.server.should_exit = True
         if self.thread is not None:
             self.thread.join(timeout=5)
+        if self.state.registry is not None:
+            self.state.registry.close()
 
 
 def run(event_queue, control_queue, config):

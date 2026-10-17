@@ -20,6 +20,18 @@
   section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
   #camera { grid-column: span 7; } #status { grid-column: span 5; } #gpt { grid-column: span 5; }
   #gas { grid-column: span 7; } #speech { grid-column: span 4; } #log { grid-column: span 8; }
+  #people { grid-column: span 12; }
+  .cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+  .card { background: #12151b; border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex;
+          flex-direction: column; gap: 4px; min-width: 0; }
+  .card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: #000; }
+  .card .name { font-weight: 600; cursor: text; overflow-wrap: anywhere; }
+  .card .name:hover { color: var(--accent); }
+  .card.unknown .name { color: var(--medium); }
+  .card input { width: 100%; background: #0d1017; color: var(--text); border: 1px solid var(--accent);
+                border-radius: 4px; padding: 2px 4px; font: inherit; }
+  .card .buttons { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+  .pname { font-weight: 600; }
   @media (max-width: 900px) { main > section { grid-column: span 12 !important; } }
   #camera img { width: 100%; border-radius: 6px; background: #000; aspect-ratio: 4 / 3; object-fit: contain; }
   .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
@@ -67,6 +79,8 @@
         <option>critical</option></select>
     </div>
     <div class="list" id="events"></div></section>
+  <section id="people"><h2>Люди <span class="muted">(клікніть ім'я, щоб перейменувати — зміниться всюди)</span></h2>
+    <div class="cards" id="cards"><div class="muted">реєстр порожній</div></div></section>
 </main>
 <dialog id="dlg"><h3 id="dlg-title"></h3><div id="dlg-body"></div>
   <form method="dialog"><button>Закрити</button></form></dialog>
@@ -78,19 +92,37 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const hms = (ts) => new Date(ts).toLocaleTimeString("uk-UA", { hour12: false });
 let thresholds = {};
 
+// --- people (F9): names are looked up by person_id at render time, so a rename also changes old lines
+let persons = {}, aliases = {};
+const livePid = (pid) => aliases[pid] || pid;
+const personName = (pid, fallback) => (persons[livePid(pid)] || {}).display_name || fallback || "?";
+function nameSpan(pid, fallback) {
+  const s = el("span", "pname", personName(pid, fallback));
+  if (pid) { s.dataset.pid = pid; s.dataset.fallback = fallback || ""; }
+  return s;
+}
+function renderNames() {
+  document.querySelectorAll(".pname[data-pid]").forEach((s) => { s.textContent = personName(s.dataset.pid, s.dataset.fallback); });
+}
+
 function describe(ev) {
   const p = ev.payload;
   switch (ev.type) {
     case "object_detected": return `#${p.track_id} ${p.class} ${p.state}`;
-    case "person_identified": return `#${p.track_id ?? "—"} ${p.identity}${p.previous ? " (було " + p.previous + ")" : ""}`;
+    case "person_identified": return [`#${p.track_id ?? "—"} `, nameSpan(p.person_id, p.identity),
+                                      p.previous ? ` (було ${p.previous})` : ""];
     case "action": return `#${p.track_id} ${p.action}${p.gas_confirmed ? " + газ" : ""}`;
-    case "speech": return `"${p.text}"`;
+    case "speech": return p.person_id ? [nameSpan(p.person_id, p.speaker), `: "${p.text}"`] : `"${p.text}"`;
     case "sound": return `${p.rms_db} dB`;
     case "gas_reading": return `${p.gas} ${p.concentration_pct}% ${p.trend}`;
     case "alert": return [p.reason, p.gas || p.module || ""].join(" ");
     case "mic_state": return `${p.state} (${p.reason})`;
     case "scene_active": return p.active ? "активна" : "порожня";
     case "llm_decision": return `${p.risk_level}: ${p.summary}`;
+    case "identity_renamed": return [nameSpan(p.person_id, p.display_name), ` (було ${p.previous})`];
+    case "identity_merged": case "identity_linked":
+      return [`${p.source_name || ""} → `, nameSpan(p.person_id, p.display_name), p.modality ? ` (${p.modality})` : ""];
+    case "identity_created": case "identity_deleted": return `${p.display_name}${p.modality ? " (" + p.modality + ")" : ""}`;
     default: return JSON.stringify(p).slice(0, 160);
   }
 }
@@ -101,7 +133,8 @@ function addLogRow(ev) {
   if (ev.type === "gas_reading" && ev.severity === "info") return;   // routine readings go to the chart
   const row = el("div", "row sev-" + ev.severity);
   row.dataset.source = ev.source; row.dataset.severity = ev.severity;
-  row.append(el("time", "", hms(ev.timestamp)), el("b", "", ev.source + " " + ev.type + " "), el("span", "", describe(ev)));
+  const text = el("span"); text.append(...[].concat(describe(ev)));   // strings become text nodes
+  row.append(el("time", "", hms(ev.timestamp)), el("b", "", ev.source + " " + ev.type + " "), text);
   applyFilter(row); prepend($("events"), row);
 }
 
@@ -113,8 +146,9 @@ for (const id of ["f-source", "f-severity"]) $(id).onchange = () => [...$("event
 
 function addTranscript(ev) {
   const row = el("div", "row");
-  row.append(el("time", "", hms(ev.timestamp)), el("span", "muted", (ev.payload.language || "") + " "),
-             el("span", "", ev.payload.text));
+  row.append(el("time", "", hms(ev.timestamp)), el("span", "muted", (ev.payload.language || "") + " "));
+  if (ev.payload.person_id) row.append(nameSpan(ev.payload.person_id, ev.payload.speaker), document.createTextNode(": "));
+  row.append(el("span", "", ev.payload.text));
   prepend($("transcripts"), row);
 }
 
@@ -174,6 +208,69 @@ function handle(ev) {
   else if (ev.type === "llm_decision") addDecision(ev);
   else if (ev.type === "gas_reading") addGas(ev);
   else if (ev.type === "mic_state") $("mic").textContent = "мікрофон: " + ev.payload.state;
+  else if (ev.type.startsWith("identity_")) {
+    const p = ev.payload;
+    if (ev.type === "identity_renamed" && persons[p.person_id]) { persons[p.person_id].display_name = p.display_name; renderNames(); }
+    loadPersons();
+  }
+}
+
+// --- People page: rename inline, merge, delete (the single rename point; every module follows)
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" },
+                               body: body === undefined ? undefined : JSON.stringify(body) });
+  if (!r.ok) { let msg = r.status + ""; try { msg = (await r.json()).detail || msg; } catch (e) { /* not JSON */ }
+    alert(msg); return null; }
+  return r.json();
+}
+let loading = null;
+async function loadPersons() {
+  if (loading) return loading;
+  loading = (async () => {
+    try { const r = await fetch("/api/persons"); if (!r.ok) return;
+      const j = await r.json(); persons = {}; aliases = j.aliases || {};
+      j.persons.forEach((p) => { persons[p.person_id] = p; }); renderNames(); renderPeople(j.persons);
+    } catch (e) { /* server restarting */ } finally { loading = null; }
+  })();
+  return loading;
+}
+function editName(card, p) {
+  const name = card.querySelector(".name"), input = el("input"); input.value = p.display_name;
+  input.onkeydown = async (e) => {
+    if (e.key === "Escape") { input.replaceWith(name); return; }
+    if (e.key !== "Enter") return;
+    const value = input.value.trim(); if (!value || value === p.display_name) { input.replaceWith(name); return; }
+    if (await api("PATCH", "/api/persons/" + encodeURIComponent(p.person_id), { display_name: value })) {
+      persons[p.person_id].display_name = value; renderNames(); loadPersons(); }
+  };
+  input.onblur = () => { if (input.isConnected) input.replaceWith(name); };
+  name.replaceWith(input); input.focus(); input.select();
+}
+function renderPeople(list) {
+  const box = $("cards");
+  if (box.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;  // editing a name
+  box.replaceChildren();
+  if (!list.length) { box.append(el("div", "muted", "реєстр порожній")); return; }
+  for (const p of list) {
+    const card = el("div", "card" + (p.is_known ? "" : " unknown"));
+    const img = el("img"); img.alt = p.display_name; img.loading = "lazy";
+    img.src = "/api/persons/" + encodeURIComponent(p.person_id) + "/thumbnail?v=" + (p.has_thumbnail ? p.face_samples : 0);
+    const name = el("div", "name", p.display_name); name.title = "клікніть, щоб перейменувати"; name.onclick = () => editName(card, p);
+    const seen = p.last_seen ? `${hms(p.last_seen)} ${new Date(p.last_seen).toLocaleDateString("uk-UA")} · ${p.last_location || ""}` : "—";
+    const merge = el("select"); merge.append(el("option", "", "Об'єднати з…"));
+    list.filter((o) => o.person_id !== p.person_id).forEach((o) => { const opt = el("option", "", o.display_name); opt.value = o.person_id; merge.append(opt); });
+    merge.onchange = async () => { const target = merge.value; if (!persons[target]) return;
+      if (confirm(`${p.display_name} → ${persons[target].display_name}: це одна людина? Обличчя й голос будуть об'єднані.`)
+          && await api("POST", "/api/persons/" + encodeURIComponent(p.person_id) + "/merge", { target_id: target })) loadPersons();
+      else merge.selectedIndex = 0; };
+    const del = el("button", "", "Видалити");
+    del.onclick = async () => { if (confirm(`Видалити ${p.display_name} разом з усіма зразками обличчя й голосу?`)
+      && await api("DELETE", "/api/persons/" + encodeURIComponent(p.person_id))) loadPersons(); };
+    const buttons = el("div", "buttons"); buttons.append(merge, del);
+    card.append(img, name, el("div", "muted", `обличчя: ${p.face_samples} · голос: ${p.voice_samples}`),
+                el("div", "muted", "востаннє: " + seen), buttons);
+    box.append(card);
+  }
 }
 
 // --- websocket with auto-reconnect
@@ -207,6 +304,7 @@ async function refreshStatus() {
   } catch (e) { /* server restarting */ }
 }
 refreshStatus(); setInterval(refreshStatus, 2000);
+loadPersons(); setInterval(loadPersons, 30000);   // CLI edits are not on the bus
 setInterval(() => $("clock").textContent = new Date().toLocaleTimeString("uk-UA", { hour12: false }), 1000);
 </script>
 </body>

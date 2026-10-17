@@ -2,18 +2,15 @@ import json
 import os
 import queue
 
-from modules.vision.identity import FaceDatabase, IdentityConfig, IdentityEngine, IdentityRecognizer
-from modules.vision.identity_store import UnknownStore
-from tests.test_identity import ANNA, FRAME, OLEH, STRANGER, FakeFaces, face_row, near, person, vec
+from core.identity import IdentityRegistry
+from modules.vision.identity import IdentityConfig, IdentityEngine, IdentityRecognizer
+from tests.test_identity import ANNA, FRAME, OLEH, STRANGER, FakeFaces, face_row, make_registry, near, person, vec
 
 
-def make_engine(store=None, **cfg):
-    database = FaceDatabase()
-    database.add("Oleh", [OLEH])
-    database.add("Anna", [ANNA])
+def make_engine(faces_dir=None, **cfg):
     faces = FakeFaces()
     config = IdentityConfig(retry_sec=2.0, verify_sec=5.0, switch_confirmations=2, **cfg)
-    return IdentityEngine(faces, database, config, store), faces
+    return IdentityEngine(faces, make_registry(faces_dir), config), faces
 
 
 def run(engine, faces, embedding, seconds, t0=0.0, track_id=7, step=1.0):
@@ -80,19 +77,63 @@ def test_unknown_track_upgraded_after_enrollment():
     engine, faces = make_engine()
     stranger = vec(77)
     _, t = run(engine, faces, near(stranger, 1), 4)
-    engine.database.add("Ivan", [stranger])                         # enrolled meanwhile (rename / CLI)
+    ivan = engine.registry.create_person("Ivan")                    # enrolled meanwhile (tools.enroll)
+    engine.registry.add_embedding(ivan, "face", stranger)
     events, _ = run(engine, faces, near(stranger, 2), 4, t0=t)
     assert changes(events) == [("unknown_1", "Ivan")]
 
 
 def test_same_stranger_keeps_collecting_samples(tmp_path):
-    store = UnknownStore(str(tmp_path / "unknown"), str(tmp_path), max_images=10)
-    engine, faces = make_engine(store=store)
+    engine, faces = make_engine(faces_dir=str(tmp_path / "persons"))
     faces.aligned_crop = lambda image, face: __import__("numpy").zeros((112, 112, 3), "uint8")
     run(engine, faces, near(STRANGER, 1), 10)                        # 10 s, retries every 2 s
-    folder = tmp_path / "unknown" / "unknown_1"
-    assert len([f for f in os.listdir(folder) if f.startswith("face_")]) == 5
-    assert sorted(os.listdir(tmp_path / "unknown")) == ["_counter.json", "unknown_1"]   # no extra unknowns
+    (person_id,) = os.listdir(tmp_path / "persons")                  # no extra unknowns
+    assert engine.registry.name(person_id) == "unknown_1"
+    assert len(os.listdir(tmp_path / "persons" / person_id)) == 5
+    assert engine.registry.counts[person_id]["face"] == 5
+
+
+# --- registry changes from other processes (dashboard / CLI) --------------------------------------------------------
+
+def shared_engine(tmp_path):
+    path = str(tmp_path / "identity.db")
+    registry = IdentityRegistry(path)
+    for name, embedding in (("Oleh", OLEH), ("Anna", ANNA)):
+        registry.add_embedding(registry.create_person(name), "face", embedding)
+    faces = FakeFaces()
+    engine = IdentityEngine(faces, registry, IdentityConfig(retry_sec=2.0, verify_sec=5.0))
+    return engine, faces, IdentityRegistry(path)                     # the second one = the dashboard process
+
+
+def test_rename_elsewhere_relabels_live_track(tmp_path):
+    engine, faces, dashboard = shared_engine(tmp_path)
+    (event,), _ = run(engine, faces, near(STRANGER, 1), 1)
+    person_id = event[0]["person_id"]
+    assert event[0]["identity"] == "unknown_1" and dashboard.name(person_id) is None   # not polled yet
+    dashboard.poll()
+    dashboard.rename(person_id, "Petro")
+    (renamed,) = engine.sync()
+    payload, severity, _ = renamed
+    assert (payload["track_id"], payload["identity"], payload["known"]) == (7, "Petro", True)
+    assert payload["renamed_from"] == "unknown_1" and payload["person_id"] == person_id and severity == "info"
+    assert engine.sync() == []                                       # nothing changed since
+    events, _ = run(engine, faces, near(STRANGER, 2), 20, t0=5)
+    assert events == []                                              # verified as Petro, no flip back
+
+
+def test_merge_and_delete_elsewhere(tmp_path):
+    engine, faces, dashboard = shared_engine(tmp_path)
+    (event,), _ = run(engine, faces, near(STRANGER, 1), 1)
+    stranger = event[0]["person_id"]
+    dashboard.poll()
+    oleh = dashboard.find("Oleh")
+    dashboard.merge(stranger, oleh)                                  # it was Oleh with a bad camera angle
+    (merged,) = engine.sync()
+    assert merged[0]["person_id"] == oleh and merged[0]["identity"] == "Oleh"
+    dashboard.delete(oleh)
+    assert engine.sync() == [] and engine.tracks[7].person_id is None   # identified again on the next frame
+    events, _ = run(engine, faces, near(STRANGER, 3), 1, t0=10)
+    assert events[0][0]["identity"] == "unknown_2"                   # numbers are never reused
 
 
 def test_identity_events_written_to_jsonl(tmp_path):

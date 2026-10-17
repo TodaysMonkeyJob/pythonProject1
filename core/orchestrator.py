@@ -28,13 +28,16 @@ from system_setup.logger_setup import init_logger
 
 logger = init_logger()
 
+# Registry changes (F9): modules holding person names refresh them at once
+IDENTITY_EVENTS = ["identity_created", "identity_renamed", "identity_merged", "identity_linked", "identity_deleted"]
 # name → (target, config section with `enabled`, event types forwarded to its control queue; "*" = all)
 DEFAULT_MODULES = {
     "gas": ("modules.gas:run", "gas", []),
-    "vision": ("modules.vision.detector:run", "vision", []),
+    "vision": ("modules.vision.detector:run", "vision", ["person_identified"]),       # names on the overlay
     "actions": ("modules.vision.actions:run", "actions", ["gas_reading", "alert", "object_detected"]),
-    "identity": ("modules.vision.identity:run", "identity", ["object_detected"]),
-    "audio": ("modules.audio.mic_controller:run", "audio", ["scene_active"]),
+    "identity": ("modules.vision.identity:run", "identity", ["object_detected", *IDENTITY_EVENTS]),
+    "audio": ("modules.audio.mic_controller:run", "audio",
+              ["scene_active", "object_detected", "person_identified", *IDENTITY_EVENTS]),
     "aggregator": ("modules.aggregator:run", "aggregator", ["*"]),
     "llm": ("modules.llm:run", "llm", []),          # works from the SQLite outbox
     "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat"]),

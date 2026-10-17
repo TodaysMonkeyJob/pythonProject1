@@ -10,6 +10,11 @@ Microphone controller (F4): STANDBY / ACTIVE state machine in front of Whisper.
 * → STANDBY after ``idle_timeout_sec`` without scene, loud sound or speech.
 
 Every switch is a ``mic_state`` event (source ``system``); a loud sound in standby is a ``sound`` event.
+
+Speaker identification (F9, ``speaker_id``): each transcribed segment ≥ ``speaker_min_sec`` gets a voice embedding
+matched in the identity registry (``speech`` payload ``person_id`` / ``speaker``). Forwarded ``object_detected`` /
+``person_identified`` events tell who is in view, so a new voice is linked to the face of the person who is alone in
+view while speaking (``core.cooccurrence``).
 """
 import collections
 import math
@@ -21,7 +26,8 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from core.events import make_event
+from core.cooccurrence import PresenceTracker, VoiceFaceLinker
+from core.events import Event, make_event
 from core.module import BaseModule
 from system_setup.logger_setup import init_logger
 
@@ -166,12 +172,16 @@ class MicController(BaseModule):
 
     def __init__(self, event_queue, control_queue, config: Dict[str, Any], frame_source=None,
                  vad: Optional[Callable[[np.ndarray], bool]] = None, transcriber=None,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, speaker=None,
+                 wall_clock: Callable[[], float] = time.time):
         """
         :param frame_source: Object with open() / read() -> [int16 frame] / close(); SoundDeviceSource by default
         :param vad: frame -> is speech; webrtcvad by default
         :param transcriber: (audio, sample_rate) -> {"text", "language"}; from modules.llm.whisper_client by default
         :param clock: Monotonic time source (tests)
+        :param speaker: ``speaker.SpeakerIdentifier``; created from the config on the first segment by default,
+                        False = no speaker identification
+        :param wall_clock: Wall-clock time source, shared with the presence events (tests)
         """
         super().__init__(event_queue, control_queue, config)
         cfg = config.get("audio", {}).get("mic", {})
@@ -188,6 +198,13 @@ class MicController(BaseModule):
         self.vad = vad
         self.transcriber = transcriber
         self.clock = clock
+        self.wall_clock = wall_clock
+        identity = config.get("identity", {})
+        self.presence = PresenceTracker(identity.get("location_id") or "home", clock=wall_clock)
+        self.speaker = speaker if speaker is not None or cfg.get("speaker_id", False) else False
+        self.linker: Optional[VoiceFaceLinker] = None
+        if self.speaker:
+            self._attach_linker(self.speaker.registry)
         self.scene_active = False
         self.transcriptions = 0
         self.executor: Optional[ThreadPoolExecutor] = None
@@ -220,14 +237,21 @@ class MicController(BaseModule):
             self.executor.shutdown(wait=True, cancel_futures=True)
 
     def handle_control(self, message: Any) -> None:
-        """Forwarded ``scene_active`` events switch the microphone on immediately."""
-        if isinstance(message, str) and '"scene_active"' in message:
-            from core.events import Event
-
-            self.scene_active = bool(Event.from_json(message).payload.get("active"))
-            self._update_state(False, False)
-        else:
+        """
+        Forwarded ``scene_active`` events switch the microphone on immediately; ``object_detected`` /
+        ``person_identified`` update who is in view (for linking voices to faces).
+        """
+        if not (isinstance(message, str) and message.startswith("{")):
             super().handle_control(message)
+            return
+        event = Event.from_json(message)
+        if event.type == "scene_active":
+            self.scene_active = bool(event.payload.get("active"))
+            self._update_state(False, False)
+        elif event.type in ("object_detected", "person_identified"):
+            with self._lock:
+                self.presence.on_event(event)
+        # identity_* events: the registry is polled before each speaker identification
 
     def step(self) -> None:
         if not self._source_ok:
@@ -278,7 +302,7 @@ class MicController(BaseModule):
         duration = round(len(segment) / self.sample_rate, 2)
         with self._lock:
             self.transcriptions += 1
-        self.executor.submit(self._transcribe, segment, duration)
+        self.executor.submit(self._transcribe, segment, duration, self.wall_clock())
 
     def _get_transcriber(self):
         """Created on the first segment (in the Whisper thread), so start-up stays fast."""
@@ -292,6 +316,27 @@ class MicController(BaseModule):
                 self.transcriber = lambda audio, sample_rate: {"text": "", "language": None}
         return self.transcriber
 
+    def _get_speaker(self):
+        """SpeakerIdentifier on the shared identity registry, created in the Whisper thread; None when off."""
+        if self.speaker is None:
+            from core.identity import registry_from_config
+            from modules.audio.speaker import SpeakerIdentifier, ecapa_embedder
+
+            try:
+                registry = registry_from_config(self.config.get("identity", {}), publish=self.publish)
+                embedder = ecapa_embedder(self.cfg.get("speaker_model_dir", "model/speechbrain"))
+                self.speaker = SpeakerIdentifier(registry, embedder, float(self.cfg.get("speaker_min_sec", 1.0)))
+                self._attach_linker(registry)
+            except Exception as e:  # e.g. speechbrain missing: transcripts keep working, just without a speaker
+                logger.error(f"Speaker identification unavailable ({e}); transcripts will have no speaker")
+                self.speaker = False
+        return self.speaker or None
+
+    def _attach_linker(self, registry) -> None:
+        identity = self.config.get("identity", {})
+        self.linker = VoiceFaceLinker(registry, self.presence, int(identity.get("link_min_cooccurrences", 3)),
+                                      float(identity.get("link_presence_ratio", 0.8)))
+
     def _warm_up(self) -> None:
         try:
             warm_up = getattr(self._get_transcriber(), "warm_up", None)
@@ -299,8 +344,10 @@ class MicController(BaseModule):
                 warm_up()
         except Exception as e:
             logger.error(f"Whisper warm-up failed: {e}")
+        if self.speaker is not False:
+            self._get_speaker()
 
-    def _transcribe(self, segment: np.ndarray, duration: float) -> None:
+    def _transcribe(self, segment: np.ndarray, duration: float, ended_at: Optional[float] = None) -> None:
         try:
             result = self._get_transcriber()(segment, self.sample_rate)
         except Exception as e:
@@ -308,8 +355,29 @@ class MicController(BaseModule):
             return
         text = (result.get("text") or "").strip()
         if text:
-            self.emit("speech", {"text": text, "language": result.get("language"), "duration_sec": duration,
-                                 "backend": result.get("backend")})
+            payload = {"text": text, "language": result.get("language"), "duration_sec": duration,
+                       "backend": result.get("backend")}
+            payload.update(self._speaker_of(segment, duration, ended_at or self.wall_clock()))
+            self.emit("speech", payload)
+
+    def _speaker_of(self, segment: np.ndarray, duration: float, ended_at: float) -> Dict[str, Any]:
+        """:return: {"person_id", "speaker", "speaker_score"} or {} (off, segment too short, error)"""
+        speaker = self._get_speaker() if self.speaker is not False else None
+        if speaker is None:
+            return {}
+        try:
+            found = speaker.identify(segment, self.sample_rate)
+            if found is None:
+                return {}
+            with self._lock:
+                linked = self.linker.on_segment(found["person_id"], None, ended_at - duration, ended_at)
+            if linked is not None:
+                found.update(person_id=linked.payload["person_id"], speaker=linked.payload["display_name"])
+                logger.info(f"Voice linked to {found['speaker']} (alone in view while speaking)")
+            return {k: found[k] for k in ("person_id", "speaker", "speaker_score")}
+        except Exception as e:
+            logger.error(f"Speaker identification failed: {e}")
+            return {}
 
     def _open_source(self) -> None:
         try:

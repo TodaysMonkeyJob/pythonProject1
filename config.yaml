@@ -86,14 +86,23 @@ actions:
   gas_rise_pct: 0.5
   log_events: true          # write action events to logs/YYYY-MM-DD/actions.jsonl
 
-identity:
+identity:                   # F3 faces + F9 unified identity registry (faces and voices of the same person)
   enabled: true
   detector_model: models/face_detection_yunet_2023mar.onnx    # python -m modules.vision.face_models
   recognizer_model: models/face_recognition_sface_2021dec.onnx
-  db_path: data/faces/faces.npz   # python -m tools.enroll_face --name <name> --images data/faces/<name>/
+  registry_path: data/identity.db   # SQLite (WAL): persons, face/voice embeddings, identity_events (audit)
+  # Rename / merge / delete people in ONE place: dashboard People page, python -m tools.identity, or
+  # python -m tools.enroll --name Oleh --faces <dir> --voice <wav>; every module picks the change up at once.
+  legacy_db_path: data/faces/faces.npz   # imported once into an empty registry (python -m tools.migrate_faces_npz)
+  location_id: home         # where this device is (events, embeddings, voice ↔ face linking)
+  device_id: null           # null = hostname
   identity_fps: 2           # shared frames per second checked for new / unidentified tracks
   face_threshold: 0.45      # SFace cosine ≥ this → known person; LFW: 100 % known, 0 % strangers accepted
-  unknown_threshold: 0.45   # cosine ≥ this → same unknown_N as earlier in the session
+  unknown_threshold: 0.45   # cosine ≥ this → the same unknown_N as earlier (also after a restart)
+  voice_threshold: 0.30     # ECAPA cosine ≥ this → the same voice
+  max_embeddings: 20        # best samples kept per person and modality (centroid = their mean)
+  link_min_cooccurrences: 3 # a new voice heard while ONE person is alone in view this often → linked to that face
+  link_presence_ratio: 0.8  # … for at least 80 % of the speech segment
   retry_sec: 2.0            # retry unknown / not visible tracks this often
   verify_sec: 5.0           # re-check identified people: another person may take the same place (same track id)
   verify_margin: 0.10       # still the same face down to threshold − margin
@@ -105,17 +114,12 @@ identity:
   box_padding: 0.1          # face centre may lie this much (box fraction) above the box
   max_face_offset: 0.35     # face centre within ±35 % of the box width from its centre
   track_lost_sec: 10
-  max_unknowns: 200
   debug_dir: null           # set a folder to save aligned face crops (debug only — biometric data!)
-  # Unknown people: kept on disk so they can be named later. Rename data/faces/unknown/unknown_3 → Oleh
-  # (or move it to data/faces/Oleh) and within sync_sec the person is enrolled and recognised.
-  save_unknowns: true
-  faces_dir: data/faces
-  unknown_dir: data/faces/unknown
-  unknown_max_images: 10    # face crops kept per unknown person
-  unknown_retention_days: 30   # unknown folders not seen for this long are deleted (consent / GDPR)
-  aliases_path: data/faces/aliases.json   # unknown_N → name, for components that stored the old label
-  sync_sec: 5               # how often renames and an externally updated faces.npz are picked up
+  store_faces: true         # keep face crops as People page thumbnails (biometric data, stays on the device)
+  faces_dir: data/faces/persons   # <faces_dir>/<person_id>/face_*.jpg
+  face_images: 10           # face crops kept per person
+  unknown_retention_days: 30   # unknown people not seen for this long are deleted (consent / GDPR)
+  sync_sec: 5               # how often changes made by the CLI are picked up (bus events apply at once)
 
 audio:
   enabled: true
@@ -136,6 +140,9 @@ audio:
     azure_retry_sec: 300    # after an Azure failure use the local model, try Azure again after this long
     local_model: base
     language: null          # e.g. en / uk; null = auto-detect
+    speaker_id: true        # F9: voice embeddings (SpeechBrain ECAPA) → speaker name in `speech` events
+    speaker_min_sec: 1.0    # shorter segments get no speaker
+    speaker_model_dir: model/speechbrain
   recorder:                 # legacy speech_to_text_whisper.AudioToTextRecorder (modules/audio:run)
     language: en
     api_connection: true

@@ -7,6 +7,9 @@ Events (source "camera"), published only on changes:
   * ``object_detected``  {"track_id", "class", "bbox", "state": "appeared" | "disappeared"}
   * ``scene_active``     {"active": bool} — motion or at least one object; false after ``scene_timeout_sec``
   * ``alert``            {"reason": "camera_lost" | "camera_restored"}
+
+Forwarded ``person_identified`` events put the person's current display name on the annotated frame (a rename on
+the dashboard re-sends them, so the overlay follows within a frame).
 """
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -41,10 +44,13 @@ class FpsCounter:
         self.count, self.busy_sec = 0, 0.0
 
 
-def annotate(frame: np.ndarray, motion: MotionResult, tracks: List[Track]) -> np.ndarray:
+def annotate(frame: np.ndarray, motion: MotionResult, tracks: List[Track],
+             names: Optional[Dict[int, str]] = None) -> np.ndarray:
     """
+    :param names: track id → person name from F3 (OpenCV fonts are ASCII-only: other letters show as "?")
     :return: Copy of the frame with motion boxes (grey) and tracked objects (green, persons orange)
     """
+    names = names or {}
     out = frame.copy()
     for x1, y1, x2, y2 in motion.boxes:
         cv2.rectangle(out, (x1, y1), (x2, y2), (160, 160, 160), 1)
@@ -52,7 +58,8 @@ def annotate(frame: np.ndarray, motion: MotionResult, tracks: List[Track]) -> np
         x1, y1, x2, y2 = track.bbox
         color = (0, 140, 255) if track.cls == "person" else (0, 200, 0)
         cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(out, f"{track.cls} #{track.track_id} {track.confidence:.2f}", (x1, max(12, y1 - 4)),
+        name = f" {names[track.track_id]}" if track.track_id in names else ""
+        cv2.putText(out, f"{track.cls} #{track.track_id}{name} {track.confidence:.2f}", (x1, max(12, y1 - 4)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
     return out
 
@@ -93,9 +100,24 @@ class VisionDetector(BaseModule):
         self._last_stats = None
         self._camera_ok: Optional[bool] = None
         self.last_stats: Dict[str, float] = {}
+        self.person_names: Dict[int, str] = {}  # track id → display name (forwarded person_identified)
 
     def heartbeat_payload(self) -> Dict[str, Any]:
         return dict(self.last_stats)
+
+    def handle_control(self, message: Any) -> None:
+        if isinstance(message, str) and message.startswith("{"):
+            from core.events import Event
+
+            event = Event.from_json(message)
+            p = event.payload
+            if event.type == "person_identified" and p.get("track_id") is not None:
+                if p.get("identity") in (None, "not_visible"):
+                    self.person_names.pop(p["track_id"], None)
+                else:
+                    self.person_names[p["track_id"]] = str(p["identity"])
+        else:
+            super().handle_control(message)
 
     def setup(self) -> None:
         cfg = self.cfg
@@ -178,7 +200,8 @@ class VisionDetector(BaseModule):
 
     def _share(self, frame: np.ndarray, motion: MotionResult, now: float) -> None:
         visible = self.registry.visible(now, max_age_sec=self.yolo_interval_sec)
-        ok, jpeg = cv2.imencode(".jpg", annotate(frame, motion, visible),
+        self.person_names = {k: v for k, v in self.person_names.items() if k in self.registry.tracks}
+        ok, jpeg = cv2.imencode(".jpg", annotate(frame, motion, visible, self.person_names),
                                 [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
         if not ok:
             return
