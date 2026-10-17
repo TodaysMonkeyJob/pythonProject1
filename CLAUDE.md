@@ -59,6 +59,18 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `enroll_face --from-unknown`) enrolls the person, moves the crops, writes `aliases.json`, relabels live tracks.
     Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id). F2/F3 events go
     to `logs/<date>/actions.jsonl` / `identity.jsonl`.
+  - `modules/aggregator/` — F5 (TOD-16): `Aggregator` keeps the window's scene state (people + identity + actions,
+    objects, transcripts, sounds, gas, alerts, mic state) and builds a JSON snapshot every `snapshot_interval_sec`
+    (if the scene is active / something changed) or at once on a critical event (`severity: critical`,
+    `immediate_actions`, unknown person in `unknown_alert_hours`). Validated by `schemas/snapshot.schema.json`,
+    shrunk to `max_snapshot_bytes` (2 KB), written to `exports/snapshots/` and queued in the SQLite
+    `exports/outbox.db` (`outbox.Outbox`: pending / sent / failed — F6 reads it). Every event also goes to
+    `exports/events_YYYY-MM-DD.csv` (gas concentration in ppm = % × 10 000).
+    GPT gets only text: `digest.snapshot_digest()` (one line per section, local time, ~100 tokens vs ~260 for the
+    JSON) stored in `outbox.digest`. No images or audio are ever sent. A critical snapshot opens a local incident
+    (`incidents.IncidentRecorder`): `exports/incidents/<id>.zip` with summary.txt (digests + timeline),
+    incident.json, events.jsonl (2 min before … 15 s after) and annotated camera frames sampled from the vision
+    shared buffer; repeated critical events extend the open incident; size-capped. Only `incident_id` reaches GPT.
   - `modules/audio/mic_controller.py` — F4 microphone: STANDBY (RMS + webrtcvad on 30 ms frames, nothing recorded)
     / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`
     with `backend`). `whisper_backend: azure` falls back to local faster-whisper when keys are missing or a request
