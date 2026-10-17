@@ -31,3 +31,4 @@ ultralytics~=8.4.177
 torchvision~=0.18.0
 lap~=0.5.13
 ncnn>=1.0.20260526
+jsonschema~=4.26

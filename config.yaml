@@ -162,11 +162,19 @@ gas:
   trend_stable_band: 0.2       # |rate| below this (%/min) → trend "stable"
   alert_cooldown_sec: 30       # repeat the same alert reason at most this often
 
-aggregator:
+aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
   enabled: true
-  window_seconds: 30
   export_dir: exports
-  export_csv: true
+  export_csv: true          # exports/events_YYYY-MM-DD.csv
+  snapshot_dir: exports/snapshots
+  write_snapshot_files: true
+  outbox_path: exports/outbox.db   # SQLite queue read by F6 (pending / sent / failed)
+  snapshot_interval_sec: 60 # regular snapshot, only if the scene is active or something changed
+  max_snapshot_bytes: 2048  # token budget: details are dropped until the JSON fits
+  max_text_chars: 200       # per transcript
+  immediate_actions: [possible_smoking, lying]   # besides any severity=critical event
+  unknown_alert_hours: null # e.g. ["22:00", "06:00"]: an unknown person then triggers a snapshot
+  immediate_cooldown_sec: 3 # at most one critical snapshot per this many seconds (later ones are batched)
 
 llm:
   enabled: true
