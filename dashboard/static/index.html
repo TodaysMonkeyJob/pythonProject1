@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IoT Guard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg: #0f1115; --panel: #171a21; --line: #262a33; --text: #d7dae0; --muted: #8a909c;
+          --low: #3fb950; --medium: #d29922; --high: #f0883e; --critical: #f85149; --accent: #58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--critical); display: inline-block; }
+  .dot.on { background: var(--low); }
+  main { display: grid; gap: 12px; padding: 12px; grid-template-columns: repeat(12, 1fr); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+            min-width: 0; display: flex; flex-direction: column; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
+  #camera { grid-column: span 7; } #status { grid-column: span 5; } #gpt { grid-column: span 5; }
+  #gas { grid-column: span 7; } #speech { grid-column: span 4; } #log { grid-column: span 8; }
+  @media (max-width: 900px) { main > section { grid-column: span 12 !important; } }
+  #camera img { width: 100%; border-radius: 6px; background: #000; aspect-ratio: 4 / 3; object-fit: contain; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  td { padding: 2px 4px; border-top: 1px solid var(--line); }
+  .list { overflow-y: auto; max-height: 340px; font-size: 13px; }
+  .row { padding: 3px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .row time { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .sev-warning { color: var(--medium); } .sev-critical { color: var(--critical); font-weight: 600; }
+  .row.sev-critical { background: rgba(248, 81, 73, .08); }
+  .filters { display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  select, button { background: #0d1017; color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+                   padding: 3px 8px; font: inherit; }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  .decision { border-left: 4px solid var(--muted); padding: 6px 8px; margin-bottom: 8px; background: #12151b; }
+  .decision.low { border-color: var(--low); } .decision.medium { border-color: var(--medium); }
+  .decision.high { border-color: var(--high); } .decision.critical { border-color: var(--critical); }
+  .badge { font-weight: 700; text-transform: uppercase; font-size: 12px; margin-right: 6px; }
+  .low .badge { color: var(--low); } .medium .badge { color: var(--medium); }
+  .high .badge { color: var(--high); } .critical .badge { color: var(--critical); }
+  .muted { color: var(--muted); } ul { margin: 4px 0 4px 18px; padding: 0; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+           width: min(760px, 94vw); }
+  dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0d1017; padding: 8px;
+               border-radius: 6px; max-height: 60vh; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<header><span id="ws-dot" class="dot" title="WebSocket"></span><h1>IoT Guard</h1>
+  <span id="mic" class="muted"></span><span id="clock" class="muted" style="margin-left:auto"></span></header>
+<main>
+  <section id="camera"><h2>Камера</h2><img src="/video" alt="camera stream"></section>
+  <section id="status"><h2>Стан системи</h2><div class="kv" id="status-kv"></div>
+    <table><tbody id="modules"></tbody></table></section>
+  <section id="gpt"><h2>Рішення GPT</h2><div class="list" id="decisions"><div class="muted">ще немає</div></div></section>
+  <section id="gas"><h2>Газ, останні 10 хв</h2><canvas id="gas-chart" height="140"></canvas>
+    <div id="gas-now" class="muted"></div></section>
+  <section id="speech"><h2>Транскрипти</h2><div class="list" id="transcripts"></div></section>
+  <section id="log"><h2>Журнал подій</h2>
+    <div class="filters">
+      <select id="f-source"><option value="">усі джерела</option><option>camera</option><option>audio</option>
+        <option>gas</option><option>system</option><option>llm</option></select>
+      <select id="f-severity"><option value="">усі рівні</option><option>info</option><option>warning</option>
+        <option>critical</option></select>
+    </div>
+    <div class="list" id="events"></div></section>
+</main>
+<dialog id="dlg"><h3 id="dlg-title"></h3><div id="dlg-body"></div>
+  <form method="dialog"><button>Закрити</button></form></dialog>
+<script>
+const MAX_ROWS = 500, GAS_WINDOW_MS = 10 * 60 * 1000;
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text; return e; };   // textContent only: event text is never HTML
+const hms = (ts) => new Date(ts).toLocaleTimeString("uk-UA", { hour12: false });
+let thresholds = {};
+
+function describe(ev) {
+  const p = ev.payload;
+  switch (ev.type) {
+    case "object_detected": return `#${p.track_id} ${p.class} ${p.state}`;
+    case "person_identified": return `#${p.track_id ?? "—"} ${p.identity}${p.previous ? " (було " + p.previous + ")" : ""}`;
+    case "action": return `#${p.track_id} ${p.action}${p.gas_confirmed ? " + газ" : ""}`;
+    case "speech": return `"${p.text}"`;
+    case "sound": return `${p.rms_db} dB`;
+    case "gas_reading": return `${p.gas} ${p.concentration_pct}% ${p.trend}`;
+    case "alert": return [p.reason, p.gas || p.module || ""].join(" ");
+    case "mic_state": return `${p.state} (${p.reason})`;
+    case "scene_active": return p.active ? "активна" : "порожня";
+    case "llm_decision": return `${p.risk_level}: ${p.summary}`;
+    default: return JSON.stringify(p).slice(0, 160);
+  }
+}
+
+function prepend(list, node) { list.prepend(node); while (list.children.length > MAX_ROWS) list.lastChild.remove(); }
+
+function addLogRow(ev) {
+  if (ev.type === "gas_reading" && ev.severity === "info") return;   // routine readings go to the chart
+  const row = el("div", "row sev-" + ev.severity);
+  row.dataset.source = ev.source; row.dataset.severity = ev.severity;
+  row.append(el("time", "", hms(ev.timestamp)), el("b", "", ev.source + " " + ev.type + " "), el("span", "", describe(ev)));
+  applyFilter(row); prepend($("events"), row);
+}
+
+function applyFilter(row) {
+  const s = $("f-source").value, v = $("f-severity").value;
+  row.style.display = (!s || row.dataset.source === s) && (!v || row.dataset.severity === v) ? "" : "none";
+}
+for (const id of ["f-source", "f-severity"]) $(id).onchange = () => [...$("events").children].forEach(applyFilter);
+
+function addTranscript(ev) {
+  const row = el("div", "row");
+  row.append(el("time", "", hms(ev.timestamp)), el("span", "muted", (ev.payload.language || "") + " "),
+             el("span", "", ev.payload.text));
+  prepend($("transcripts"), row);
+}
+
+function addDecision(ev) {
+  const p = ev.payload, box = $("decisions");
+  if (box.firstChild && box.firstChild.classList.contains("muted")) box.firstChild.remove();
+  const d = el("div", "decision " + p.risk_level);
+  const head = el("div");
+  head.append(el("span", "badge", p.risk_level), el("b", "", p.recommended_action + " "),
+              el("time", "muted", hms(ev.timestamp)));
+  const reasons = el("ul"); (p.reasons || []).forEach((r) => reasons.append(el("li", "", r)));
+  d.append(head, el("div", "", p.summary), reasons);
+  if (p.follow_up) d.append(el("div", "muted", "→ " + p.follow_up));
+  const actions = el("div", "muted", `${p.model || ""} · ${p.prompt_tokens}+${p.completion_tokens} ток. · $${p.cost_usd} `);
+  const btn = el("button", "", "знімок"); btn.onclick = () => showSnapshot(p.snapshot_id); actions.append(btn);
+  if (p.incident_id) { const a = el("a", "", " архів інциденту"); a.href = "/api/incident/" + encodeURIComponent(p.incident_id);
+    a.style.color = "var(--accent)"; actions.append(a); }
+  d.append(actions); prepend(box, d);
+  while (box.children.length > 20) box.lastChild.remove();
+}
+
+async function showSnapshot(id) {
+  const r = await fetch("/api/snapshot/" + encodeURIComponent(id));
+  $("dlg-title").textContent = "Знімок " + id; const body = $("dlg-body"); body.replaceChildren();
+  if (!r.ok) { body.append(el("p", "", "не знайдено")); }
+  else { const j = await r.json();
+    body.append(el("p", "muted", "Надіслано в GPT (текст):"), el("pre", "", j.digest_sent_to_gpt || "—"),
+                el("p", "muted", "Повний знімок (JSON, лишається локально):"), el("pre", "", JSON.stringify(j.snapshot, null, 1))); }
+  $("dlg").showModal();
+}
+
+// --- gas chart
+const gas = { labels: [], values: [], times: [], gasName: null };
+const chart = typeof Chart === "undefined" ? null : new Chart($("gas-chart"), {
+  type: "line",
+  data: { labels: gas.labels, datasets: [
+    { label: "концентрація, %", data: gas.values, borderColor: "#58a6ff", pointRadius: 0, tension: .2 },
+    { label: "поріг", data: [], borderColor: "#f85149", borderDash: [6, 4], pointRadius: 0 } ] },
+  options: { animation: false, responsive: true, scales: { x: { ticks: { color: "#8a909c", maxTicksLimit: 8 } },
+    y: { ticks: { color: "#8a909c" }, beginAtZero: true } }, plugins: { legend: { labels: { color: "#d7dae0" } } } }
+});
+if (!chart) $("gas-now").textContent = "Chart.js недоступний (немає інтернету) — показую лише поточне значення.";
+
+function addGas(ev) {
+  const p = ev.payload, t = Date.parse(ev.timestamp);
+  gas.times.push(t); gas.labels.push(hms(ev.timestamp)); gas.values.push(p.concentration_pct); gas.gasName = p.gas;
+  while (gas.times.length && t - gas.times[0] > GAS_WINDOW_MS) { gas.times.shift(); gas.labels.shift(); gas.values.shift(); }
+  $("gas-now").textContent = `зараз: ${p.gas} ${p.concentration_pct}% (${p.trend}), впевненість ${p.gas_confidence}`;
+  if (chart) { const limit = thresholds[p.gas];
+    chart.data.datasets[1].data = limit === undefined ? [] : gas.values.map(() => limit);
+    chart.data.datasets[1].label = limit === undefined ? "поріг" : `поріг ${p.gas} ${limit}%`; chart.update("none"); }
+}
+
+function handle(ev) {
+  addLogRow(ev);
+  if (ev.type === "speech") addTranscript(ev);
+  else if (ev.type === "llm_decision") addDecision(ev);
+  else if (ev.type === "gas_reading") addGas(ev);
+  else if (ev.type === "mic_state") $("mic").textContent = "мікрофон: " + ev.payload.state;
+}
+
+// --- websocket with auto-reconnect
+let delay = 1000;
+function connect() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onopen = () => { $("ws-dot").classList.add("on"); delay = 1000;
+    $("events").replaceChildren(); $("transcripts").replaceChildren(); };
+  ws.onmessage = (m) => { try { handle(JSON.parse(m.data)); } catch (e) { console.warn(e); } };
+  ws.onclose = () => { $("ws-dot").classList.remove("on"); setTimeout(connect, delay); delay = Math.min(delay * 2, 15000); };
+}
+connect();
+
+// --- status every 2 s
+async function refreshStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json(); thresholds = s.gas_thresholds || {};
+    const kv = $("status-kv"); kv.replaceChildren();
+    const fmt = (v, unit = "") => v === null || v === undefined ? "—" : v + unit;
+    for (const [k, v] of [["мікрофон", fmt(s.mic_state)], ["відео FPS", fmt(s.video_fps)], ["YOLO FPS", fmt(s.yolo_fps)],
+                          ["CPU", fmt(s.cpu_percent, "%")], ["температура CPU", fmt(s.cpu_temp_c, " °C")],
+                          ["RAM", `${s.ram_used_mb} / ${s.ram_total_mb} MB`], ["аптайм", fmt(s.uptime_sec, " с")]])
+      kv.append(el("span", "", k), el("span", "", v));
+    if (s.mic_state) $("mic").textContent = "мікрофон: " + s.mic_state;
+    const rows = $("modules"); rows.replaceChildren();
+    for (const [name, m] of Object.entries(s.modules)) {
+      const tr = el("tr"); const dot = el("span", "dot" + (m.alive ? " on" : ""));
+      const c1 = el("td"); c1.append(dot, document.createTextNode(" " + name));
+      tr.append(c1, el("td", "muted", m.alive ? `${m.age_sec} с тому` : `немає heartbeat ${m.age_sec} с`)); rows.append(tr);
+    }
+  } catch (e) { /* server restarting */ }
+}
+refreshStatus(); setInterval(refreshStatus, 2000);
+setInterval(() => $("clock").textContent = new Date().toLocaleTimeString("uk-UA", { hour12: false }), 1000);
+</script>
+</body>
+</html>

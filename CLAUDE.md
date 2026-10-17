@@ -78,6 +78,13 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     regular ones once per `min_llm_interval_sec` (older ones skipped). Offline / 429 / 5xx → backoff, rows stay
     pending; no keys → idles. `azure_client.create_client` is shared with Whisper (AzureOpenAI when
     AZURE_OPENAI_API_VERSION is set, else the v1 `OpenAI(base_url=…)`). `tools/test_llm.py` (`--dry-run`) — 10 cases.
+- `dashboard/` — F7 (TOD-18): `server.DashboardModule` runs uvicorn (FastAPI) in a background thread on
+  `dashboard.port` (8000); the orchestrator forwards all events + heartbeats (`subscribe: ["*", "heartbeat"]`).
+  `/ws` pushes events (last 200 from `logs/<date>/events.jsonl` on connect), `/video` MJPEG from the vision shared
+  buffer (`dashboard_fps`), `/api/status` (heartbeats incl. `heartbeat_payload()` extras: vision FPS, mic state;
+  CPU temp, RAM), `/api/snapshot/{id}` (digest sent to GPT + JSON), `/api/incident/{id}` (zip). HTTP Basic auth from
+  DASHBOARD_USER / DASHBOARD_PASS; without them it binds 127.0.0.1 only. `static/index.html`: single page, vanilla
+  JS + Chart.js (CDN), all event text inserted via textContent.
   - `modules/audio/mic_controller.py` — F4 microphone: STANDBY (RMS + webrtcvad on 30 ms frames, nothing recorded)
     / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`
     with `backend`). `whisper_backend: azure` falls back to local faster-whisper when keys are missing or a request

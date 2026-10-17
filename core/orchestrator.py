@@ -37,7 +37,7 @@ DEFAULT_MODULES = {
     "audio": ("modules.audio.mic_controller:run", "audio", ["scene_active"]),
     "aggregator": ("modules.aggregator:run", "aggregator", ["*"]),
     "llm": ("modules.llm:run", "llm", []),          # works from the SQLite outbox
-    "dashboard": ("modules.dashboard:run", "dashboard", ["*"]),
+    "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat"]),
 }
 SELF_LOGGING_SECTIONS = ("vision", "actions", "identity")
 # Files a module can't start without: (config section, key, how to get it)
@@ -250,6 +250,12 @@ class Orchestrator:
             module = self.modules.get(event.payload.get("module"))
             if module is not None:
                 module.last_heartbeat = self.clock()
+            for subscriber in self.modules.values():  # only explicit subscribers (the dashboard), never via "*"
+                if "heartbeat" in subscriber.spec.subscribe:
+                    try:
+                        subscriber.control.put_nowait(data)
+                    except queue.Full:
+                        pass
             return
         self.routed += 1
         if self.log is not None:

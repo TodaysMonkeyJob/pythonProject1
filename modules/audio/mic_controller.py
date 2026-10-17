@@ -197,6 +197,9 @@ class MicController(BaseModule):
         self._last_sound_event = float("-inf")
         self._lock = threading.Lock()
 
+    def heartbeat_payload(self) -> Dict[str, Any]:
+        return {"mic_state": self.state.state, "microphone_ok": self._source_ok}
+
     def setup(self) -> None:
         if self.frame_source is None:
             self.frame_source = SoundDeviceSource(self.sample_rate, self.sample_rate * self.frame_ms // 1000,
