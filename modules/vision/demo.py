@@ -25,7 +25,7 @@ parser.add_argument("--model", default="yolo11n.pt")
 parser.add_argument("--pose-model", help="also run action recognition (F2), e.g. yolo11n-pose.pt")
 parser.add_argument("--no-identity", action="store_true",
                     help="don't run face identification (F3); by default it runs when identity.enabled and the "
-                         "face models exist, saving unknown people to identity.unknown_dir automatically")
+                         "face models exist, saving unknown people to the identity registry automatically")
 parser.add_argument("--no-window", action="store_true")
 parser.add_argument("--seconds", type=float, default=0, help="stop after N seconds (0 = until q / Ctrl+C)")
 args = parser.parse_args()
@@ -59,7 +59,8 @@ if not args.no_identity and not models_ready:
 if run_identity:
     from modules.vision.identity import IdentityRecognizer
 
-    print(f"Face identification on: unknown people are saved to {identity_cfg.get('unknown_dir')}")
+    print(f"Face identification on: unknown people are saved to {identity_cfg.get('registry_path')} "
+          f"(name them: python -m tools.identity list / rename unknown_N <name>)")
 
     threading.Thread(target=IdentityRecognizer(events, identity_control, config).run, daemon=True).start()
 

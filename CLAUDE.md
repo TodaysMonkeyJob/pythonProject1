@@ -52,13 +52,19 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `actions.py` (F2, TOD-13) → `ActionRecognizer`: pose (`pose.py`, yolo11n-pose) on shared frames with persons,
     rule-based standing/sitting/walking/lying + `possible_smoking` (`gas_confirmed` from gas events forwarded
     via the control queue); `action` events only on change. `eval_actions.py` → labelled-video accuracy.
-    `identity.py` (F3, TOD-14) → `IdentityRecognizer`: YuNet + SFace on person boxes, `faces.npz` database
-    (`tools/enroll_face.py`), `person_identified` known / `unknown_N` / `not_visible` on change. F2 and F3 share
-    `consumer.SharedFrameConsumer`. `tools/eval_faces.py` → accuracy / false accepts on a face folder.
-    `identity_store.py`: unknown people saved to `data/faces/unknown/unknown_N/`; renaming that folder (or
-    `enroll_face --from-unknown`) enrolls the person, moves the crops, writes `aliases.json`, relabels live tracks.
-    Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id). F2/F3 events go
-    to `logs/<date>/actions.jsonl` / `identity.jsonl`.
+    `identity.py` (F3, TOD-14) → `IdentityRecognizer`: YuNet + SFace on person boxes matched in the F9 registry,
+    `person_identified` (`person_id` + `identity` = display name, `unknown_N` / `not_visible`) on change. F2 and F3
+    share `consumer.SharedFrameConsumer`. `tools/eval_faces.py` → accuracy / false accepts on a face folder.
+    Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id); `identity_*` events
+    (or `sync_sec` polling) relabel live tracks. `legacy_faces.py` imports the old `faces.npz` / unknown folders
+    into an empty registry. F2/F3 events go to `logs/<date>/actions.jsonl` / `identity.jsonl`.
+  - `core/identity.py` — F9 (TOD-20) `IdentityRegistry`: SQLite `data/identity.db` (WAL; persons, face / voice
+    embeddings as float32 BLOBs, top-K per person, identity_events audit, global `unknown_N` counter). Every process
+    opens its own connection and cache; `poll()` reloads on `PRAGMA data_version`. Mutations (create / rename / merge /
+    link / delete) publish `identity_*` events (source system). `person_id` is the key in events; names are resolved
+    at render time. `core/cooccurrence.py`: `PresenceTracker` + `VoiceFaceLinker` (new voice heard 3× while one
+    identified person is alone in view → merged into that face; 2+ people → no link; known never reassigned).
+    Rename / merge / delete: dashboard People page, `tools/identity.py`; enrollment `tools/enroll.py` (faces, voice).
   - `modules/aggregator/` — F5 (TOD-16): `Aggregator` keeps the window's scene state (people + identity + actions,
     objects, transcripts, sounds, gas, alerts, mic state) and builds a JSON snapshot every `snapshot_interval_sec`
     (if the scene is active / something changed) or at once on a critical event (`severity: critical`,
@@ -80,6 +86,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     AZURE_OPENAI_API_VERSION is set, else the v1 `OpenAI(base_url=…)`). `tools/test_llm.py` (`--dry-run`) — 10 cases.
 - `dashboard/` — F7 (TOD-18): `server.DashboardModule` runs uvicorn (FastAPI) in a background thread on
   `dashboard.port` (8000); the orchestrator forwards all events + heartbeats (`subscribe: ["*", "heartbeat"]`).
+  `/api/persons` (F9: list, PATCH rename, POST merge, DELETE, thumbnail) is the single rename point.
   `/ws` pushes events (last 200 from `logs/<date>/events.jsonl` on connect), `/video` MJPEG from the vision shared
   buffer (`dashboard_fps`), `/api/status` (heartbeats incl. `heartbeat_payload()` extras: vision FPS, mic state;
   CPU temp, RAM), `/api/snapshot/{id}` (digest sent to GPT + JSON), `/api/incident/{id}` (zip). HTTP Basic auth from
@@ -89,7 +96,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`
     with `backend`). `whisper_backend: azure` falls back to local faster-whisper when keys are missing or a request
     fails (Azure retried after `azure_retry_sec`); `local` = local only;
-    `mic_state` events (source system). `modules/audio:run` is the legacy `AudioToTextRecorder` wrapper.
+    `mic_state` events (source system). `speaker_id: true` → `modules/audio/speaker.py` (SpeechBrain ECAPA voice
+    embedding in the registry, `speech` gets `person_id` / `speaker`) + voice ↔ face linking from forwarded
+    `object_detected` / `person_identified`. `modules/audio:run` is the legacy `AudioToTextRecorder` wrapper.
 - `config.yaml` — non-secret settings per module; `.env.example` — required secret names.
 - `system_setup/logger_setup.py` — shared logger: `init_logger()` + `set_logger_params(logger, log_file,
   log_level, no_log_file)`. Re-created after the original was lost; keep this signature stable.
@@ -121,6 +130,8 @@ YOLO_TEST_MODEL=yolo11n.pt python -m pytest -k real_yolo   # optional test with 
 python main.py                          # whole system (Ctrl+C to stop); events → logs/<date>/events.jsonl
 python -m tools.test_llm --dry-run      # GPT example cases: tokens / cost; without --dry-run needs .env keys
 python -m modules.vision.demo 0 --pose-model yolo11n-pose.pt   # webcam: objects + actions
+python -m tools.identity list                 # F9 registry: rename unknown_3 Oleh / merge / delete / history
+python -m tools.enroll --name Oleh --faces data/faces/Oleh/ --voice speech_to_text_whisper/voices/oleh.wav
 YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 ```
 - Legacy files have many pre-existing ruff findings (star imports etc.); don't mass-fix them. No CI yet.
@@ -165,5 +176,6 @@ YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 - `.idea/` (local IDE settings, git-ignored).
 - `multi_model_sentence_data.xlsx`, `speech_to_text_whisper/warmup_audio.wav` — data/binaries.
 - `speech_to_text_whisper/voices/`, `model/` — reference voices and model cache (never commit).
-- `data/faces/` — face photos and embeddings (biometric data, git-ignored, never commit).
+- `data/faces/`, `data/identity.db*` — face photos, face / voice embeddings (biometric data, git-ignored, never
+  commit). Tests must use `tmp_path` registries, never the default `data/identity.db`.
 - `speech_to_text_whisper/audio_recorder_testing.py` — leave as is.

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from core.events import Event, make_event
+from core.identity import IdentityRegistry
 from modules.vision.identity import (NOT_VISIBLE, FaceDatabase, IdentityConfig, IdentityEngine, IdentityRecognizer,
                                      largest_face, normalize)
 from modules.vision.shared_frame import SharedFrameBuffer
@@ -56,12 +57,17 @@ class FakeFaces:
 OLEH, ANNA, STRANGER = vec(1), vec(2), vec(3)
 
 
+def make_registry(faces_dir=None):
+    """In-memory registry with two known people."""
+    registry = IdentityRegistry(":memory:", faces_dir=faces_dir)
+    for name, embedding in (("Oleh", OLEH), ("Anna", ANNA)):
+        registry.add_embedding(registry.create_person(name), "face", embedding)
+    return registry
+
+
 def make_engine(**cfg):
-    database = FaceDatabase()
-    database.add("Oleh", [OLEH])
-    database.add("Anna", [ANNA])
     faces = FakeFaces()
-    return IdentityEngine(faces, database, IdentityConfig(**cfg)), faces
+    return IdentityEngine(faces, make_registry(), IdentityConfig(**cfg)), faces
 
 
 def person(track_id, bbox=PERSON_BOX):

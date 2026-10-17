@@ -26,6 +26,11 @@ EVENT_TYPES = (
     "heartbeat",
     "scene_active",
     "mic_state",
+    "identity_created",     # F9 identity registry (source system): person_id, display_name
+    "identity_renamed",
+    "identity_merged",
+    "identity_linked",
+    "identity_deleted",
 )
 EventType = Literal[EVENT_TYPES]
 

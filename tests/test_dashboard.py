@@ -26,7 +26,8 @@ def config(tmp_path, **dashboard):
             "aggregator": {"export_dir": str(tmp_path / "exports"),
                            "outbox_path": str(tmp_path / "exports" / "outbox.db"),
                            "incidents": {"dir": str(tmp_path / "exports" / "incidents")}},
-            "gas": {"thresholds": {"acetone": 5.0}}, "vision": {}}
+            "gas": {"thresholds": {"acetone": 5.0}}, "vision": {},
+            "identity": {"registry_path": str(tmp_path / "identity.db"), "faces_dir": str(tmp_path / "persons")}}
 
 
 def client(tmp_path, **dashboard):
@@ -229,3 +230,59 @@ def test_without_credentials_binds_localhost_only(tmp_path):
         assert module.server.config.host == "127.0.0.1"
     finally:
         module.teardown()
+
+
+# --- people (F9 identity registry) -------------------------------------------------------------------------------
+
+def people_client(tmp_path):
+    from core.identity import IdentityRegistry
+    from tests.test_identity_registry import OLEH_FACE, OLEH_VOICE
+
+    http, state = client(tmp_path)
+    bus = []
+    state.registry = IdentityRegistry(str(tmp_path / "identity.db"), publish=bus.append,
+                                      faces_dir=str(tmp_path / "persons"))
+    face_id = state.registry.create_unknown("face", OLEH_FACE)
+    voice_id = state.registry.create_unknown("voice", OLEH_VOICE)
+    bus.clear()
+    return http, state, bus, face_id, voice_id
+
+
+def test_persons_list_rename_merge_delete(tmp_path):
+    http, state, bus, face_id, voice_id = people_client(tmp_path)
+    listing = http.get("/api/persons", auth=AUTH).json()
+    assert {p["display_name"] for p in listing["persons"]} == {"unknown_1", "unknown_2"}
+    assert http.get("/api/persons", auth=("admin", "wrong")).status_code == 401
+
+    renamed = http.patch(f"/api/persons/{face_id}", json={"display_name": "Oleh"}, auth=AUTH)
+    assert renamed.status_code == 200 and renamed.json()["display_name"] == "Oleh" and renamed.json()["is_known"]
+    assert bus[-1].type == "identity_renamed"                                   # → every module refreshes
+    assert http.patch(f"/api/persons/{voice_id}", json={"display_name": "OLEH"}, auth=AUTH).status_code == 409
+    assert http.patch(f"/api/persons/{voice_id}", json={"display_name": ""}, auth=AUTH).status_code == 422
+    assert http.patch("/api/persons/nope", json={"display_name": "X"}, auth=AUTH).status_code == 404
+
+    merged = http.post(f"/api/persons/{voice_id}/merge", json={"target_id": face_id}, auth=AUTH).json()
+    assert merged["face_samples"] == 1 and merged["voice_samples"] == 1 and bus[-1].type == "identity_merged"
+    listing = http.get("/api/persons", auth=AUTH).json()
+    assert [p["person_id"] for p in listing["persons"]] == [face_id] and listing["aliases"] == {voice_id: face_id}
+
+    thumb = http.get(f"/api/persons/{face_id}/thumbnail", auth=AUTH)
+    assert thumb.status_code == 200 and thumb.headers["content-type"] == "image/jpeg"   # placeholder
+    assert http.delete(f"/api/persons/{face_id}", auth=AUTH).status_code == 200
+    assert http.get("/api/persons", auth=AUTH).json()["persons"] == [] and bus[-1].type == "identity_deleted"
+
+
+def test_identity_events_from_other_processes_refresh_the_cache(tmp_path):
+    from core.identity import IdentityRegistry
+
+    http, state, bus, face_id, _ = people_client(tmp_path)
+    other = IdentityRegistry(str(tmp_path / "identity.db"))                     # e.g. the CLI
+    event = other.rename(face_id, "Anna")
+    state.on_event(event.to_json())
+    assert state.registry.name(face_id) == "Anna"
+    assert http.get("/api/persons", auth=AUTH).json()["persons"][0]["display_name"] == "Anna"
+
+
+def test_page_has_people_panel(tmp_path):
+    page = client(tmp_path)[0].get("/", auth=AUTH).text
+    assert 'id="people"' in page and "/api/persons" in page and "renderNames" in page

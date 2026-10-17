@@ -22,6 +22,7 @@ exports/
 models/
 # Face photos and embeddings (biometric data, never commit)
 data/faces/
+data/identity.db*
 *.pt
 *_ncnn_model/
 

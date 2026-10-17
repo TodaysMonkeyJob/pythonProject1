@@ -1,7 +1,7 @@
 import numpy as np
 
-from modules.vision.identity import FaceDatabase, IdentityConfig, IdentityEngine, assign_faces, face_fit
-from tests.test_identity import ANNA, FRAME, OLEH, STRANGER, face_row, near
+from modules.vision.identity import IdentityConfig, IdentityEngine, assign_faces, face_fit
+from tests.test_identity import ANNA, FRAME, OLEH, STRANGER, face_row, make_registry, near
 
 CFG = IdentityConfig()
 LEFT_BOX, RIGHT_BOX = [40, 60, 240, 460], [380, 60, 580, 460]
@@ -25,10 +25,7 @@ class FacesByPosition:
 
 
 def engine_with(faces):
-    database = FaceDatabase()
-    database.add("Oleh", [OLEH])
-    database.add("Anna", [ANNA])
-    return IdentityEngine(FacesByPosition(faces), database, IdentityConfig(retry_sec=1.0, verify_sec=1.0))
+    return IdentityEngine(FacesByPosition(faces), make_registry(), IdentityConfig(retry_sec=1.0, verify_sec=1.0))
 
 
 def identities(events):

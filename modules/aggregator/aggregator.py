@@ -72,6 +72,7 @@ class Person:
     last_seen: float
     identity: str = "unidentified"
     known: bool = False
+    person_id: Optional[str] = None     # identity registry id (F9); the name is resolved at snapshot time
     actions: List[str] = field(default_factory=list)
     present: bool = True
 
@@ -136,6 +137,7 @@ class SceneState:
                 person = self.people.setdefault(p["track_id"], Person(p["track_id"], now, now))
                 person.identity, person.known, person.last_seen = p.get("identity", person.identity), \
                     bool(p.get("known")), now
+                person.person_id = p.get("person_id")
         elif event.type == "action":
             person = self.people.setdefault(p["track_id"], Person(p["track_id"], now, now))
             person.last_seen = now
@@ -147,7 +149,10 @@ class SceneState:
             elif p.get("action") == "lying":
                 self.alerts.append(f"lying #{p['track_id']}")
         elif event.type == "speech":
-            self.speech.append({"t": hms(event), "text": p.get("text", ""), "language": p.get("language")})
+            entry = {"t": hms(event), "text": p.get("text", ""), "language": p.get("language")}
+            if p.get("person_id"):
+                entry.update(person_id=p["person_id"], speaker=p.get("speaker"))
+            self.speech.append(entry)
         elif event.type == "sound":
             self.sounds.append({"t": hms(event), "label": p.get("label", "loud_noise"), "db": p.get("rms_db", 0)})
         elif event.type == "gas_reading":
@@ -183,19 +188,33 @@ class SnapshotBuilder:
         self.cfg = cfg
 
     def build(self, state: SceneState, trigger: str, now: float, reason: Optional[str] = None,
-              incident_id: Optional[str] = None) -> Dict[str, Any]:
+              incident_id: Optional[str] = None, registry=None) -> Dict[str, Any]:
+        """
+        :param registry: ``IdentityRegistry`` resolving person_id → current display name, so a rename made a moment
+                         ago is already in this snapshot
+        """
         cfg = self.cfg
+
+        def names(person_id, fallback):
+            return registry.name(person_id, fallback) if registry is not None and person_id else fallback
+
+        def known(person_id, fallback):
+            return registry.is_known(person_id) if registry is not None and registry.resolve(person_id) else fallback
         people = sorted(state.people.values(), key=lambda p: (not p.present, -p.last_seen))[:20]
         snapshot: Dict[str, Any] = {
             "snapshot_id": str(uuid.uuid4()),
             "window": {"from": utc_iso(state.window_start), "to": utc_iso(now)},
             "trigger": trigger,
-            "people": [{"track_id": int(p.track_id), "identity": p.identity[:64], "known": p.known,
-                        "actions": p.actions[-10:], "present": p.present,
-                        "in_frame_sec": int(max(0, (now if p.present else p.last_seen) - p.first_seen))}
+            "people": [{"track_id": int(p.track_id), "identity": names(p.person_id, p.identity)[:64],
+                        "known": known(p.person_id, p.known), "actions": p.actions[-10:], "present": p.present,
+                        "in_frame_sec": int(max(0, (now if p.present else p.last_seen) - p.first_seen)),
+                        **({"person_id": p.person_id} if p.person_id else {})}
                        for p in people],
             "objects": state.objects_seen[:30],
-            "speech": [{**s, "text": s["text"][:cfg.max_text_chars]} for s in state.speech[-20:]],
+            "speech": [{**s, "text": s["text"][:cfg.max_text_chars],
+                        **({"speaker": (names(s["person_id"], s.get("speaker")) or "")[:64]} if s.get("person_id")
+                           else {})}
+                       for s in state.speech[-20:]],
             "sounds": state.sounds[-20:],
             "gas": self._gas(state),
             "alerts": state.alerts[-20:],
@@ -330,8 +349,10 @@ class EventCsv:
 class Aggregator:
     """Snapshot / CSV logic without the process loop."""
 
-    def __init__(self, config: Dict[str, Any], clock=time.time, local_now=datetime.now):
+    def __init__(self, config: Dict[str, Any], clock=time.time, local_now=datetime.now, registry=None):
+        """:param registry: ``core.identity.IdentityRegistry`` to resolve display names at snapshot time"""
         agg = config.get("aggregator", {})
+        self.registry = registry
         self.cfg = AggregatorConfig.from_dict(agg)
         export_dir = agg.get("export_dir", "exports")
         self.snapshot_dir = agg.get("snapshot_dir", os.path.join(export_dir, "snapshots"))
@@ -399,7 +420,9 @@ class Aggregator:
     def snapshot(self, trigger: str, now: float, reason: Optional[str] = None) -> Dict[str, Any]:
         incident_id = self.incidents.start(reason or trigger) \
             if self.incidents is not None and trigger == "critical_event" else None
-        snapshot = self.builder.build(self.state, trigger, now, reason, incident_id)
+        if self.registry is not None:
+            self.registry.poll()
+        snapshot = self.builder.build(self.state, trigger, now, reason, incident_id, self.registry)
         digest = snapshot_digest(snapshot, incident_id)
         if incident_id:
             self.incidents.attach(snapshot, digest)
@@ -436,7 +459,12 @@ class AggregatorModule(BaseModule):
 
     def setup(self) -> None:
         if self.aggregator is None:
-            self.aggregator = Aggregator(self.config)
+            registry = None
+            if self.config.get("identity", {}).get("enabled", False):
+                from core.identity import registry_from_config
+
+                registry = registry_from_config(self.config["identity"])
+            self.aggregator = Aggregator(self.config, registry=registry)
 
     def teardown(self) -> None:
         if self.aggregator is not None:

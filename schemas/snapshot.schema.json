@@ -33,7 +33,8 @@
           "known": {"type": "boolean"},
           "actions": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 32}},
           "in_frame_sec": {"type": "integer", "minimum": 0},
-          "present": {"type": "boolean"}
+          "present": {"type": "boolean"},
+          "person_id": {"type": "string", "maxLength": 36, "description": "Identity registry id (F9)"}
         }
       }
     },
@@ -48,7 +49,9 @@
         "properties": {
           "t": {"type": "string", "pattern": "^\\d{2}:\\d{2}:\\d{2}$"},
           "text": {"type": "string", "maxLength": 300},
-          "language": {"type": ["string", "null"], "maxLength": 8}
+          "language": {"type": ["string", "null"], "maxLength": 8},
+          "person_id": {"type": "string", "maxLength": 36},
+          "speaker": {"type": ["string", "null"], "maxLength": 64}
         }
       }
     },

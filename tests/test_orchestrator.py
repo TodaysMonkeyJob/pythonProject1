@@ -142,8 +142,10 @@ def test_module_specs_from_config():
     config["orchestrator"]["modules"] = {"gas": {"enabled": False}, "audio": {"target": "modules.audio:run"}}
     specs = {s.name: s for s in Orchestrator.module_specs(config)}
     assert "identity" not in specs and "gas" not in specs
-    assert specs["audio"].target == "modules.audio:run" and specs["audio"].subscribe == ["scene_active"]
+    assert specs["audio"].target == "modules.audio:run" and specs["audio"].subscribe[0] == "scene_active"
     assert DEFAULT_MODULES["actions"][2] == ["gas_reading", "alert", "object_detected"]
+    assert "identity_renamed" in DEFAULT_MODULES["identity"][2]
+    assert DEFAULT_MODULES["vision"][2] == ["person_identified"]
 
 
 def test_child_config_disables_module_self_logging():

@@ -6,14 +6,15 @@ One short line per non-empty section, local time, no ids / nulls / key names::
     12:03:31-12:03:46 UTC+3 CRITICAL gas_threshold acetone | incident 20261017-120331-3f2a
     people: #5 unknown_1 walking>sitting 48s; #9 Oleh standing 12s left; #6 ? 3s
     objects: person laptop chair
-    speech: 12:03:40 uk "Привіт, є тут хтось?"
+    speech: 12:03:40 uk unknown_4 "Привіт, є тут хтось?"
     sounds: 12:03:41 loud -12dB
     gas: acetone 51960ppm rising conf0.30 alerts gas_threshold
     alerts: possible_smoking #5 gas_confirmed
     system: mic active, scene active, 37 events
 
 Legend for the GPT system prompt: ``#N`` track id, ``?`` face not identified yet, ``unknown_N`` stranger
-(stable label), ``a>b`` action sequence, ``Ns`` seconds in frame, ``left`` no longer in frame.
+(stable label), speech ``lang speaker "text"``, ``a>b`` action sequence, ``Ns`` seconds in frame, ``left`` no
+longer in frame.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -71,7 +72,8 @@ def snapshot_digest(snapshot: Dict[str, Any], incident_id: Optional[str] = None,
         lines.append("objects: " + " ".join(snapshot["objects"]))
     for s in snapshot["speech"]:
         language = f" {s['language']}" if s.get("language") else ""
-        lines.append(f"speech: {_local_hms(s['t'], offset)}{language} \"{s['text']}\"")
+        speaker = f" {s['speaker']}" if s.get("speaker") else ""
+        lines.append(f"speech: {_local_hms(s['t'], offset)}{language}{speaker} \"{s['text']}\"")
     if snapshot["sounds"]:
         lines.append("sounds: " + "; ".join(f"{_local_hms(s['t'], offset)} {s['label'].replace('_noise', '')} "
                                             f"{round(s['db'])}dB" for s in snapshot["sounds"]))

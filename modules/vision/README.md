@@ -15,8 +15,8 @@ Camera → motion detection on every frame (MOG2) → YOLO + ByteTrack only on m
 | `pose.py` | `PoseEstimator` (yolo11n-pose, 17 COCO keypoints) + skeleton geometry (joint/torso angles) |
 | `actions.py` | F2: `ActionEngine` rules + `ActionRecognizer` module (reads the shared buffer) |
 | `eval_actions.py` | F2 acceptance: labelled videos → `reports/actions_eval.json` |
-| `identity.py` | F3: `FaceEngine` (YuNet + SFace), `FaceDatabase` (`faces.npz`), `IdentityEngine`, `IdentityRecognizer` |
-| `identity_store.py` | `UnknownStore` (unknown people on disk, rename → promotion) and `AliasRegistry` (`aliases.json`) |
+| `identity.py` | F3: `FaceEngine` (YuNet + SFace), `IdentityEngine` / `IdentityRecognizer` on the F9 registry (`core/identity.py`) |
+| `legacy_faces.py` | One-time import of the pre-registry `faces.npz` + `data/faces/unknown/` (`tools/migrate_faces_npz.py`) |
 | `face_models.py` | `python -m modules.vision.face_models` → YuNet / SFace ONNX into `models/` (SHA-256 checked) |
 | `consumer.py` | `SharedFrameConsumer`: base for F2 / F3 processes reading the shared buffer |
 | `bench.py` | `python -m modules.vision.bench` → `reports/vision_benchmark.json` |
@@ -151,47 +151,54 @@ huge boxes — nobody gets someone else's face. Each assigned face's SFace embed
 * identified tracks are re-checked every `verify_sec` (5 s; unknown ones every `retry_sec`): F1 can keep the
   same `track_id` when another person takes the same place, so after `switch_confirmations` (2) checks that
   see a different face the label changes (`previous` = old label). A check that sees the same person is cheap
-  and stores nothing new, except more samples for an unknown person (up to `unknown_max_images`);
+  and stores nothing new, except more samples for an unknown person (the best `max_embeddings` are kept);
 * events are written to `logs/YYYY-MM-DD/identity.jsonl` (F2: `actions.jsonl`).
 
 ```json
-{"track_id": 7, "identity": "Oleh", "known": true, "similarity": 0.71, "previous": "not_visible"}
+{"track_id": 7, "person_id": "3f2a…", "identity": "Oleh", "known": true, "similarity": 0.71, "previous": "not_visible"}
 ```
 
 Severity is `warning` for `unknown_N`, `info` otherwise. The orchestrator forwards `object_detected`
-events to the control queue; `disappeared` drops the track.
+events to the control queue (`disappeared` drops the track) and the registry's `identity_*` events.
 
 ```bash
 python -m modules.vision.face_models                                # download the two ONNX models
-python -m tools.enroll_face --name Oleh --images data/faces/Oleh/   # or --camera 0 --frames 10
-python -m tools.enroll_face --list                                  # / --remove Oleh
+python -m tools.enroll --name Oleh --faces data/faces/Oleh/         # or --camera 0 --frames 10; --voice a.wav
+python -m tools.identity list                                       # rename / merge / delete / history
 python -m modules.vision.demo 0                                     # live check (identity on by default)
 python -m tools.eval_faces data/faces --people 5 --enroll 5         # accuracy / false accepts
 ```
 
-### Naming unknown people
+### One identity registry for faces and voices (F9 / TOD-20)
 
-Unknown people are saved to `data/faces/unknown/unknown_N/` (up to 10 aligned face crops, `embeddings.npy`,
-`meta.json`); labels survive restarts and numbers are never reused. To name someone, either
+Everyone the system knows — enrolled people and strangers — is a person in `data/identity.db` (`core/identity.py`):
+`person_id` (uuid, stable key in every event) + `display_name` (`unknown_N` from one global counter shared by faces
+and voices, or a name). Face (SFace, 128-d) and voice (ECAPA, 192-d) embeddings are attached to the person; the best
+`max_embeddings` per modality are kept and matched by their centroid. Every create / rename / merge / link / delete is
+recorded in `identity_events` (audit trail) and published as an `identity_*` event.
 
-* rename the folder: `data/faces/unknown/unknown_3` → `data/faces/unknown/Oleh` (or move it to `data/faces/Oleh`), or
-* run `python -m tools.enroll_face --from-unknown unknown_3 --name Oleh`.
+Naming someone happens in one place — the dashboard **People** page (click the name → type → Enter), or
+`python -m tools.identity rename unknown_3 "Oleh"`. Every module follows at once: the identity process re-sends
+`person_identified` (`"renamed_from": "unknown_3"`) for live tracks, the camera overlay shows the new name, the
+aggregator resolves names at snapshot time, the browser re-renders old log and transcript lines (they carry the
+`person_id`). CLI edits are not on the bus: modules notice them within `sync_sec`.
 
-Within `sync_sec` (5 s) the running identity process:
+* **Merge** (`POST /api/persons/{id}/merge`, `tools.identity merge`) — the same person was created twice (e.g. once by
+  face, once by voice): all embeddings and face crops move to the target, old ids keep resolving via `merged_into`.
+* **Voice ↔ face auto-link** (`core/cooccurrence.py`) — a new voice heard `link_min_cooccurrences` (3) times while
+  exactly one identified person is in view (≥ 80 % of each segment) and never with somebody else is merged into that
+  face identity; from then on transcripts show the name even off camera. Two people in view → no link. Known
+  identities are never reassigned automatically.
+* **Delete** — embeddings and face crops removed (privacy / GDPR request).
 
-1. adds the stored embeddings to `faces.npz` (merged if Oleh is already enrolled) and reloads it,
-2. moves the crops to `data/faces/Oleh/` (`unknown_3_face_001.jpg`, … + `unknown_3_meta.json`),
-3. records `"unknown_3": "Oleh"` in `data/faces/aliases.json` — `AliasRegistry.resolve()` lets F5 / F7 / reports map
-   labels they stored earlier; event logs are not rewritten (they stay an audit trail),
-4. publishes `person_identified` with `"renamed_from": "unknown_3"`: one notice (`track_id: null`) and one per live
-   track that had the old label,
-5. recognises Oleh as known from then on (new tracks, new sessions).
+The old `faces.npz` and `data/faces/unknown/unknown_N/` folders are imported automatically into an empty registry
+(numbers kept) or with `python -m tools.migrate_faces_npz`; they are not deleted. Renaming folders no longer names
+people — use the People page or `tools.identity`.
 
-`faces.npz` and `aliases.json` changed by another process (e.g. `tools.enroll_face`) are reloaded the same way.
-
-**Privacy.** `data/faces/` (photos, `faces.npz`, unknown people) is git-ignored and stays on the device; only the
-label reaches the bus (and Azure). Unknown people did not consent: their folders are deleted after
-`unknown_retention_days` (30) without a sighting, and `save_unknowns: false` turns storing off. Enroll only people
+**Privacy.** `data/identity.db` and `data/faces/` (face crops in `data/faces/persons/<person_id>/`, legacy files)
+are git-ignored and stay on the device; only person_id + name reach the bus (and the name, in the text digest,
+Azure). Unknown people did not consent: they are deleted after `unknown_retention_days` (30) without a sighting, and
+`store_faces: false` turns storing face crops off. Enroll only people
 who gave written consent (thesis ethics section).
 
 ### Results
