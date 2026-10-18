@@ -53,6 +53,10 @@ class RiskEnvelope:
     def observe(self, event: Event) -> None:
         self.state.observe(event)
 
+    def assess(self, location_id: str, now: Optional[float] = None, local_hour: Optional[float] = None):
+        """:return: (trusted inputs, facts incl. ignored low-trust claims, corridor) of a location — F19 gating"""
+        return self._trusted(location_id, time.time() if now is None else now, local_hour)
+
     def _trusted(self, location_id: str, now: float, local_hour: Optional[float]):
         if local_hour is None:
             moment = datetime.fromtimestamp(now)

@@ -78,6 +78,11 @@ class Outbox:
         self.db.execute("UPDATE outbox SET status = 'failed', attempts = 999, last_error = ? WHERE id = ?",
                         (f"skipped: {reason}"[:500], snapshot_id))
 
+    def mark_handled(self, snapshot_id: str, note: str) -> None:
+        """Handled without GPT (F19 fuzzy-only decision): counts as sent, ``last_error`` keeps the note."""
+        self.db.execute("UPDATE outbox SET status = 'sent', sent_at = ?, last_error = ? WHERE id = ?",
+                        (time.time(), note[:500], snapshot_id))
+
     def counts(self) -> Dict[str, int]:
         return dict(self.db.execute("SELECT status, COUNT(*) FROM outbox GROUP BY status").fetchall())
 

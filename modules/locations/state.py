@@ -27,7 +27,7 @@ RANK = {SAFE: 0, OFFLINE: 0, ATTENTION: 1, DANGER: 2}
 IGNORED_TYPES = ("location_state_changed", "location_summary", "notification", "notification_acked", "heartbeat")
 # F17 risk corridor values shown on the dashboard (the location state itself uses risk_level_final)
 ENVELOPE_FIELDS = ("risk_level_final", "risk_llm", "risk_floor", "risk_ceil", "confirmation", "risk_final",
-                   "envelope_applied", "envelope_reason", "over_reaction")
+                   "envelope_applied", "envelope_reason", "over_reaction", "source")
 
 
 @dataclass

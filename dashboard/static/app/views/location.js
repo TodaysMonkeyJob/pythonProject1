@@ -98,7 +98,8 @@ export function corridorBand(d) {
   const pct = (v) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
   return h("div", { class: "corridor", title: `коридор ${d.risk_floor}–${d.risk_ceil}, GPT ${d.risk_llm}, підсумок ${d.risk_final}` },
     h("div", { class: "band", style: { left: pct(d.risk_floor), width: pct(Math.max(0.01, d.risk_ceil - d.risk_floor)) } }),
-    h("div", { class: "mark llm", style: { left: pct(d.risk_llm) }, title: `GPT ${d.risk_llm}` }),
+    d.risk_llm !== null && d.risk_llm !== undefined
+      ? h("div", { class: "mark llm", style: { left: pct(d.risk_llm) }, title: `GPT ${d.risk_llm}` }) : null,
     h("div", { class: "mark final", style: { left: pct(d.risk_final) }, title: `підсумок ${d.risk_final}` }));
 }
 
@@ -109,15 +110,24 @@ function envelopeReasons(d) {
   return items.length ? h("ul", { class: "env-reasons" }, items.map((x) => h("li", {}, x))) : null;
 }
 
+// F19: who decided — GPT, or the fuzzy rules alone (the LLM call was not needed)
+export function sourceBadge(p) {
+  const fuzzy = p.source === "fuzzy_only";
+  return h("span", { class: `src ${fuzzy ? "fuzzy" : "llm"}`, title: fuzzy ? "рішення без GPT: нечіткі правила (виклик не потрібен)" : "оцінка GPT" },
+    fuzzy ? "без GPT" : "LLM");
+}
+
 function llmPanel(llm) {
   const final = llm.risk_level_final || llm.risk_level;
   return h("div", { class: "llm-panel" },
-    h("div", {}, h("b", { class: `lvl ${final}` }, LEVEL_LABEL[final] || final),
-      final !== llm.risk_level ? h("span", { class: "muted" }, ` (GPT: ${LEVEL_LABEL[llm.risk_level] || llm.risk_level})`) : null,
+    h("div", {}, sourceBadge(llm), " ", h("b", { class: `lvl ${final}` }, LEVEL_LABEL[final] || final),
+      final !== llm.risk_level && llm.source !== "fuzzy_only" ? h("span", { class: "muted" }, ` (GPT: ${LEVEL_LABEL[llm.risk_level] || llm.risk_level})`) : null,
       ` — ${llm.summary} `, h("span", { class: "muted" }, `(${hms(llm.ts)})`)),
     corridorBand(llm),
     llm.risk_floor !== undefined ? h("div", { class: "muted small" },
-      `коридор ${fmt2(llm.risk_floor)}–${fmt2(llm.risk_ceil)} · GPT ${fmt2(llm.risk_llm)} → ${fmt2(llm.risk_final)} · підтвердження c = ${fmt2(llm.confirmation)}`,
+      llm.source === "fuzzy_only"
+        ? `коридор ${fmt2(llm.risk_floor)}–${fmt2(llm.risk_ceil)} · без GPT: ризик = floor ${fmt2(llm.risk_final)}`
+        : `коридор ${fmt2(llm.risk_floor)}–${fmt2(llm.risk_ceil)} · GPT ${fmt2(llm.risk_llm)} → ${fmt2(llm.risk_final)} · підтвердження c = ${fmt2(llm.confirmation)}`,
       llm.over_reaction ? " · GPT, можливо, перебільшує" : "") : null,
     llm.envelope_applied ? h("details", { class: "rejected" },
       h("summary", {}, h("span", { class: "badge-rejected" }, "зниження відхилено")), envelopeReasons(llm)) : null);
@@ -271,7 +281,7 @@ function eventTable() {
 function gptHistory() {
   if (!current.data.llm.length) return h("div", { class: "muted" }, "ще немає");
   return h("div", { class: "scroll-list" }, current.data.llm.slice(0, 50).map((ev) => h("div", { class: `decision ${ev.payload.risk_level_final || ev.payload.risk_level}` },
-    h("div", {}, h("b", {}, ev.payload.risk_level_final || ev.payload.risk_level),
+    h("div", {}, sourceBadge(ev.payload), " ", h("b", {}, ev.payload.risk_level_final || ev.payload.risk_level),
       ev.payload.envelope_applied ? h("span", { class: "badge-rejected" }, `GPT: ${ev.payload.risk_level} — зниження відхилено`) : null,
       ` · ${ev.payload.recommended_action} · `, h("span", { class: "muted" }, hms(ev.timestamp))),
     h("div", {}, ev.payload.summary), corridorBand(ev.payload), ev.payload.envelope_applied ? envelopeReasons(ev.payload) : null,

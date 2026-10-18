@@ -233,7 +233,8 @@ def test_invalid_decision_marks_failed_and_continues(tmp_path):
 def test_no_credentials_module_idles_without_crashing(tmp_path, monkeypatch):
     for name in ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"):
         monkeypatch.delenv(name, raising=False)
-    config = {"llm": {}, "aggregator": {"outbox_path": str(tmp_path / "outbox.db")}}
+    config = {"llm": {}, "aggregator": {"outbox_path": str(tmp_path / "outbox.db")},
+              "logging": {"dir": str(tmp_path / "logs")}}
     worker = LLMWorker(queue.Queue(), queue.Queue(), config)
     worker.setup()
     assert worker.gpt is None and "AZURE_OPENAI_API_KEY" in worker.unavailable
