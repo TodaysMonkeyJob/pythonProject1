@@ -113,7 +113,7 @@ class VisionDetector(BaseModule):
             p = event.payload
             if event.type == "person_identified" and p.get("track_id") is not None \
                     and event.device_id in (self.device_id, "unknown"):  # track ids are per camera
-                if p.get("identity") in (None, "not_visible"):
+                if p.get("identity") in (None, "not_visible", "unidentified"):
                     self.person_names.pop(p["track_id"], None)
                 else:
                     self.person_names[p["track_id"]] = str(p["identity"])

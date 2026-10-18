@@ -13,6 +13,9 @@ Real-time monitoring dashboard (F7): FastAPI + uvicorn in its own process.
 * ``/api/persons`` (F9) — the identity registry: ``GET`` list (+ ``aliases`` of merged ids), ``PATCH /{id}``
   ``{display_name}``, ``POST /{id}/merge`` ``{target_id}``, ``DELETE /{id}``, ``GET /{id}/thumbnail``. The single
   rename point: changes are published as ``identity_*`` events, so every module and browser updates at once.
+  F14: ``GET /api/persons/duplicates`` (review queue), ``POST …/duplicates/scan`` (run the dedup job now),
+  ``POST …/duplicates/{id}/merge`` / ``/reject`` ("not the same person" = permanent cannot-link),
+  ``GET /api/identity/merges`` (history) and ``POST /api/identity/merges/{event_id}/undo``.
 * ``/api/devices`` (F11) — cameras / microphones / sensors with status, location, enabled and the live state of
   their pipelines; ``PATCH /api/devices/{id}`` ``{location_id, name, enabled}``, ``POST /api/locations`` ``{name}``.
   ``/video?device=<id>`` streams one camera.
@@ -334,6 +337,66 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         reg = registry()
         aliases = {pid: reg.resolve(pid) for pid, p in reg.persons.items() if p["merged_into"] and reg.resolve(pid)}
         return {"persons": [person_json(p) for p in reg.list_persons()], "aliases": aliases}
+
+    # --- F14: possible duplicates (review queue of modules.vision.dedup) + merge history with undo ------------------
+
+    def duplicate_json(reg, candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        a, b = reg.get(candidate["person_a"]), reg.get(candidate["person_b"])
+        if a is None or b is None:
+            return None
+        return {"id": candidate["id"], "score": candidate["score"], "evidence": candidate["evidence"],
+                "a": person_json(a), "b": person_json(b)}
+
+    @app.get("/api/persons/duplicates", dependencies=[Depends(auth)])
+    def api_duplicates():
+        reg = registry()
+        items = [d for d in (duplicate_json(reg, c) for c in reg.candidates()) if d]
+        return {"duplicates": items, "count": len(items)}
+
+    @app.post("/api/persons/duplicates/scan", dependencies=[Depends(auth)])
+    def api_duplicates_scan():
+        from modules.vision.dedup import DedupConfig, DedupJob
+
+        reg = registry()
+        cfg = DedupConfig.from_dict(config.get("identity", {}).get("dedup"))
+        report = DedupJob(reg, cfg, publish=reg.publish).run()
+        return {"merged": len(report["merged"]), "queued": len(report["queued"]), "deleted": len(report["deleted"])}
+
+    @app.post("/api/persons/duplicates/{candidate_id}/merge", dependencies=[Depends(auth)])
+    def api_duplicate_merge(candidate_id: int, request: Request):
+        try:
+            event = registry().accept_candidate(candidate_id, by=user_of(request))
+        except KeyError as e:
+            raise HTTPException(404, "no such pending duplicate") from e
+        return {"merged_into": event.payload["person_id"], "event_id": event.payload.get("event_id")}
+
+    @app.post("/api/persons/duplicates/{candidate_id}/reject", dependencies=[Depends(auth)])
+    def api_duplicate_reject(candidate_id: int, request: Request):
+        try:
+            registry().reject_candidate(candidate_id, by=user_of(request))
+        except KeyError as e:
+            raise HTTPException(404, "no such pending duplicate") from e
+        return {"rejected": candidate_id}
+
+    @app.get("/api/identity/merges", dependencies=[Depends(auth)])
+    def api_merges(limit: int = 30):
+        reg = registry()
+        return {"merges": [{"event_id": m["event_id"], "ts": m["ts"], "action": m["action"],
+                            "target_id": m["person_id"], "target_name": reg.name(m["person_id"], m.get("target_name")),
+                            "source_name": m.get("source_name"), "score": m.get("score"),
+                            "moved": len(m.get("moved_face", [])), "dropped": len(m.get("dropped_face", []))
+                            + len(m.get("evicted_face", [])), "undone": m["undone"], "undoable": m["undoable"]}
+                           for m in reg.merges(min(max(1, limit), 200))]}
+
+    @app.post("/api/identity/merges/{event_id}/undo", dependencies=[Depends(auth)])
+    def api_merge_undo(event_id: int, request: Request):
+        try:
+            event = registry().unmerge(event_id, by=user_of(request))
+        except KeyError as e:
+            raise HTTPException(404, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+        return {"restored": event.payload["source_id"], "target": event.payload["person_id"]}
 
     @app.get("/api/persons/{person_id}/thumbnail", dependencies=[Depends(auth)])
     def api_thumbnail(person_id: str):

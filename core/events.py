@@ -39,6 +39,8 @@ EVENT_TYPES = (
     "identity_merged",
     "identity_linked",
     "identity_deleted",
+    "identity_unmerged",    # F14: a merge undone (person_id = target, source_id, event_id)
+    "duplicate_candidate",  # F14 dedup job: a pair queued for review (candidate_id, person_a, person_b, score)
     "device_online",        # F11 device registry (source system): device_id, kind, name, location_id
     "device_offline",
     "device_updated",

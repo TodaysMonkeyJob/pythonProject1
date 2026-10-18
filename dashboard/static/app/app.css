@@ -28,6 +28,7 @@ h2 { font-size: .8em; text-transform: uppercase; letter-spacing: .06em; color: v
 #nav { margin-left: auto; display: flex; gap: 4px; }
 #nav a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; }
 #nav a.on, #nav a:hover { color: var(--text); background: var(--panel2); }
+.dups { color: var(--medium); text-decoration: none; font-weight: 600; }
 #bell { position: relative; } #bell-count { position: absolute; top: -6px; right: -6px; background: var(--critical); color: #fff;
           border-radius: 9px; font-size: 11px; padding: 0 5px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--offline); flex: 0 0 auto; }
@@ -115,6 +116,16 @@ h2 { font-size: .8em; text-transform: uppercase; letter-spacing: .06em; color: v
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
 .card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: #000; }
 .card .name { font-weight: 700; cursor: text; } .card.unknown .name { color: var(--medium); }
+.dup-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); margin-bottom: 14px; }
+.dup { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex;
+       flex-direction: column; gap: 6px; }
+.dup .pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: start; }
+.dup .score { align-self: center; }
+.dup .side { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dup .side img { width: 100%; max-width: 112px; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: #000; }
+.dup .score { font-size: 1.3em; font-weight: 700; text-align: center; }
+.evb { background: var(--panel2); color: var(--text); font-size: 11px; padding: 1px 6px; border-radius: 8px; }
+.merges .row { gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--line); }
 .devrow { display: grid; grid-template-columns: 16px minmax(160px, 1.4fr) 90px 90px minmax(150px, 1fr) 80px 140px; gap: 8px;
           align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .devrow.offline { opacity: .55; }

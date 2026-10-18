@@ -7,6 +7,8 @@ export const store = {
   devices: [],            // /api/devices
   nodeUrl: null,
   persons: {}, aliases: {},
+  duplicates: [],         // F14 review queue: [{id, score, evidence, a, b}]
+  merges: [],             // F14 merge history (undo)
   notifications: [],
   events: [],             // newest last, capped
   status: {},
@@ -51,6 +53,11 @@ export async function loadPersons() {
   store.persons = {}; store.aliases = j.aliases || {};
   j.persons.forEach((p) => { store.persons[p.person_id] = p; });
   emit("persons");
+}
+export async function loadDuplicates() {
+  const [d, m] = await Promise.all([get("/api/persons/duplicates"), get("/api/identity/merges?limit=20")]);
+  store.duplicates = d.duplicates; store.merges = m.merges;
+  emit("duplicates");
 }
 export async function loadNotifications() {
   store.notifications = (await get("/api/notifications?limit=50")).notifications;
@@ -98,12 +105,15 @@ function handle(ev) {
   else if (ev.type.startsWith("identity_")) {
     if (ev.type === "identity_renamed" && store.persons[p.person_id]) store.persons[p.person_id].display_name = p.display_name;
     loadPersons();
+    loadDuplicates().catch(() => {});
     emit("persons");
   }
+  else if (ev.type === "duplicate_candidate") loadDuplicates().catch(() => {});
 }
 
 export async function start() {
-  await Promise.allSettled([loadLocations(), loadDevices(), loadPersons(), loadNotifications(), loadStatus()]);
+  await Promise.allSettled([loadLocations(), loadDevices(), loadPersons(), loadNotifications(), loadStatus(),
+                            loadDuplicates()]);
   connect();
   setInterval(() => loadStatus().catch(() => {}), 3000);
   setInterval(() => loadDevices().catch(() => {}), 10000);

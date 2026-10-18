@@ -4,7 +4,8 @@ import queue
 
 from core.identity import IdentityRegistry
 from modules.vision.identity import IdentityConfig, IdentityEngine, IdentityRecognizer
-from tests.test_identity import ANNA, FRAME, OLEH, STRANGER, FakeFaces, face_row, make_registry, near, person, vec
+from tests.test_identity import (ANNA, FRAME, OLEH, STRANGER, FakeFaces, face_crop, face_row, make_registry, near,
+                                 person, vec)
 
 
 def make_engine(faces_dir=None, **cfg):
@@ -40,15 +41,16 @@ def test_stranger_replaces_known_person():
     engine, faces = make_engine()
     _, t = run(engine, faces, near(OLEH, 1), 10)
     events, _ = run(engine, faces, near(STRANGER, 2), 15, t0=t)
-    assert changes(events) == [("Oleh", "unknown_1")]
-    assert events[0][1] == "warning"
+    # The track starts collecting again; the stranger becomes unknown_1 only after 3 good faces
+    assert changes(events) == [("Oleh", "unidentified"), ("unidentified", "unknown_1")]
+    assert events[-1][1] == "warning"
 
 
 def test_one_stranger_replaces_another():
     engine, faces = make_engine()
     _, t = run(engine, faces, near(STRANGER, 1), 6)
     events, _ = run(engine, faces, vec(500), 10, t0=t)
-    assert changes(events) == [("unknown_1", "unknown_2")]
+    assert changes(events) == [("unknown_1", "unidentified"), ("unidentified", "unknown_2")]
 
 
 def test_single_bad_view_does_not_switch():
@@ -85,12 +87,22 @@ def test_unknown_track_upgraded_after_enrollment():
 
 def test_same_stranger_keeps_collecting_samples(tmp_path):
     engine, faces = make_engine(faces_dir=str(tmp_path / "persons"))
-    faces.aligned_crop = lambda image, face: __import__("numpy").zeros((112, 112, 3), "uint8")
-    run(engine, faces, near(STRANGER, 1), 10)                        # 10 s, retries every 2 s
+    faces.aligned_crop = lambda image, face: face_crop()
+    faces.rows = [face_row()]
+    for t in range(20):                                              # different photos of one stranger
+        faces.embedding = near(STRANGER, t, noise=1.2)
+        engine.update(float(t), FRAME, [person(7)])
     (person_id,) = os.listdir(tmp_path / "persons")                  # no extra unknowns
     assert engine.registry.name(person_id) == "unknown_1"
-    assert len(os.listdir(tmp_path / "persons" / person_id)) == 5
-    assert engine.registry.counts[person_id]["face"] == 5
+    assert len(os.listdir(tmp_path / "persons" / person_id)) >= 2
+    assert 3 <= engine.registry.counts[person_id]["face"] <= 10      # the gallery grows (non-redundant faces)
+
+
+def test_identical_faces_are_not_stored_twice():
+    engine, faces = make_engine()
+    run(engine, faces, near(STRANGER, 1), 30)                        # the very same embedding every time
+    (stranger,) = [p for p in engine.registry.list_persons() if not p["is_known"]]
+    assert stranger["face_samples"] == 1
 
 
 # --- registry changes from other processes (dashboard / CLI) --------------------------------------------------------
@@ -107,7 +119,8 @@ def shared_engine(tmp_path):
 
 def test_rename_elsewhere_relabels_live_track(tmp_path):
     engine, faces, dashboard = shared_engine(tmp_path)
-    (event,), _ = run(engine, faces, near(STRANGER, 1), 1)
+    events, _ = run(engine, faces, near(STRANGER, 1), 3)
+    event = events[-1]
     person_id = event[0]["person_id"]
     assert event[0]["identity"] == "unknown_1" and dashboard.name(person_id) is None   # not polled yet
     dashboard.poll()
@@ -123,8 +136,8 @@ def test_rename_elsewhere_relabels_live_track(tmp_path):
 
 def test_merge_and_delete_elsewhere(tmp_path):
     engine, faces, dashboard = shared_engine(tmp_path)
-    (event,), _ = run(engine, faces, near(STRANGER, 1), 1)
-    stranger = event[0]["person_id"]
+    events, _ = run(engine, faces, near(STRANGER, 1), 3)
+    stranger = events[-1][0]["person_id"]
     dashboard.poll()
     oleh = dashboard.find("Oleh")
     dashboard.merge(stranger, oleh)                                  # it was Oleh with a bad camera angle
@@ -132,8 +145,8 @@ def test_merge_and_delete_elsewhere(tmp_path):
     assert merged[0]["person_id"] == oleh and merged[0]["identity"] == "Oleh"
     dashboard.delete(oleh)
     assert engine.sync() == [] and engine.tracks[7].person_id is None   # identified again on the next frame
-    events, _ = run(engine, faces, near(STRANGER, 3), 1, t0=10)
-    assert events[0][0]["identity"] == "unknown_2"                   # numbers are never reused
+    events, _ = run(engine, faces, near(STRANGER, 3), 3, t0=10)
+    assert events[-1][0]["identity"] == "unknown_2"                   # numbers are never reused
 
 
 def test_identity_events_written_to_jsonl(tmp_path):

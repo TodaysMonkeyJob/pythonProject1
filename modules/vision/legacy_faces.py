@@ -68,7 +68,7 @@ def migrate(registry: IdentityRegistry, npz_path: Optional[str], unknown_dir: Op
                 continue
             registry.ensure_counter(number - 1)
             person_id = registry.create_unknown("face", embeddings[-1])
-            for embedding in embeddings[:-1][-registry.max_embeddings:]:
+            for embedding in embeddings[:-1][-registry.max_faces:]:
                 registry.add_embedding(person_id, "face", embedding)
             report["unknown"] += 1
             report["images"] += _copy_crops(registry, person_id, os.path.join(unknown_dir, name))

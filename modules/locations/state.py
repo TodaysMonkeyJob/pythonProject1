@@ -121,7 +121,7 @@ class LocationStateEngine:
                 loc.people.setdefault(key, self._new_person(event))
         elif event.type == "person_identified" and p.get("track_id") is not None:
             person = loc.people.setdefault(key, self._new_person(event))
-            if p.get("identity") != "not_visible":
+            if p.get("identity") not in ("not_visible", "unidentified"):
                 person.update(person_id=p.get("person_id"), name=p.get("identity"))
         elif event.type == "action" and p.get("track_id") is not None:
             loc.people.setdefault(key, self._new_person(event))["action"] = p.get("action")

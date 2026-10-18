@@ -6,7 +6,7 @@ from tests.test_identity import ANNA, FRAME, OLEH, STRANGER, face_row, make_regi
 CFG = IdentityConfig()
 LEFT_BOX, RIGHT_BOX = [40, 60, 240, 460], [380, 60, 580, 460]
 HUGE_BOX = [0, 0, 640, 480]                      # e.g. someone very close to the camera / a bad detection
-LEFT_FACE, RIGHT_FACE = face_row(x=110, y=80, size=60), face_row(x=450, y=80, size=60)
+LEFT_FACE, RIGHT_FACE = face_row(x=95, y=80, size=90), face_row(x=435, y=80, size=90)
 
 
 class FacesByPosition:
@@ -69,7 +69,7 @@ def test_one_face_two_overlapping_boxes():
 
 
 def test_three_people_stay_stable_over_time():
-    middle_box, middle_face = [210, 60, 410, 460], face_row(x=280, y=80, size=60)
+    middle_box, middle_face = [210, 60, 410, 460], face_row(x=265, y=80, size=90)
     engine = engine_with([(LEFT_FACE, near(OLEH, 1)), (middle_face, near(STRANGER, 2)), (RIGHT_FACE, near(ANNA, 3))])
     persons = [{"track_id": 1, "bbox": LEFT_BOX}, {"track_id": 2, "bbox": middle_box},
                {"track_id": 3, "bbox": RIGHT_BOX}]
@@ -77,4 +77,4 @@ def test_three_people_stay_stable_over_time():
     for t in range(30):
         events += engine.update(float(t), FRAME, persons)
     assert identities(events) == {1: "Oleh", 2: "unknown_1", 3: "Anna"}
-    assert len(events) == 3                                                     # no flip-flopping
+    assert len(events) == 4              # the stranger: unidentified → unknown_1; no flip-flopping afterwards

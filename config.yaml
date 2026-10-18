@@ -132,7 +132,47 @@ identity:                   # F3 faces + F9 unified identity registry (faces and
   face_threshold: 0.45      # SFace cosine ≥ this → known person; LFW: 100 % known, 0 % strangers accepted
   unknown_threshold: 0.45   # cosine ≥ this → the same unknown_N as earlier (also after a restart)
   voice_threshold: 0.30     # ECAPA cosine ≥ this → the same voice (python -m tools.calibrate_voice → EER)
-  max_embeddings: 20        # best samples kept per person and modality (centroid = their mean)
+  max_embeddings: 20        # voices: longest samples kept per person (centroid = their mean)
+  # F14 (TOD-25) — no more duplicate unknowns. Faces: a gallery of prototypes per person, matched by the mean of
+  # the top-3 similarities; only good, non-redundant faces are admitted (core/gallery.py).
+  max_face_embeddings_per_person: 30
+  redundant_similarity: 0.9 # a face this similar to a stored prototype adds nothing → skipped
+  gallery_quotas: {min_frontal: 3, max_per_yaw: 8}   # keep variations: ≥ 3 frontal, ≤ 8 left / right
+  quality:                  # quality gate before any embedding (modules/vision/face_quality.py)
+    min_score: 0.85         # YuNet score
+    min_face_size: 80       # px; smaller faces are never embedded (track stays "unidentified")
+    min_eye_distance: 30
+    truncation_margin: 0.05 # face box + landmarks this far (× face size) inside the frame
+    max_yaw: 35             # degrees → good; up to usable_yaw / usable_pitch → usable (match only, never stored)
+    max_pitch: 25
+    usable_yaw: 50
+    usable_pitch: 35
+    min_sharpness: 60       # Laplacian variance of the aligned 112 px crop (usable down to usable_sharpness)
+    usable_sharpness: 25
+    min_brightness: 40
+    max_brightness: 220
+  # Track-level decisions (modules/vision/track_identity.py)
+  collect_sec: 0.5          # tracks that show a face are sampled this often
+  strong_threshold: 0.60    # one face this similar decides at once
+  vote_ratio: 0.6           # else ≥ 60 % of the track's good faces must match the same person
+  min_good_faces_for_unknown: 3   # a new unknown_N needs this many good faces …
+  min_unknown_span_sec: 1.0       # … over at least this long, matching nobody
+  enrich_min_similarity: 0.30     # an identified track's good faces this similar enter the person's gallery
+  continuity_sec: 5         # unknown created this soon after a track of X was lost nearby → dedup bonus
+  cannot_link_window: 10    # people face-confirmed in one frame within this window are never merged
+  cannot_link_same_location_sec: 0   # > 0: also two cameras of one location within N s (off: they may see one person)
+  undo_days: 7              # merges can be undone this long (archived embeddings are purged afterwards)
+  store_review_crops: true  # with store_faces off: ≤ 3 crops per unknown for the duplicates review only
+  review_crops_dir: data/faces/review
+  metrics_path: reports/identity_metrics.json   # daily: unknowns / hour, rejected faces, merges, undos, gallery sizes
+  dedup:                    # duplicates job (modules/vision/dedup.py), also "Перевірити зараз" on the People page
+    dedup_interval_min: 10
+    auto_merge_threshold: 0.62   # gallery score ≥ this and no cannot-link → merged automatically
+    review_threshold: 0.42       # between the two → "Possible duplicates" review queue
+    continuity_bonus: 0.05
+    voice_bonus: 0.05
+    stale_unknown_days: 3        # unknowns with < min_good_faces faces, no voice, unseen this long → deleted
+    min_good_faces: 3
   link_min_cooccurrences: 3 # a new voice heard while ONE person is alone in view this often → linked to that face
   link_presence_ratio: 0.8  # … for at least 80 % of the speech segment
   retry_sec: 2.0            # retry unknown / not visible tracks this often
