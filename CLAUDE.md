@@ -116,6 +116,15 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     regular ones once per `min_llm_interval_sec` (older ones skipped). Offline / 429 / 5xx → backoff, rows stay
     pending; no keys → idles. `azure_client.create_client` is shared with Whisper (AzureOpenAI when
     AZURE_OPENAI_API_VERSION is set, else the v1 `OpenAI(base_url=…)`). `tools/test_llm.py` (`--dry-run`) — 10 cases.
+- `core/fuzzy/` — F15 (TOD-26) Mamdani fuzzy inference core (numpy only, no network, ≈ 0.25 ms per `infer()` on the
+  dev Mac; target ≤ 5 ms on the Pi), shared by the fuzzy trust layer (TOD-27) and the risk corridor (TOD-28):
+  `membership.py` (tri / trap / gauss, list = max for wrap-around terms), `variables.py` (`LinguisticVariable`,
+  per-gas `variants`, `default` for missing inputs), `rules.py` (`IF … AND / OR / NOT (…) THEN risk IS x [WITH w]`),
+  `engine.py` (`FuzzyEngine.from_config(path, location_id)` → `infer()` = crisp + output-term activations + readable
+  `fired_rules`; `fuzzify()`), `validate.py` (unknown variables / terms, universe gaps, duplicate / conflicting rules
+  → `FuzzyConfigError`). Config `config/fuzzy.yaml` (variables, rules R1–R22, `maps.action_risk`, `locations:`
+  overrides: terms / shift / rules / remove_rules / weights; also `fuzzy:` blocks in `config/locations.yaml`).
+  `python -m core.fuzzy --check` / `python -m core.fuzzy gas_concentration=4.2 gas=acetone --location warehouse`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —
