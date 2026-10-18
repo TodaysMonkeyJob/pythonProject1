@@ -15,6 +15,19 @@ network:                    # F11: devices of this node, found automatically (no
                             # - {match: "FaceTime", location: room_a}
                             # - {match: "Steam", enabled: false}
 
+locations:                  # F12: per-location state (safe / attention / danger / offline) + notifications
+  enabled: true
+  seed_file: config/locations.yaml   # optional (see config/locations.example.yaml); edit locations on the dashboard
+  attention_window_min: 5   # warnings this recent → attention
+  cooldown_min: 2           # danger → attention only after this long without new critical events (or Acknowledge)
+  llm_valid_min: 10         # a GPT risk counts for this long
+  summary_interval_sec: 1.5 # live location summaries pushed to the dashboard while something changes (≤ 2 s)
+  notify:
+    path: data/notifications.db
+    repeat_min: 5           # the same location + reason at most once per this long
+    telegram: true          # only with TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID in .env
+    telegram_levels: [danger]
+
 orchestrator:               # main.py (F4)
   child_threads: 2          # CPU threads per module process (OMP / BLAS); a section's `threads` overrides it
   missed_heartbeats: 3      # × 5 s without a heartbeat → restart the module
@@ -214,11 +227,10 @@ gas:
 
 aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
   enabled: true
-  export_dir: exports
-  export_csv: true          # exports/events_YYYY-MM-DD.csv
-  snapshot_dir: exports/snapshots
-  write_snapshot_files: true
-  outbox_path: exports/outbox.db   # SQLite queue read by F6 (pending / sent / failed)
+  global_snapshot_min: 10   # F12: "whole site" digest (one line per active location) for GPT; 0 = off
+  export_dir: exports       # everything below lives here (set snapshot_dir / outbox_path to move one part)
+  export_csv: true          # <export_dir>/events_YYYY-MM-DD.csv
+  write_snapshot_files: true  # <export_dir>/snapshots/*.json; the SQLite queue read by F6: <export_dir>/outbox.db
   snapshot_interval_sec: 60 # regular snapshot, only if the scene is active or something changed
   max_snapshot_bytes: 2048  # token budget: details are dropped until the JSON fits
   max_text_chars: 200       # per transcript

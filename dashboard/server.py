@@ -16,6 +16,9 @@ Real-time monitoring dashboard (F7): FastAPI + uvicorn in its own process.
 * ``/api/devices`` (F11) — cameras / microphones / sensors with status, location, enabled and the live state of
   their pipelines; ``PATCH /api/devices/{id}`` ``{location_id, name, enabled}``, ``POST /api/locations`` ``{name}``.
   ``/video?device=<id>`` streams one camera.
+* F12 (TOD-23): ``/api/locations`` CRUD (+ ``/reorder``, ``/{id}/summary``, ``/{id}/ack``) — live summaries come as
+  ``location_summary`` events and are pushed to the browsers; ``/api/notifications`` (``?unacked=true``,
+  ``POST /{id}/ack``). Acknowledging publishes ``notification_acked`` (the locations module clears the alerts).
 
 HTTP Basic auth with ``DASHBOARD_USER`` / ``DASHBOARD_PASS`` (.env). Without credentials the server only listens on
 127.0.0.1. F11: a second HTTPS server (``network.node_port``, 8443, self-signed certificate from the system openssl)
@@ -83,6 +86,10 @@ class DashboardState:
         self.recent: Deque[str] = collections.deque(maxlen=500)
         self.registry = None  # core.identity.IdentityRegistry (F9), set by the module
         self.devices = None   # core.devices.DeviceRegistry (F11), set by the module
+        self.locations = None      # core.locations.LocationRegistry (F12)
+        self.notifications = None  # modules.notify.service.NotificationService (F12; list / acknowledge)
+        self.summaries: Dict[str, Dict[str, Any]] = {}   # location_id → latest location_summary
+        self.publish = None        # BaseModule.publish of the dashboard module
         from dashboard.node import NodeHub
 
         self.node_hub = NodeHub(self, config)
@@ -95,6 +102,11 @@ class DashboardState:
             return
         if event.type == "heartbeat":
             self.heartbeats[event.payload.get("module", "?")] = {**event.payload, "at": time.time()}
+            return
+        if event.type == "location_summary":  # live, every ~2 s: pushed, not kept in the event history
+            self.summaries[event.payload["location_id"]] = event.payload
+            if self.loop is not None and self.clients:
+                asyncio.run_coroutine_threadsafe(self.broadcast(data), self.loop)
             return
         if event.type == "mic_state":
             self.mic_state = event.payload.get("state")
@@ -343,11 +355,102 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         except ValueError as e:
             raise HTTPException(422, str(e)) from e
 
+    # --- locations + notifications (F12) -------------------------------------------------------------------------
+
+    def locations():
+        if state.locations is None:
+            raise HTTPException(503, "location registry not available")
+        return state.locations
+
+    def location_json(location: Dict[str, Any]) -> Dict[str, Any]:
+        summary = state.summaries.get(location["location_id"], {})
+        return {**location, "state": summary.get("state", "safe"), "summary": summary or None}
+
+    def user_of(request: Request) -> str:
+        header = request.headers.get("authorization", "")
+        try:
+            return base64.b64decode(header.split(" ", 1)[1]).decode().partition(":")[0] or "dashboard"
+        except Exception:
+            return "dashboard"
+
+    def acked(location_id: str, by: str, notification_id: Optional[str] = None) -> None:
+        if state.publish is not None:
+            from core.events import make_event
+
+            state.publish(make_event("system", "notification_acked", {"location_id": location_id, "by": by,
+                                                                       "id": notification_id},
+                                     location_id=location_id))
+
+    @app.get("/api/locations", dependencies=[Depends(auth)])
+    def api_locations():
+        locations().poll()
+        return {"locations": [location_json(loc) for loc in locations().list()]}
+
     @app.post("/api/locations", dependencies=[Depends(auth)])
-    def api_add_location(name: Annotated[str, Body(embed=True)]):
-        if not name.strip():
-            raise HTTPException(422, "empty name")
-        return devices().add_location(name)
+    def api_add_location(name: Annotated[str, Body()], icon: Annotated[str, Body()] = "",
+                         order: Annotated[Optional[int], Body()] = None,
+                         rules: Annotated[Optional[Dict[str, Any]], Body()] = None):
+        try:
+            return location_json(locations().create(name, order, icon, rules))
+        except ValueError as e:
+            raise HTTPException(422 if not name.strip() else 409, str(e)) from e
+
+    @app.patch("/api/locations/{location_id}", dependencies=[Depends(auth)])
+    def api_update_location(location_id: str, name: Annotated[Optional[str], Body()] = None,
+                            icon: Annotated[Optional[str], Body()] = None,
+                            order: Annotated[Optional[int], Body()] = None,
+                            rules: Annotated[Optional[Dict[str, Any]], Body()] = None):
+        try:
+            return location_json(locations().update(location_id, name, order, icon, rules))
+        except KeyError as e:
+            raise HTTPException(404, "unknown location") from e
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+
+    @app.delete("/api/locations/{location_id}", dependencies=[Depends(auth)])
+    def api_delete_location(location_id: str):
+        try:
+            moved = locations().delete(location_id)
+        except KeyError as e:
+            raise HTTPException(404, "unknown location") from e
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        state.summaries.pop(location_id, None)
+        return {"deleted": location_id, "devices_moved_to_unassigned": moved}
+
+    @app.post("/api/locations/reorder", dependencies=[Depends(auth)])
+    def api_reorder(order: Annotated[List[str], Body(embed=True)]):
+        return {"locations": [location_json(loc) for loc in locations().reorder(order)]}
+
+    @app.get("/api/locations/{location_id}/summary", dependencies=[Depends(auth)])
+    def api_location_summary(location_id: str):
+        if location_id not in state.summaries:
+            raise HTTPException(404, "no summary yet")
+        return state.summaries[location_id]
+
+    @app.post("/api/locations/{location_id}/ack", dependencies=[Depends(auth)])
+    def api_ack_location(location_id: str, request: Request):
+        by = user_of(request)
+        count = state.notifications.ack_location(location_id, by) if state.notifications is not None else 0
+        acked(location_id, by)
+        return {"acknowledged": location_id, "notifications": count, "by": by}
+
+    @app.get("/api/notifications", dependencies=[Depends(auth)])
+    def api_notifications(unacked: bool = False, limit: int = 100):
+        if state.notifications is None:
+            raise HTTPException(503, "notifications not available")
+        return {"notifications": state.notifications.list(unacked=unacked, limit=min(limit, 500))}
+
+    @app.post("/api/notifications/{notification_id}/ack", dependencies=[Depends(auth)])
+    def api_ack_notification(notification_id: str, request: Request):
+        if state.notifications is None:
+            raise HTTPException(503, "notifications not available")
+        by = user_of(request)
+        note = state.notifications.ack(notification_id, by)
+        if note is None:
+            raise HTTPException(404, "unknown notification")
+        acked(note["location_id"], by, notification_id)
+        return note
 
     from dashboard.node import add_node_routes, preview_frames
 
@@ -457,6 +560,18 @@ class DashboardModule(BaseModule):
                                                 publish=self.publish)
         except Exception as e:
             logger.error(f"Device registry unavailable: {e}")
+        try:
+            from core.locations import LocationRegistry
+            from modules.notify.service import NotificationService
+
+            network = self.config.get("network", {})
+            self.state.locations = LocationRegistry(network.get("devices_path", "data/devices.db"),
+                                                    publish=self.publish)
+            self.state.notifications = NotificationService.from_config(
+                {**self.config.get("locations", {}), "telegram_bot_token": None})  # sending is the locations module's
+        except Exception as e:
+            logger.error(f"Locations / notifications unavailable: {e}")
+        self.state.publish = self.publish
         self.state.node_hub.publish = self.publish
         app = create_app(self.state, self.config)
         self.start_node_server(app)
@@ -492,6 +607,9 @@ class DashboardModule(BaseModule):
             self.state.registry.close()
         if self.state.devices is not None:
             self.state.devices.close()
+        for resource in (self.state.locations, self.state.notifications):
+            if resource is not None:
+                resource.close()
 
 
 def run(event_queue, control_queue, config):

@@ -52,6 +52,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     remote `browser` / `rtsp` devices (on their device_online / offline). Child processes get small OMP / BLAS
     thread pools via env (`orchestrator.child_threads`, `<section>.threads`) — without them 4 cameras were 14× slower.
   - `tls.py` (self-signed HTTPS cert via the system openssl), `onvif.py` (WS-Discovery probe, stdlib).
+  - `locations.py` — F12 (TOD-23) `LocationRegistry`: the `locations` table of `devices.db` (order, icon, rules:
+    `unknown_person_after`, `gas_thresholds`, `attention_window_min`, `cooldown_min`); delete moves devices to
+    `unassigned`; seed `config/locations.yaml` (example: `config/locations.example.yaml`).
   - Remote nodes (see `deploy/NETWORK.md`, no MQTT / extra programs): `dashboard/node.py` on the HTTPS port 8443 —
     pairing codes → tokens (hashes in `devices.db`), phone page `static/node.html` (JPEG `0x01` + PCM `0x02` over WSS →
     `IngestSource` shared buffer / `SocketSource` unix socket), Pi agents (`node_agent/agent.py` + `modules/uplink.py`:
@@ -106,6 +109,14 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     regular ones once per `min_llm_interval_sec` (older ones skipped). Offline / 429 / 5xx → backoff, rows stay
     pending; no keys → idles. `azure_client.create_client` is shared with Whisper (AzureOpenAI when
     AZURE_OPENAI_API_VERSION is set, else the v1 `OpenAI(base_url=…)`). `tools/test_llm.py` (`--dry-run`) — 10 cases.
+- `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
+  events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
+  per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —
+  not logged, dashboard only — every 1.5 s on change; notifies). `modules/notify/service.py`: `data/notifications.db`,
+  rate limit per (location, reason), Telegram via plain HTTPS for `danger` (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID).
+  The aggregator keeps one scene per location (immediate snapshot of the critical location only, location name +
+  rules in the digest, `global` site snapshot every `global_snapshot_min`); the LLM worker throttles per location
+  and `llm_decision` carries `location_id`.
 - `dashboard/` — F7 (TOD-18): `server.DashboardModule` runs uvicorn (FastAPI) in a background thread on
   `dashboard.port` (8000); the orchestrator forwards all events + heartbeats (`subscribe: ["*", "heartbeat"]`).
   `/api/persons` (F9: list, PATCH rename, POST merge, DELETE, thumbnail) is the single rename point.
@@ -208,6 +219,7 @@ YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 - `multi_model_sentence_data.xlsx`, `speech_to_text_whisper/warmup_audio.wav` — data/binaries.
 - `speech_to_text_whisper/voices/`, `model/` — reference voices and model cache (never commit).
 - `data/devices.db*` — the user's device registry (locations, enabled, node tokens), never delete.
+- `data/notifications.db*`, `exports/` — the user's notifications / snapshots / outbox (live runs: redirect them).
 - `data/tls/` (hub HTTPS key), `data/node_agent/` (edge token) — secrets, git-ignored, never commit.
 - `data/faces/`, `data/identity.db*` — face photos, face / voice embeddings (biometric data, git-ignored, never
   commit). Tests must use `tmp_path` registries and log dirs: `tests/conftest.py` fails the run if real

@@ -1,0 +1,19 @@
+# Copy to config/locations.yaml to seed the locations on the first start (then edit them on the dashboard).
+locations:
+  - id: warehouse
+    name: "Warehouse"
+    order: 1                  # position in the dashboard carousel
+    icon: "📦"
+    rules:                    # optional per-location overrides
+      unknown_person_after: "20:00"   # an unknown person only counts as a warning from 20:00 to 06:00
+      gas_thresholds: {acetone: 3.0}  # % — a reading above is critical (danger) in this location
+  - id: office
+    name: "Office"
+    order: 2
+    icon: "💼"
+  - id: entrance
+    name: "Entrance"
+    order: 3
+    icon: "🚪"
+    rules:
+      cooldown_min: 5         # stays red longer after an alarm

@@ -137,10 +137,11 @@ def test_person_enters_mic_active_within_one_second(tmp_path):
 def test_module_specs_from_config():
     config = load_config()
     names = [s.name for s in Orchestrator.module_specs(config)]
-    assert names == ["gas", "actions", "identity", "aggregator", "llm", "dashboard"]   # cameras / mics: per device
+    # cameras / microphones run per device
+    assert names == ["gas", "actions", "identity", "aggregator", "llm", "locations", "dashboard"]
     config["network"]["discovery"] = False
     names = [s.name for s in Orchestrator.module_specs(config)]
-    assert names == ["gas", "vision", "actions", "identity", "audio", "aggregator", "llm", "dashboard"]
+    assert names == ["gas", "vision", "actions", "identity", "audio", "aggregator", "llm", "locations", "dashboard"]
     config["identity"]["enabled"] = False
     config["orchestrator"]["modules"] = {"gas": {"enabled": False}, "audio": {"target": "modules.audio:run"}}
     specs = {s.name: s for s in Orchestrator.module_specs(config)}
