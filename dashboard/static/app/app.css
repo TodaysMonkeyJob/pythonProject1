@@ -105,6 +105,22 @@ h2 { font-size: .8em; text-transform: uppercase; letter-spacing: .06em; color: v
 .vrow.sev-warning { color: var(--medium); }
 .chart { width: 100%; height: 220px; display: block; } .bar { width: 100%; height: 24px; display: block; border-radius: 4px; }
 .state-list { margin-top: 6px; font-size: .9em; }
+.corridor { position: relative; height: 12px; margin: 6px 0 2px; border-radius: 6px;
+            background: linear-gradient(90deg, var(--low), var(--medium) 40%, var(--high) 65%, var(--critical)); opacity: .9; }
+.corridor .band { position: absolute; top: -2px; bottom: -2px; border: 2px solid var(--text); border-radius: 4px; background: #ffffff22; }
+.corridor .mark { position: absolute; top: -5px; width: 0; height: 22px; transform: translateX(-1px); }
+.corridor .mark.llm { border-left: 2px dashed var(--text); }
+.corridor .mark.final { border-left: 3px solid var(--text); }
+.corridor .mark.final::after { content: ""; position: absolute; top: -4px; left: -6px; width: 9px; height: 9px; border-radius: 50%;
+                               background: var(--text); }
+.badge-rejected { display: inline-block; background: var(--critical); color: #fff; border-radius: 8px; padding: 0 7px;
+                  font-size: 11px; font-weight: 700; margin-left: 6px; }
+.rejected summary { cursor: pointer; list-style: none; } .env-reasons { margin: 4px 0 0 16px; padding: 0; font-size: 12px; }
+.llm-panel .lvl.low { color: var(--low); } .llm-panel .lvl.medium { color: var(--medium); }
+.llm-panel .lvl.high { color: var(--high); } .llm-panel .lvl.critical { color: var(--critical); }
+.small { font-size: 12px; }
+.trust { font-size: 11px; border-radius: 6px; padding: 0 5px; margin-left: 4px; white-space: nowrap; background: var(--panel2); }
+.trust.t-low { color: var(--critical); } .trust.t-medium { color: var(--medium); } .trust.t-high { color: var(--low); }
 .decision { border-left: 4px solid var(--muted); padding: 4px 8px; margin-bottom: 6px; background: var(--panel2); }
 .decision.low { border-color: var(--low); } .decision.medium { border-color: var(--medium); }
 .decision.high { border-color: var(--high); } .decision.critical { border-color: var(--critical); }

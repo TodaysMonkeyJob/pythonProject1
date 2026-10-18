@@ -311,6 +311,10 @@ trust:                      # F16 (TOD-27): fuzzy trust degree on every evidence
   enabled: true
   fuzzy_config: config/fuzzy.yaml   # trust section: base values, source / asr / identity rules, claim patterns
 
+envelope:                   # F17 (TOD-28): fuzzy risk corridor around GPT decisions (LLM worker)
+  enabled: true             # parameters: envelope section of trust.fuzzy_config (θ, levels, confirmation rules)
+  log: true                 # every decision with all intermediate values → logs/<date>/envelope.jsonl
+
 dashboard:                  # F7: http://<pi-ip>:8000 (login DASHBOARD_USER / DASHBOARD_PASS from .env)
   enabled: true
   host: 0.0.0.0             # without DASHBOARD_USER / DASHBOARD_PASS the server only listens on 127.0.0.1

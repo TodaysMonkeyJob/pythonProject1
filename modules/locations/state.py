@@ -25,6 +25,9 @@ from core.events import Event, utc_timestamp
 SAFE, ATTENTION, DANGER, OFFLINE = "safe", "attention", "danger", "offline"
 RANK = {SAFE: 0, OFFLINE: 0, ATTENTION: 1, DANGER: 2}
 IGNORED_TYPES = ("location_state_changed", "location_summary", "notification", "notification_acked", "heartbeat")
+# F17 risk corridor values shown on the dashboard (the location state itself uses risk_level_final)
+ENVELOPE_FIELDS = ("risk_level_final", "risk_llm", "risk_floor", "risk_ceil", "confirmation", "risk_final",
+                   "envelope_applied", "envelope_reason", "over_reaction")
 
 
 @dataclass
@@ -137,7 +140,8 @@ class LocationStateEngine:
                                                 f"(rule of {self.names(loc.location_id)})")
         if event.type == "llm_decision":
             loc.last_llm = {"risk_level": p.get("risk_level"), "summary": p.get("summary"), "ts": event.timestamp,
-                            "at": now, "event_id": event.event_id}
+                            "at": now, "event_id": event.event_id,
+                            **{k: p[k] for k in ENVELOPE_FIELDS if k in p}}
         elif event.severity == "critical" and event.source != "llm":
             self._critical(loc, event, now, describe(event))
         elif event.severity == "warning" and event.source != "llm" and self._counts_as_warning(event):
@@ -184,7 +188,7 @@ class LocationStateEngine:
         open_alerts = [a for a in loc.alerts if not a.acknowledged]
         llm = loc.last_llm if loc.last_llm and now - loc.last_llm["at"] < self.llm_valid \
             and loc.last_llm["at"] > loc.acknowledged_at else None
-        risk = llm["risk_level"] if llm else None
+        risk = (llm.get("risk_level_final") or llm["risk_level"]) if llm else None   # F17: the bounded risk
         if open_alerts and now - loc.last_critical < cooldown:
             reasons = "; ".join(dict.fromkeys(a.reason for a in open_alerts[-3:]))
             return DANGER, reasons, [a.event_id for a in open_alerts]
@@ -232,7 +236,8 @@ class LocationStateEngine:
                 "since": utc_timestamp(datetime.fromtimestamp(loc.since).astimezone()) if loc.since else None,
                 "people": people[:20], "people_count": len(people), "last_speech": loc.last_speech, "gas": loc.gas,
                 "devices": {"online": sum(d["status"] == "online" for d in devices), "total": len(devices)},
-                "last_llm": {k: llm[k] for k in ("risk_level", "summary", "ts")} if llm else None,
+                "last_llm": {k: llm[k] for k in ("risk_level", "summary", "ts", *ENVELOPE_FIELDS) if k in llm}
+                if llm else None,
                 "active_alerts": sum(not a.acknowledged for a in loc.alerts),
                 "updated_at": utc_timestamp()}
 

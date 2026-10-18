@@ -32,6 +32,7 @@ EVENT_TYPES = (
     "gas_reading",
     "alert",
     "llm_decision",
+    "deescalation_rejected",    # F17: the risk corridor raised the LLM's level (attack success rate metrics)
     "heartbeat",
     "scene_active",
     "mic_state",
