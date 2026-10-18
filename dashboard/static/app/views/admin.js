@@ -1,6 +1,6 @@
-// Separate pages from the top bar: People (rename / merge / delete), Devices (locations, on/off, pairing, RTSP,
-// ONVIF), Locations (create / rename / reorder / rules / delete).
-import { api, loadDevices, loadLocations, loadPersons, store } from "../store.js";
+// Separate pages from the top bar: People (possible duplicates, rename / merge / delete, merge history with undo),
+// Devices (locations, on/off, pairing, RTSP, ONVIF), Locations (create / rename / reorder / rules / delete).
+import { api, loadDevices, loadDuplicates, loadLocations, loadPersons, store } from "../store.js";
 import { dialog, h, hms } from "../ui.js";
 
 const KIND = { camera: "камера", mic: "мікрофон", gas: "газ" };
@@ -8,9 +8,57 @@ const guard = (fn) => async (...args) => { try { await fn(...args); } catch (e) 
 
 export function renderPeople(root) {
   const list = Object.values(store.persons).sort((a, b) => (b.is_known - a.is_known) || String(b.last_seen).localeCompare(String(a.last_seen)));
+  const refresh = async () => { await Promise.all([loadPersons(), loadDuplicates()]); renderPeople(root); };
   root.replaceChildren(h("div", { class: "admin" }, h("h1", {}, "Люди"),
+    duplicatesSection(refresh),
     h("p", { class: "muted" }, "Клікніть ім'я, щоб перейменувати — зміниться всюди одразу."),
-    h("div", { class: "cards" }, list.length ? list.map((p) => personCard(p, list, root)) : h("div", { class: "muted" }, "реєстр порожній"))));
+    h("div", { class: "cards" }, list.length ? list.map((p) => personCard(p, list, root)) : h("div", { class: "muted" }, "реєстр порожній")),
+    mergeHistory(refresh)));
+}
+
+// --- F14: possible duplicates (the dedup job's review queue) ----------------------------------------------------------
+const EVIDENCE = { continuity: "трек продовжився", voice: "той самий голос" };
+
+function side(p) {
+  return h("div", { class: "side" },
+    h("img", { alt: p.display_name, loading: "lazy", src: `/api/persons/${encodeURIComponent(p.person_id)}/thumbnail?v=${p.face_samples}` }),
+    h("b", { class: p.is_known ? "" : "muted" }, p.display_name),
+    h("span", { class: "muted" }, `обличчя: ${p.face_samples}${p.voice_samples ? ` · голос: ${p.voice_samples}` : ""}`),
+    h("span", { class: "muted" }, p.last_seen ? `востаннє: ${new Date(p.last_seen).toLocaleString("uk-UA")}` : "—"));
+}
+
+function duplicatesSection(refresh) {
+  const items = store.duplicates;
+  const cards = items.map((d) => h("div", { class: "dup" },
+    h("div", { class: "pair" }, side(d.a), h("div", { class: "score", title: "схожість галерей облич" }, `${Math.round(d.score * 100)}%`), side(d.b)),
+    h("div", { class: "row" }, Object.entries(EVIDENCE).filter(([k]) => d.evidence[k]).map(([, label]) => h("span", { class: "evb" }, label)),
+      h("span", { class: "evb", title: "центроїди" }, `центр ${Math.round((d.evidence.centroid || 0) * 100)}%`)),
+    h("div", { class: "row" },
+      h("button", { onclick: guard(async () => { await api("POST", `/api/persons/duplicates/${d.id}/merge`); await refresh(); }) }, "Об'єднати"),
+      h("button", { title: "більше ніколи не пропонувати цю пару", onclick: guard(async () => {
+        await api("POST", `/api/persons/duplicates/${d.id}/reject`); await refresh(); }) }, "Це різні люди"))));
+  return h("section", {},
+    h("div", { class: "row" }, h("h2", {}, `Можливі дублікати${items.length ? ` (${items.length})` : ""}`),
+      h("button", { title: "запустити пошук дублікатів зараз", onclick: guard(async () => {
+        const r = await api("POST", "/api/persons/duplicates/scan"); await refresh();
+        alert(`Об'єднано автоматично: ${r.merged}, на перевірку: ${r.queued}, видалено сміттєвих: ${r.deleted}`); }) }, "Перевірити зараз")),
+    items.length ? h("div", { class: "dup-list" }, cards) : h("p", { class: "muted" }, "немає пар на перевірку"));
+}
+
+const MERGE_KIND = { auto_merge: "авто", review_merge: "перевірка", merge: "вручну", link_voice: "голос" };
+
+function mergeHistory(refresh) {
+  if (!store.merges.length) return null;
+  return h("section", { class: "merges" }, h("h2", {}, "Історія об'єднань"),
+    store.merges.map((m) => h("div", { class: "row" },
+      h("span", { class: "muted" }, new Date(m.ts * 1000).toLocaleString("uk-UA")),
+      h("span", {}, `${m.source_name} → ${m.target_name}`),
+      h("span", { class: "evb" }, MERGE_KIND[m.action] || m.action),
+      h("span", { class: "muted" }, `перенесено ${m.moved}, відкинуто ${m.dropped}${m.score ? ` · ${Math.round(m.score * 100)}%` : ""}`),
+      m.undone ? h("span", { class: "muted" }, "скасовано")
+        : m.undoable ? h("button", { onclick: guard(async () => {
+          if (!confirm(`Скасувати об'єднання ${m.source_name} → ${m.target_name}? Обидві людини відновляться.`)) return;
+          await api("POST", `/api/identity/merges/${m.event_id}/undo`); await refresh(); }) }, "Скасувати") : null)));
 }
 
 function personCard(p, list, root) {

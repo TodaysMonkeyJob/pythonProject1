@@ -57,16 +57,23 @@ def test_create_unknown_uses_one_global_counter_and_matches(registry, bus):
     assert bus[0].source == "system" and bus[0].payload["display_name"] == "unknown_1"
 
 
-def test_add_embedding_keeps_k_best_and_recomputes_centroid(registry):
-    pid = registry.create_unknown("face", face(10), quality=0.1)
+def test_voices_keep_k_longest_and_face_gallery_is_bounded(tmp_path):
+    registry = IdentityRegistry(str(tmp_path / "g.db"), {"max_embeddings": 5, "max_face_embeddings_per_person": 5})
+    pid = registry.create_unknown("voice", voice(10), duration_sec=0.1)
     for i in range(8):
-        registry.add_embedding(pid, "face", face(20 + i, OLEH_FACE), quality=0.5 + i / 100)
-    assert registry.counts[pid]["face"] == 5                                         # K = 5
-    qualities = [q for (q,) in registry.db.execute("SELECT quality FROM face_embeddings")]
-    assert min(qualities) >= 0.53                                                    # the worst ones dropped
-    assert float(registry.centroid(pid, "face") @ OLEH_FACE) > 0.95                 # the outlier is gone
+        registry.add_embedding(pid, "voice", voice(20 + i, OLEH_VOICE), duration_sec=0.5 + i / 100)
+    assert registry.counts[pid]["voice"] == 5                                        # K = 5
+    durations = [d for (d,) in registry.db.execute("SELECT duration_sec FROM voice_embeddings")]
+    assert min(durations) >= 0.53                                                    # the shortest dropped
+    assert float(registry.centroid(pid, "voice") @ OLEH_VOICE) > 0.95                # the outlier is gone
+    person = registry.create_unknown("face", face(30, OLEH_FACE, noise=1.5))
+    for i in range(12):                                                              # diverse photos
+        registry.add_embedding(person, "face", face(40 + i, OLEH_FACE, noise=1.5), meta={"tier": "good"})
+    assert registry.counts[person]["face"] == 5                                      # gallery limit
+    assert not registry.add_embedding(person, "face", face(60, OLEH_FACE), meta={"tier": "usable"})
     with pytest.raises(ValueError):
         registry.add_embedding(pid, "face", np.ones(192))                           # wrong size
+    registry.close()
 
 
 # --- rename / merge / delete ----------------------------------------------------------------------------------------

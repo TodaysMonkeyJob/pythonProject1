@@ -2,10 +2,14 @@
 Person identification (F3): OpenCV YuNet face detection + SFace embeddings, matched against the unified identity
 registry (``core.identity.IdentityRegistry``, F9 / TOD-20) that also holds voices.
 
-Each person track is identified once; while it is unknown or its face is not visible, recognition is retried
-every ``retry_sec``, identified tracks are re-verified every ``verify_sec``. A stranger becomes an ``unknown_N``
-person in the registry (stable across restarts, one counter for faces and voices). A ``person_identified`` event
-is published when a track's label changes::
+F14 (TOD-25): every face passes the quality gate (``face_quality.assess``: size, truncation, pose, blur, exposure)
+before it is embedded; identity is decided per track by ``track_identity.TrackIdentityResolver`` (strong match or
+voting, inherited for the rest of the track). A stranger becomes an ``unknown_N`` person in the registry (stable
+across restarts, one counter for faces and voices) only after several good faces that match nobody; until then
+the track is ``unidentified``. Tracks without any usable face are ``not_visible`` (retried every ``retry_sec``;
+tracks that show a face are sampled every ``collect_sec``), identified tracks are re-verified every
+``verify_sec``. People seen in one frame get a cannot-link (never merged by ``dedup``). A ``person_identified``
+event is published when a track's label changes::
 
     {"track_id": 7, "person_id": "3f2a…", "identity": "Oleh", "known": true, "similarity": 0.71,
      "previous": "not_visible"}
@@ -19,8 +23,9 @@ deleted. Only person_id + display name go to the bus.
 """
 import os
 import time
+from collections import Counter, deque
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
@@ -28,12 +33,18 @@ import numpy as np
 from core.events import Event
 from core.identity import IdentityRegistry, registry_from_config
 from modules.vision.consumer import SharedFrameConsumer
+from modules.vision.dedup import DedupConfig, DedupJob
+from modules.vision.face_quality import QualityConfig, assess
+from modules.vision.identity_metrics import MetricsReport
 from modules.vision.shared_frame import SharedFrameBuffer
+from modules.vision.track_identity import Observation, TrackConfig, TrackIdentityResolver
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
 
-NOT_VISIBLE = "not_visible"
+NOT_VISIBLE = "not_visible"        # no usable face yet
+UNIDENTIFIED = "unidentified"      # faces seen, but not enough good ones to decide (dashboard: "person")
+UNSETTLED = (NOT_VISIBLE, UNIDENTIFIED)
 EMBEDDING_SIZE = 128
 
 
@@ -54,6 +65,18 @@ class IdentityConfig:
     track_lost_sec: float = 10.0
     face_images: int = 10               # face crops kept per person (People page thumbnails)
     debug_dir: Optional[str] = None
+    # F14: track-level decisions (track_identity.TrackConfig) and the quality gate (face_quality.QualityConfig)
+    collect_sec: float = 0.5            # sample tracks that show a face this often (votes need several faces)
+    strong_threshold: float = 0.60
+    vote_ratio: float = 0.6
+    min_good_faces_for_unknown: int = 3
+    min_unknown_span_sec: float = 1.0
+    track_good_faces: int = 10
+    enrich_min_similarity: float = 0.30
+    continuity_sec: float = 5.0         # a new unknown this soon after a track of X was lost nearby → dedup hint
+    continuity_distance: float = 0.25   # "nearby": box centres within this fraction of the frame width
+    cannot_link_window: float = 10.0    # only tracks face-confirmed this recently count as "seen together"
+    quality: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "IdentityConfig":
@@ -97,6 +120,10 @@ class FaceEngine:
 
     def aligned_crop(self, image: np.ndarray, face: np.ndarray) -> np.ndarray:
         return self.recognizer.alignCrop(image, face)
+
+    def embed_aligned(self, aligned: np.ndarray) -> np.ndarray:
+        """:return: Embedding of an ``aligned_crop`` (the quality gate needs the crop anyway)"""
+        return normalize(self.recognizer.feature(aligned))
 
 
 def largest_face(faces: np.ndarray, min_size: int = 0) -> Optional[np.ndarray]:
@@ -216,32 +243,49 @@ class FaceDatabase:
 @dataclass
 class TrackIdentity:
     person_id: Optional[str] = None     # registry id; None while not identified / face not visible
-    identity: Optional[str] = None      # display name when the event was published (NOT_VISIBLE = no face yet)
+    identity: Optional[str] = None      # label when the event was published (NOT_VISIBLE / UNIDENTIFIED / name)
     known: bool = False
     similarity: float = 0.0
     last_attempt: float = float("-inf")
     last_seen: float = 0.0
+    last_face: float = float("-inf")    # last time a non-rejected face was seen
+    confirmed_at: float = float("-inf")  # last time a good face confirmed person_id
+    center: Tuple[float, float] = (0.0, 0.0)
     attempts: int = 0
-    different_checks: int = 0           # consecutive verifications that saw another face
 
 
 Result = Tuple[Dict[str, Any], str, Optional[float]]
+TRACK_FIELDS = ("face_threshold", "unknown_threshold", "strong_threshold", "vote_ratio", "min_good_faces_for_unknown",
+                "min_unknown_span_sec", "track_good_faces", "verify_margin", "switch_confirmations",
+                "enrich_min_similarity")
 
 
 @dataclass
 class IdentityEngine:
     """
     Identification logic: feed frames + person boxes, get event payloads back.
-    ``faces`` is anything with detect(image) and embed(image, face) (FaceEngine in production). People — known and
-    ``unknown_N`` — live in the shared ``IdentityRegistry``; face crops are stored when it has a ``faces_dir``.
+    ``faces`` is anything with detect(image) and embed(image, face) (FaceEngine in production; aligned_crop /
+    embed_aligned are used when present). People — known and ``unknown_N`` — live in the shared
+    ``IdentityRegistry``; face crops are stored when it has a ``faces_dir``.
     """
     faces: Any
     registry: IdentityRegistry
     cfg: IdentityConfig = field(default_factory=IdentityConfig)
     tracks: Dict[int, TrackIdentity] = field(default_factory=dict)
+    stats: Counter = field(default_factory=Counter)     # faces_good / faces_usable / rejected:<reason> / created
+
+    def __post_init__(self):
+        self.quality_cfg = QualityConfig.from_dict(self.cfg.quality)
+        self.resolver = TrackIdentityResolver(self.registry, TrackConfig.from_dict(
+            {name: getattr(self.cfg, name) for name in TRACK_FIELDS}))
+        self.lost: Deque[Tuple[float, str, Tuple[float, float]]] = deque(maxlen=50)
+        self.frame_width = 640.0
 
     def drop(self, track_id: int) -> None:
-        self.tracks.pop(track_id, None)
+        track = self.tracks.pop(track_id, None)
+        self.resolver.drop(track_id)
+        if track is not None and track.person_id:
+            self.lost.append((track.last_seen, track.person_id, track.center))
 
     def update(self, now: float, frame: np.ndarray, persons: Sequence[Dict[str, Any]]) -> List[Result]:
         """
@@ -251,74 +295,104 @@ class IdentityEngine:
         :return: [(payload, severity, confidence)] for the events to publish
         """
         out, due = [], []
+        self.frame_width = float(frame.shape[1])
         for person in persons:
             track = self.tracks.setdefault(int(person["track_id"]), TrackIdentity())
             track.last_seen = now
-            interval = self.cfg.verify_sec if track.known else self.cfg.retry_sec
+            x1, y1, x2, y2 = person["bbox"]
+            track.center = ((x1 + x2) / 2, (y1 + y2) / 2)
+            if track.person_id is not None:
+                interval = self.cfg.verify_sec
+            elif now - track.last_face <= 3 * self.cfg.retry_sec:
+                interval = self.cfg.collect_sec      # showing a face: collect votes quickly
+            else:
+                interval = self.cfg.retry_sec
             if now - track.last_attempt >= interval:
                 due.append(person)
         if due:
             # Faces are detected once per frame and shared out one-to-one over ALL persons in the frame, so a face
             # inside an overlapping (or huge) box of someone else is never taken for that person
             assigned = assign_faces(persons, self._detect_faces(frame), self.cfg)
+            in_frame = {int(p["track_id"]) for p in persons}
             for person in due:
                 track_id = int(person["track_id"])
                 track = self.tracks[track_id]
                 track.last_attempt = now
                 track.attempts += 1
-                face = assigned.get(track_id)
-                found = None if face is None else (self.faces.embed(frame, face), frame, face)
-                settled = track.person_id is not None
-                event = self._verify(track_id, track, found) if settled \
-                    else self._first_identification(track_id, track, found)
+                event = self._step(now, track_id, track, frame, assigned.get(track_id), person["bbox"], in_frame)
                 if event:
                     out.append(event)
+        self._seen_together(now, persons)
         for track_id in [t for t, s in self.tracks.items() if now - s.last_seen > self.cfg.track_lost_sec]:
-            del self.tracks[track_id]
+            self.drop(track_id)
         return out
 
-    def _first_identification(self, track_id: int, track: TrackIdentity, found) -> Optional[Result]:
-        if found is None:
+    def _observe(self, now: float, frame: np.ndarray, face: Optional[np.ndarray],
+                 bbox: Sequence[float]) -> Tuple[Optional[Observation], Optional[np.ndarray]]:
+        """Quality gate, then (only for good / usable faces) the embedding. :return: (observation, aligned crop)"""
+        if face is None:
+            return None, None
+        aligned = self.faces.aligned_crop(frame, face) if hasattr(self.faces, "aligned_crop") else None
+        quality = assess(frame.shape, face, bbox, aligned, self.quality_cfg)
+        if quality["tier"] == "reject":
+            self.stats.update(f"rejected:{reason}" for reason in quality["reasons"])
+            self.stats["faces_rejected"] += 1
+            return None, aligned
+        self.stats[f"faces_{quality['tier']}"] += 1
+        if aligned is not None and hasattr(self.faces, "embed_aligned"):
+            embedding = self.faces.embed_aligned(aligned)
+        else:
+            embedding = self.faces.embed(frame, face)
+        return Observation(now, normalize(embedding), quality), aligned
+
+    def _step(self, now: float, track_id: int, track: TrackIdentity, frame: np.ndarray, face: Optional[np.ndarray],
+              bbox: Sequence[float], in_frame: set) -> Optional[Result]:
+        obs, aligned = self._observe(now, frame, face, bbox)
+        if obs is None:
             if track.identity is None:
                 return self._set(track_id, track, None, NOT_VISIBLE, False, 0.0)
+            return None   # face turned away / not good enough: keep the label
+        track.last_face = now
+        hints = self._continuity(now, track_id, track, in_frame) if track.person_id is None else None
+        decision = self.resolver.observe(track_id, track.person_id, obs, create_details=hints)
+        if decision is None:
+            if track.person_id is None and track.identity != UNIDENTIFIED:
+                return self._set(track_id, track, None, UNIDENTIFIED, False, 0.0)
             return None
-        return self._set(track_id, track, *self._label(*found))
+        if decision.person_id is None:   # reset: someone else took over the track id
+            return self._set(track_id, track, None, UNIDENTIFIED, False, 0.0)
+        registry, pid = self.registry, decision.person_id
+        track.confirmed_at = now
+        registry.touch(pid)
+        if decision.how == "created":
+            self.stats["unknowns_created"] += 1
+        if not registry.is_known(pid) and obs.tier == "good":
+            self._save_crop(pid, aligned)
+        if decision.how == "verified":
+            track.similarity = max(track.similarity, decision.similarity)
+            return None
+        label = registry.name(pid)
+        self._debug_save(aligned, label)
+        return self._set(track_id, track, pid, label, registry.is_known(pid), decision.similarity)
 
-    def _verify(self, track_id: int, track: TrackIdentity, found) -> Optional[Result]:
-        """
-        Re-checks an identified track: the tracker may keep the id when another person takes the same place.
-        The label changes only after ``switch_confirmations`` consecutive checks see a different face.
+    def _continuity(self, now: float, track_id: int, track: TrackIdentity,
+                    in_frame: set) -> Optional[Dict[str, Any]]:
+        """People whose track ended just before, nearby: the dedup job's "track continuity" evidence."""
+        near = self.cfg.continuity_distance * self.frame_width
+        recent = list(self.lost) + [(t.last_seen, t.person_id, t.center) for tid, t in self.tracks.items()
+                                    if tid not in in_frame and tid != track_id and t.person_id]
+        hits = {self.registry.resolve(pid) for seen, pid, center in recent
+                if now - seen <= self.cfg.continuity_sec
+                and float(np.hypot(center[0] - track.center[0], center[1] - track.center[1])) <= near}
+        hits.discard(None)
+        return {"continuity": sorted(hits)} if hits else None
 
-        :param found: (embedding, image, face row) of the face assigned to this person, or None
-        """
-        if found is None:
-            return None  # face turned away: keep the label
-        embedding, image, face = found
-        registry = self.registry
-        current = registry.resolve(track.person_id)
-        known_id, similarity = registry.match_face(embedding, self.cfg.face_threshold, known=True)
-        if known_id is not None and known_id == current:
-            track.different_checks = 0
-            track.similarity = max(track.similarity, similarity)
-            registry.touch(current)
-            return None
-        if not track.known and known_id is not None:
-            track.different_checks = 0
-            return self._set(track_id, track, known_id, registry.name(known_id), True, similarity)  # just named
-        reference = registry.centroid(current, "face") if current else None
-        threshold = self.cfg.face_threshold if track.known else self.cfg.unknown_threshold
-        if reference is not None and float(reference @ embedding) >= threshold - self.cfg.verify_margin:
-            track.different_checks = 0
-            if not track.known:  # same stranger: keep collecting samples for naming them later
-                registry.add_embedding(current, "face", embedding, quality=face_quality(face))
-                self._save_crop(current, image, face)
-            registry.touch(current)
-            return None
-        track.different_checks += 1
-        if track.different_checks < self.cfg.switch_confirmations:
-            return None
-        track.different_checks = 0
-        return self._set(track_id, track, *self._label(*found))
+    def _seen_together(self, now: float, persons: Sequence[Dict[str, Any]]) -> None:
+        """Two face-confirmed people in one frame are different people: cannot-link (never merged)."""
+        tracks = [self.tracks[int(p["track_id"])] for p in persons]
+        ids = [t.person_id for t in tracks if t.person_id and now - t.confirmed_at <= self.cfg.cannot_link_window]
+        if len(set(ids)) >= 2:
+            self.registry.add_cannot_link(ids, "same_frame")
 
     def _set(self, track_id: int, track: TrackIdentity, person_id: Optional[str], label: str, known: bool,
              similarity: float, renamed: bool = False) -> Optional[Result]:
@@ -328,13 +402,13 @@ class IdentityEngine:
         previous = track.identity
         track.person_id, track.identity, track.known = person_id, label, known
         track.similarity = similarity if not renamed else track.similarity
-        severity = "info" if known or label == NOT_VISIBLE else "warning"
+        severity = "info" if known or label in UNSETTLED else "warning"
         payload = {"track_id": track_id, "person_id": person_id, "identity": label, "known": known,
                    "similarity": round(track.similarity, 3), "previous": previous}
         if renamed:
             payload["renamed_from"] = previous
             severity = "info"
-        return payload, severity, round(track.similarity, 3) if label != NOT_VISIBLE else None
+        return payload, severity, round(track.similarity, 3) if label not in UNSETTLED else None
 
     def sync(self, force: bool = False) -> List[Result]:
         """
@@ -353,6 +427,7 @@ class IdentityEngine:
             pid = self.registry.resolve(track.person_id)
             if pid is None:  # deleted: identify again from scratch
                 self.tracks[track_id] = TrackIdentity(last_seen=track.last_seen)
+                self.resolver.drop(track_id)
                 continue
             event = self._set(track_id, track, pid, self.registry.name(pid), self.registry.is_known(pid),
                               track.similarity, renamed=True)
@@ -362,49 +437,23 @@ class IdentityEngine:
 
     def _detect_faces(self, frame: np.ndarray) -> np.ndarray:
         """
-        :return: YuNet rows (frame coordinates) passing the score and size limits
+        :return: YuNet rows (frame coordinates) above the detector score / minimum size. The quality gate runs after
+                 the one-to-one assignment, so a neighbour's poor face is still not given to the wrong person.
         """
         faces = [f for f in self.faces.detect(frame)
                  if f[-1] >= self.cfg.detection_score and min(f[2], f[3]) >= self.cfg.min_face_size]
         return np.array(faces, np.float32).reshape(-1, 15)
 
-    def _label(self, embedding: np.ndarray, image: np.ndarray,
-               face: np.ndarray) -> Tuple[str, str, bool, float]:
-        """
-        Known person, an earlier stranger, or a new ``unknown_N`` (created in the registry).
+    def _save_crop(self, person_id: str, aligned: Optional[np.ndarray]) -> None:
+        if aligned is not None:
+            self.registry.save_face_crop(person_id, aligned, self.cfg.face_images)
 
-        :return: (person_id, display name, known, similarity)
-        """
-        registry = self.registry
-        person_id, similarity = registry.match_face(embedding, self.cfg.face_threshold, known=True)
-        known = person_id is not None
-        if not known:
-            person_id, similarity = registry.match_face(embedding, self.cfg.unknown_threshold, known=False)
-            if person_id is not None:
-                registry.add_embedding(person_id, "face", embedding, quality=face_quality(face))
-            else:
-                person_id = registry.create_unknown("face", embedding, quality=face_quality(face))
-            self._save_crop(person_id, image, face)
-        registry.touch(person_id)
-        label = registry.name(person_id)
-        self._debug_save(image, face, label)
-        return person_id, label, known, similarity
-
-    def _save_crop(self, person_id: str, image: np.ndarray, face: np.ndarray) -> None:
-        if self.registry.faces_dir and hasattr(self.faces, "aligned_crop"):
-            self.registry.save_face_crop(person_id, self.faces.aligned_crop(image, face), self.cfg.face_images)
-
-    def _debug_save(self, crop: np.ndarray, face: np.ndarray, label: str) -> None:
-        if not self.cfg.debug_dir or not hasattr(self.faces, "aligned_crop"):
+    def _debug_save(self, aligned: Optional[np.ndarray], label: str) -> None:
+        if not self.cfg.debug_dir or aligned is None:
             return
         os.makedirs(self.cfg.debug_dir, exist_ok=True)
         path = os.path.join(self.cfg.debug_dir, f"{time.strftime('%Y%m%d-%H%M%S')}_{label}.jpg")
-        cv2.imwrite(path, self.faces.aligned_crop(crop, face))
-
-
-def face_quality(face: np.ndarray) -> float:
-    """Detector score × size factor (a 112 px face — SFace input — or larger counts fully)."""
-    return round(float(face[-1]) * min(1.0, float(min(face[2], face[3])) / 112), 4)
+        cv2.imwrite(path, aligned)
 
 
 def open_registry(cfg: Dict[str, Any], publish=None) -> IdentityRegistry:
@@ -440,6 +489,14 @@ class IdentityRecognizer(SharedFrameConsumer):
         self.retention_days = float(self.cfg.get("unknown_retention_days", 30))
         self._next_sync = 0.0
         self._next_purge = 0.0
+        # F14: duplicates job + daily metrics (created in setup(), with the registry)
+        self.dedup: Optional[DedupJob] = None
+        self.metrics: Optional[MetricsReport] = None
+        self.dedup_sec = 60 * float((self.cfg.get("dedup") or {}).get("dedup_interval_min", 10))
+        self._next_dedup = time.monotonic() + 60       # first pass a minute after start
+        self._next_metrics = time.monotonic() + 3600
+        self.same_location_sec = float(self.cfg.get("cannot_link_same_location_sec", 0))
+        self._confirmed: Dict[str, Dict[str, Tuple[float, str]]] = {}   # location → person → (time, device)
 
     def engine_for(self, device_id: str) -> IdentityEngine:
         if device_id not in self.engines:
@@ -462,6 +519,9 @@ class IdentityRecognizer(SharedFrameConsumer):
                 logger.warning("No known people in the identity registry: everyone will be unknown_N (rename them on "
                                "the dashboard People page, python -m tools.identity, or python -m tools.enroll)")
             self.engine = IdentityEngine(faces, registry, cfg)
+        self.dedup = DedupJob(self.engine.registry, DedupConfig.from_dict(self.cfg.get("dedup")),
+                              publish=self.publish)
+        self.metrics = MetricsReport(self.cfg.get("metrics_path", "reports/identity_metrics.json"))
 
     def step(self) -> None:
         now = time.monotonic()
@@ -470,7 +530,30 @@ class IdentityRecognizer(SharedFrameConsumer):
             self.sync(purge=now >= self._next_purge)
             if now >= self._next_purge:
                 self._next_purge = now + 3600
+        if self.dedup is not None and self.dedup_sec > 0 and now >= self._next_dedup:
+            self._next_dedup = now + self.dedup_sec
+            try:
+                if self.dedup.run()["merged"]:
+                    self.sync(force=True)
+            except Exception as e:      # never let a bad pass stop face recognition
+                logger.exception(f"dedup failed: {e}")
+        if now >= self._next_metrics:
+            self._next_metrics = now + 3600
+            self.write_metrics()
         super().step()
+
+    def write_metrics(self) -> None:
+        """Adds the engines' face counters to ``reports/identity_metrics.json`` (hourly and on stop)."""
+        if self.metrics is None or self.engine is None:
+            return
+        totals: Counter = Counter()
+        for engine in {id(e): e for e in [self.engine, *self.engines.values()]}.values():
+            totals.update(engine.stats)
+            engine.stats.clear()
+        try:
+            self.metrics.update(self.engine.registry, totals)
+        except OSError as e:
+            logger.warning(f"identity metrics not written: {e}")
 
     def sync(self, force: bool = False, purge: bool = False) -> None:
         """Applies registry changes (and the unknown-people retention) to live tracks and publishes the events."""
@@ -499,10 +582,29 @@ class IdentityRecognizer(SharedFrameConsumer):
         engine = self.engine_for(self.current.device_id) if self.current else self.engine
         for payload, severity, confidence in engine.update(timestamp, frame, persons):
             self.emit("person_identified", payload, severity=severity, confidence=confidence)
+        if self.same_location_sec > 0 and self.current:
+            self._seen_in_location(engine, persons)
+
+    def _seen_in_location(self, engine: IdentityEngine, persons: List[Dict[str, Any]]) -> None:
+        """
+        Optional (``cannot_link_same_location_sec`` > 0): people confirmed by two cameras of one location within
+        that many seconds are different. Off by default — two cameras of one room often see the same person, and a
+        wrong cannot-link would block a real duplicate forever.
+        """
+        now, device = time.monotonic(), self.current.device_id
+        seen = self._confirmed.setdefault(self.current.location_id or "", {})
+        mine = {engine.tracks[int(p["track_id"])].person_id for p in persons
+                if engine.tracks.get(int(p["track_id"])) and engine.tracks[int(p["track_id"])].person_id}
+        others = [pid for pid, (t, dev) in seen.items() if dev != device and now - t <= self.same_location_sec]
+        for pid in mine:
+            seen[pid] = (now, device)
+            if others:
+                engine.registry.add_cannot_link([pid, *others], "same_location")
 
     def teardown(self) -> None:
         super().teardown()
         if self.engine is not None:
+            self.write_metrics()
             self.engine.registry.close()
 
 

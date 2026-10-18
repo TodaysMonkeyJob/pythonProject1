@@ -2,7 +2,7 @@
 //   #/overview   #/loc/<id>   #/loc/<id>/details   #/people   #/devices   #/locations
 // ← / → (or swipe, or ◀ ▶) move through the carousel, ↓ / ↑ between a location's summary and details.
 import { cameras, on, orderedLocations, start, stateOf, store, unacked } from "./store.js";
-import { STATE_LABEL, STATE_RANK, $, clear, h, toast } from "./ui.js";
+import { STATE_LABEL, STATE_RANK, $, clear, h, plural, toast } from "./ui.js";
 import { connectVideo, syncSubscriptions } from "./video.js";
 import { renderDevices, renderLocations, renderPeople } from "./views/admin.js";
 import { leaveLocation, onLocationEvent, redrawCharts, renderLocation } from "./views/location.js";
@@ -69,6 +69,8 @@ function drawTopbar() {
   const cams = cameras(), online = cams.filter((c) => c.status === "online").length;
   clear($("#site"), h("span", { class: `dot st-${worst}` }), ` ${STATE_LABEL[worst] || worst}`);
   clear($("#cams-online"), `${online}/${cams.length} камер онлайн`);
+  const dups = store.duplicates.length;
+  $("#dups").hidden = !dups; $("#dups").textContent = `${dups} ${plural(dups, "можливий дублікат", "можливі дублікати", "можливих дублікатів")}`;
   const open = unacked().length;
   $("#bell-count").hidden = !open; $("#bell-count").textContent = open;
   $("#ws-dot").classList.toggle("on", store.connected);
@@ -125,7 +127,7 @@ on("notify", (n) => {
   try { if (n.level === "danger" && window.Notification && Notification.permission === "granted")
     new Notification(n.title, { body: n.body, tag: n.id }); } catch (e) { /* not supported */ }
 });
-for (const topic of ["summary", "locations", "devices", "notifications", "persons", "connection"]) on(topic, render);
+for (const topic of ["summary", "locations", "devices", "notifications", "persons", "duplicates", "connection"]) on(topic, render);
 on("status", drawTopbar);
 on("event", (ev) => { if (onLocationEvent(ev)) render(); });
 setInterval(() => clear($("#clock"), new Date().toLocaleTimeString("uk-UA", { hour12: false })), 1000);

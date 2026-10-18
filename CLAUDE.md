@@ -83,6 +83,13 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id); `identity_*` events
     (or `sync_sec` polling) relabel live tracks. `legacy_faces.py` imports the old `faces.npz` / unknown folders
     into an empty registry. F2/F3 events go to `logs/<date>/actions.jsonl` / `identity.jsonl`.
+  - F14 (TOD-25) duplicates: `face_quality.assess` (good / usable / reject before embedding), `track_identity`
+    (`TrackIdentityResolver`: strong match or voting per track, inherited; unknown only after 3 good faces over 1 s,
+    else `unidentified`), `core/gallery.py` (≤ 30 prototypes, top-3 matching, admission: good + non-redundant +
+    bucket quotas), `dedup.DedupJob` (every 10 min in the identity process / dashboard "Перевірити зараз": auto-merge
+    ≥ 0.62, review queue 0.42–0.62, cannot-link blocks, average linkage, junk cleanup) and
+    `identity_metrics` → `reports/identity_metrics.json`. Registry: `cannot_link` + `merge_candidates` tables, merges
+    archive instead of delete (`archived_by`) → `unmerge()` within `undo_days`.
   - `core/identity.py` — F9 (TOD-20) `IdentityRegistry`: SQLite `data/identity.db` (WAL; persons, face / voice
     embeddings as float32 BLOBs, top-K per person, identity_events audit, global `unknown_N` counter). Every process
     opens its own connection and cache; `poll()` reloads on `PRAGMA data_version`. Mutations (create / rename / merge /
@@ -228,6 +235,7 @@ YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 - `data/devices.db*` — the user's device registry (locations, enabled, node tokens), never delete.
 - `data/notifications.db*`, `exports/` — the user's notifications / snapshots / outbox (live runs: redirect them).
 - `data/tls/` (hub HTTPS key), `data/node_agent/` (edge token) — secrets, git-ignored, never commit.
+- `reports/identity_metrics.json` — written by the live identity process (tests: tmp paths, guarded).
 - `data/faces/`, `data/identity.db*` — face photos, face / voice embeddings (biometric data, git-ignored, never
   commit). Tests must use `tmp_path` registries and log dirs: `tests/conftest.py` fails the run if real
   `data/identity.db*` or `logs/*/*` change. Never delete them without checking — they hold the user's live data.

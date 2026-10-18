@@ -29,6 +29,12 @@ export function clear(el, ...children) { el.replaceChildren(); append(el, childr
 export const STATE_LABEL = { safe: "безпечно", attention: "увага", danger: "небезпека", offline: "офлайн" };
 export const STATE_RANK = { danger: 0, attention: 1, safe: 2, offline: 3 };
 
+// Ukrainian plural: 1 дублікат, 2–4 дублікати, 5+ / 11–14 дублікатів
+export function plural(n, one, few, many) {
+  const d = n % 10, dd = n % 100;
+  return d === 1 && dd !== 11 ? one : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? few : many;
+}
+
 export function hms(ts) {
   const date = typeof ts === "number" ? new Date(ts < 1e12 ? ts * 1000 : ts) : new Date(ts);
   return date.toLocaleTimeString("uk-UA", { hour12: false });

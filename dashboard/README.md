@@ -14,7 +14,7 @@ Plain ES modules in `static/app/` — no build step, no CDN, works without inter
 | **Overview** `#/overview` | every camera (grid 1×1 … 3×3, then pages; border = location state, grey = offline), location cards sorted danger → attention → safe → offline (click → that location), latest notifications with Acknowledge |
 | **Location** `#/loc/<id>` | one-screen summary: state + reason + Acknowledge, its cameras (click a tile → full size), people now (✎ rename inline), last 5 transcripts (colour per person), gas + 10-min sparkline, last GPT decision |
 | **Details** `#/loc/<id>/details` | transcript log (speaker / time filter, search, CSV), event table (filters, click → JSON), GPT history with the snapshot sent, gas chart 1 h with threshold, 24 h state timeline, device health (FPS, last seen, restarts) |
-| **People / Devices / Locations** | rename / merge / delete people; locations / on-off / phone pairing / RTSP / ONVIF + system status; create / rename / reorder / rules |
+| **People / Devices / Locations** | F14: "Можливі дублікати" (pair cards: score, evidence, Об'єднати / Це різні люди, Перевірити зараз; top-bar counter), merge history with Скасувати; rename / merge / delete people; locations / on-off / phone pairing / RTSP / ONVIF + system status; create / rename / reorder / rules |
 
 Screenshots: _overview.png_, _location.png_, _details.png_ (placeholders — take them on your setup).
 

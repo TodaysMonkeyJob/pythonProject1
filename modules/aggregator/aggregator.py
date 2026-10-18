@@ -136,7 +136,7 @@ class SceneState:
                 for person in self.people.values():
                     if person.identity == p["renamed_from"]:
                         person.identity, person.known = p["identity"], True
-            elif p.get("identity") != "not_visible" or key not in self.people:
+            elif p.get("identity") not in ("not_visible", "unidentified") or key not in self.people:
                 person = self._person(key, event, now)
                 person.identity, person.known, person.last_seen = p.get("identity", person.identity), \
                     bool(p.get("known")), now

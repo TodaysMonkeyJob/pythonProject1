@@ -201,6 +201,52 @@ Azure). Unknown people did not consent: they are deleted after `unknown_retentio
 `store_faces: false` turns storing face crops off. Enroll only people
 who gave written consent (thesis ethics section).
 
+### No duplicate unknowns (F14 / TOD-25)
+
+Partial faces (cut off, side view, blurred, small, a hat) give embeddings that match nobody, which used to create a
+new `unknown_N` for people already registered. Four deterministic layers on top of YuNet + SFace:
+
+1. **Quality gate** (`face_quality.py`, `identity.quality.*`) before any embedding: YuNet score ≥ 0.85, face ≥ 80 px
+   and eye distance ≥ 30 px, face box + 5 landmarks inside the frame (5 % margin) and the landmarks inside the person
+   box, yaw ±35° / pitch ±25° estimated from the landmarks, Laplacian variance of the aligned crop, brightness
+   40–220. Tiers: `good` (may create / enrich a person), `usable` (pose up to ±50° / ±35° or slightly blurred: matched,
+   never stored, never creates anyone), `reject` (not embedded at all). Embeddings always come from
+   `FaceRecognizerSF.alignCrop`.
+2. **Track-level decisions** (`track_identity.py`): a track is assigned when one face is ≥ `strong_threshold` (0.60)
+   similar or ≥ 60 % of its good faces vote for the same person; it then keeps the identity (later fragments are not
+   matched on their own; good faces still verify it, 2 consecutive mismatches → collect again). A new `unknown_N`
+   needs ≥ 3 good faces over ≥ 1 s that match nobody — before that the track is `unidentified` (dashboard: "person").
+3. **Multi-prototype gallery** (`core/gallery.py`): ≤ 30 face embeddings per person with yaw / pitch / brightness
+   buckets, matched by the mean of the top-3 similarities (a person in glasses matches their "glasses" prototypes).
+   Admission: good faces only, skip anything ≥ 0.9 similar to a stored prototype, a full gallery drops its most
+   redundant prototype while keeping ≥ 3 frontal and ≤ 8 per side. Identified tracks' good faces (≥ 0.30 similar)
+   enrich the gallery, so it learns variations over time but stays bounded.
+4. **Dedup job** (`dedup.py`, every 10 min and "Перевірити зараз" on the People page): unknown↔known and
+   unknown↔unknown pairs scored by gallery similarity (top-5 pairwise + centroid) with bonuses for track continuity
+   (the unknown was created ≤ 5 s after a track of that person was lost nearby) and a shared voice. Hard blocks:
+   cannot-link (both face-confirmed in one frame, "Це різні люди", or an undone merge). ≥ 0.62 → auto-merge,
+   0.42–0.62 → "Possible duplicates" review queue; average linkage + a merged-centroid check stop chain merges.
+   A merge moves only admitted embeddings and archives the rest, so it can be undone for 7 days (People page →
+   "Історія об'єднань" → Скасувати, or `tools.identity undo <id>`). Junk unknowns (< 3 faces, no voice, unseen
+   3 days) are deleted.
+
+Metrics for the thesis: `reports/identity_metrics.json` (per UTC day: unknowns created per hour, rejected faces by
+reason, auto / review / manual merges, undos, gallery sizes; no names). Audit-derived numbers cover the days before
+this feature too — `python -m tools.identity metrics` recomputes them, giving the before / after duplicate rate.
+
+```bash
+python -m tools.identity dedup --dry-run     # what the job would merge / queue / delete
+python -m tools.identity duplicates          # the review queue
+python -m tools.identity undo 42             # undo a merge (event id from history / the dashboard)
+```
+
+Checked on the dev Mac: zidane.jpg (YuNet + SFace) — the frontal face is `good`, the profile is rejected (`pose`,
+`small`); an unknown appears only on the 3rd good sample; ≈ 28 ms per frame with two persons. Live camera, real
+registry copy: the registered person was recognised (0.61), no new unknown. On the user's registry the largest
+similarity between different people is 0.31 (review threshold 0.42). With a 640×480 camera the 80 px face limit
+means about 1.5–2 m: farther people stay `unidentified` instead of becoming duplicates — lower `quality.min_face_size`
+if that is too strict for the mounting distance.
+
 ### Results
 
 LFW, frontal press photos (`tools/eval_faces.py`, reports `reports/identity_eval_lfw*.json`):
@@ -214,4 +260,4 @@ LFW, frontal press photos (`tools/eval_faces.py`, reports `reports/identity_eval
 
 F1 frame rate with the identity process running next to it (same video, separate processes): 11.5–11.6 FPS
 without, 11.2–12.2 FPS with — within measurement noise (target: ≤ 20 % drop). Re-check both on the Pi, and with
-the real camera: faces smaller than `min_face_size` (40 px) at the mounting distance end up `not_visible`.
+the real camera: faces smaller than `quality.min_face_size` (80 px) at the mounting distance are never embedded.

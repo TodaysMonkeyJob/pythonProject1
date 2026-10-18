@@ -106,7 +106,8 @@ def main(argv: Optional[List[str]] = None) -> None:
                 raise SystemExit("No usable face found")
             person_id = person_id or registry.create_person(args.name)
             for embedding, crop in samples:
-                registry.add_embedding(person_id, "face", embedding, quality=1.0)  # enrolled photos rank first
+                registry.add_embedding(person_id, "face", embedding, quality=1.0,   # enrolled photos: always admissible
+                                       meta={"tier": "enrolled", "score": 1.0})
                 registry.save_face_crop(person_id, crop, cfg.get("face_images", 10))
             print(f"  {len(samples)} face samples")
         if args.voice:

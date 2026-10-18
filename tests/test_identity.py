@@ -9,8 +9,8 @@ import pytest
 
 from core.events import Event, make_event
 from core.identity import IdentityRegistry
-from modules.vision.identity import (NOT_VISIBLE, FaceDatabase, IdentityConfig, IdentityEngine, IdentityRecognizer,
-                                     largest_face, normalize)
+from modules.vision.identity import (NOT_VISIBLE, UNIDENTIFIED, FaceDatabase, IdentityConfig, IdentityEngine,
+                                     IdentityRecognizer, largest_face, normalize)
 from modules.vision.shared_frame import SharedFrameBuffer
 
 REPO = Path(__file__).resolve().parent.parent
@@ -30,12 +30,22 @@ def near(base, seed, noise=0.3):
     return normalize(base + noise * np.random.default_rng(10_000 + seed).normal(size=128) / np.sqrt(128))
 
 
-def face_row(x=170, y=70, size=60, score=0.95):
-    """YuNet row in frame coordinates; the default sits at the head of PERSON_BOX."""
+# Frontal 5-point layout (right eye, left eye, nose tip, right / left mouth corner) as fractions of the face box
+FRONTAL = np.array([[0.31, 0.40], [0.69, 0.40], [0.50, 0.58], [0.35, 0.78], [0.65, 0.78]], np.float32)
+
+
+def face_row(x=150, y=70, size=100, score=0.95, layout=FRONTAL):
+    """YuNet row in frame coordinates (a good frontal face); the default sits at the head of PERSON_BOX."""
     row = np.zeros(15, np.float32)
     row[:4] = (x, y, size, size)
+    row[4:14] = (np.array([x, y], np.float32) + layout * size).reshape(-1)
     row[-1] = score
     return row
+
+
+def face_crop(seed=0):
+    """A textured mid-grey 112×112 crop: sharp and well exposed for the quality gate."""
+    return np.random.default_rng(seed).integers(60, 200, (112, 112, 3)).astype(np.uint8)
 
 
 class FakeFaces:
@@ -76,6 +86,14 @@ def person(track_id, bbox=PERSON_BOX):
 
 def labels(events):
     return [(p["track_id"], p["identity"]) for p, _, _ in events]
+
+
+def show(engine, track_id, t0, frames=3, step=0.5):
+    """The same face for `frames` samples `step` s apart (an unknown needs 3 good faces over ≥ 1 s)."""
+    events = []
+    for i in range(frames):
+        events += engine.update(t0 + i * step, FRAME, [person(track_id)])
+    return events
 
 
 # --- database ---------------------------------------------------------------------------------------------------
@@ -136,16 +154,16 @@ def test_face_not_visible_then_recognised():
 def test_unknown_labels_are_stable_and_reused():
     engine, faces = make_engine(retry_sec=1.0)
     faces.rows, faces.embedding = [face_row()], near(STRANGER, 1)
-    events = engine.update(0.0, FRAME, [person(1)])
-    assert labels(events) == [(1, "unknown_1")]
-    assert events[0][1] == "warning" and events[0][0]["known"] is False
+    events = show(engine, 1, 0.0)
+    assert labels(events) == [(1, UNIDENTIFIED), (1, "unknown_1")]          # only after 3 good faces over 1 s
+    assert events[-1][1] == "warning" and events[-1][0]["known"] is False
 
     faces.embedding = near(STRANGER, 2)                       # same stranger, new track after leaving
     engine.drop(1)
     assert labels(engine.update(5.0, FRAME, [person(2)])) == [(2, "unknown_1")]
 
     faces.embedding = vec(99)                                 # another stranger
-    assert labels(engine.update(6.0, FRAME, [person(3)])) == [(3, "unknown_2")]
+    assert labels(show(engine, 3, 6.0))[-1] == (3, "unknown_2")
 
     faces.embedding = vec(123)                                # bad view of track 3: keeps its label
     assert engine.update(8.0, FRAME, [person(3)]) == []
@@ -155,16 +173,16 @@ def test_unknown_labels_are_stable_and_reused():
 def test_unknown_upgraded_to_known():
     engine, faces = make_engine(retry_sec=1.0)
     faces.rows, faces.embedding = [face_row()], near(OLEH, 1, noise=3.0)   # blurry: below threshold
-    assert labels(engine.update(0.0, FRAME, [person(4)]))[0][1].startswith("unknown_")
+    assert labels(show(engine, 4, 0.0))[-1][1].startswith("unknown_")
     faces.embedding = near(OLEH, 2)
-    events = engine.update(2.0, FRAME, [person(4)])
+    events = engine.update(7.0, FRAME, [person(4)])
     assert labels(events) == [(4, "Oleh")] and events[0][0]["previous"].startswith("unknown_")
 
 
 def test_known_label_kept_when_face_turns_away():
     engine, faces = make_engine(retry_sec=1.0, face_threshold=0.99)        # never "known" → keeps retrying
     faces.rows, faces.embedding = [face_row()], near(STRANGER, 1)
-    engine.update(0.0, FRAME, [person(1)])
+    show(engine, 1, 0.0)
     faces.rows = []
     assert engine.update(2.0, FRAME, [person(1)]) == []                    # not_visible does not overwrite
     assert engine.tracks[1].identity == "unknown_1"
@@ -188,8 +206,11 @@ def test_face_filters():
     assert labels(engine.update(0.0, FRAME, [person(2)])) == [(2, NOT_VISIBLE)]
     faces.rows = [face_row(score=0.5)]                       # low detector score
     assert labels(engine.update(0.0, FRAME, [person(3)])) == [(3, NOT_VISIBLE)]
-    faces.rows = [face_row(size=20), face_row(x=165, size=70)]
-    assert labels(engine.update(0.0, FRAME, [person(4)])) == [(4, "Oleh")]
+    faces.rows = [face_row(size=60)]                         # detected, but below the quality gate's 80 px
+    assert labels(engine.update(0.0, FRAME, [person(4)])) == [(4, NOT_VISIBLE)]
+    assert engine.stats["rejected:small"] == 1
+    faces.rows = [face_row(size=20), face_row(x=155, size=90)]
+    assert labels(engine.update(0.0, FRAME, [person(5)])) == [(5, "Oleh")]
 
 
 def test_tracks_expire():
@@ -253,14 +274,15 @@ def test_recognizer_reads_shared_buffer():
 
 def test_debug_mode_saves_crops_only_when_enabled(tmp_path):
     engine, faces = make_engine(debug_dir=str(tmp_path / "debug"))
-    faces.aligned_crop = lambda image, face: np.zeros((112, 112, 3), np.uint8)
+    faces.aligned_crop = lambda image, face: face_crop()
     faces.rows, faces.embedding = [face_row()], near(OLEH, 1)
     engine.update(0.0, FRAME, [person(1)])
     assert len(os.listdir(tmp_path / "debug")) == 1
-    engine, faces = make_engine()
-    faces.aligned_crop = lambda image, face: pytest.fail("must not save without debug_dir")
+    engine, faces = make_engine()                     # the crop is still needed by the quality gate…
+    faces.aligned_crop = lambda image, face: face_crop()
     faces.rows, faces.embedding = [face_row()], near(OLEH, 1)
     engine.update(0.0, FRAME, [person(1)])
+    assert os.listdir(tmp_path) == ["debug"]          # …but nothing new is written without debug_dir
 
 
 # --- real models (skipped unless downloaded: python -m modules.vision.face_models) -------------------------------

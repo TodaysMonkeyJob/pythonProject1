@@ -191,7 +191,7 @@ def test_migration_imports_known_and_unknown_people(tmp_path):
     report = migrate(registry, str(tmp_path / "faces" / "faces.npz"))
     assert report == {"known": 1, "unknown": 1, "images": 1, "skipped": 0}
     oleh, stranger = registry.find("Oleh"), registry.find("unknown_7")              # numbers are kept
-    assert registry.is_known(oleh) and registry.counts[stranger]["face"] == 2
+    assert registry.is_known(oleh) and registry.counts[stranger]["face"] == 1     # near-duplicate not stored twice
     assert registry.match_face(face(5, OLEH_FACE))[0] == oleh and registry.thumbnail(oleh)
     assert registry.name(registry.create_unknown("face", face(99))) == "unknown_10"   # after _counter.json
     assert migrate(registry, str(tmp_path / "faces" / "faces.npz"))["skipped"] == 2   # safe to run twice
