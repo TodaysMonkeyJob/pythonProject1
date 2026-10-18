@@ -198,7 +198,8 @@ class SnapshotBuilder:
         self.cfg = cfg
 
     def build(self, state: SceneState, trigger: str, now: float, reason: Optional[str] = None,
-              incident_id: Optional[str] = None, registry=None) -> Dict[str, Any]:
+              incident_id: Optional[str] = None, registry=None, location_id: Optional[str] = None,
+              location_name: Optional[str] = None) -> Dict[str, Any]:
         """
         :param registry: ``IdentityRegistry`` resolving person_id → current display name, so a rename made a moment
                          ago is already in this snapshot
@@ -239,6 +240,8 @@ class SnapshotBuilder:
             snapshot["reason"] = reason[:120]
         if incident_id:
             snapshot["incident_id"] = incident_id
+        if location_id:
+            snapshot["location_id"], snapshot["location_name"] = location_id[:64], (location_name or location_id)[:64]
         self.shrink(snapshot)
         self.validator.validate(snapshot)
         return snapshot
@@ -365,13 +368,26 @@ class EventCsv:
             self._file = None
 
 
-class Aggregator:
-    """Snapshot / CSV logic without the process loop."""
+SCENE_TYPES = ("object_detected", "person_identified", "action", "speech", "sound", "gas_reading", "alert",
+               "mic_state", "scene_active")
 
-    def __init__(self, config: Dict[str, Any], clock=time.time, local_now=datetime.now, registry=None):
-        """:param registry: ``core.identity.IdentityRegistry`` to resolve display names at snapshot time"""
+
+class Aggregator:
+    """
+    Snapshot / CSV logic without the process loop. F12: one scene per location — snapshots are per location
+    (``location_id`` / ``location_name``), a critical event in X triggers an immediate snapshot of X only, and every
+    ``global_snapshot_min`` a short "whole site" snapshot lists every active location in one line.
+    """
+
+    def __init__(self, config: Dict[str, Any], clock=time.time, local_now=datetime.now, registry=None,
+                 locations=None):
+        """
+        :param registry: ``core.identity.IdentityRegistry`` to resolve display names at snapshot time
+        :param locations: ``core.locations.LocationRegistry`` for location names / rules (ids are used without it)
+        """
         agg = config.get("aggregator", {})
         self.registry = registry
+        self.locations = locations
         self.cfg = AggregatorConfig.from_dict(agg)
         export_dir = agg.get("export_dir", "exports")
         self.snapshot_dir = agg.get("snapshot_dir", os.path.join(export_dir, "snapshots"))
@@ -383,10 +399,28 @@ class Aggregator:
         incidents = agg.get("incidents", {}) or {}
         self.incidents = IncidentRecorder({"dir": os.path.join(export_dir, "incidents"), **incidents}, clock) \
             if incidents.get("enabled", True) else None
-        self.state = SceneState(clock())
-        self.last_snapshot = clock()
-        self.last_immediate = float("-inf")
-        self.pending_reason: Optional[str] = None
+        self.ignore_locations = (config.get("network", {}).get("hub_location") or "hub", "unknown")
+        self.global_interval = float(agg.get("global_snapshot_min", 10)) * 60
+        self.states: Dict[str, SceneState] = {}
+        self.last_snapshot: Dict[str, float] = {}
+        self.last_immediate: Dict[str, float] = {}
+        self.pending: Dict[str, str] = {}
+        self.last_global = clock()
+        self.recent: Dict[str, Dict[str, Any]] = {}       # location → summary of its last snapshot (global digest)
+
+    @property
+    def state(self) -> SceneState:
+        """The single location's scene (one-location setups, tests)."""
+        return next(iter(self.states.values())) if self.states else self._scene("unassigned", self.clock())
+
+    def _scene(self, location_id: str, now: float) -> SceneState:
+        if location_id not in self.states:
+            self.states[location_id] = SceneState(now)
+            self.last_snapshot[location_id] = now
+        return self.states[location_id]
+
+    def location_name(self, location_id: str) -> str:
+        return self.locations.name(location_id) if self.locations is not None else location_id
 
     def on_event(self, event: Event) -> Optional[Dict[str, Any]]:
         """:return: the snapshot if this event produced one immediately"""
@@ -395,11 +429,13 @@ class Aggregator:
             self.csv.write(event)
         if self.incidents is not None:
             self.incidents.add_event(event)
-        self.state.apply(event, now)
+        if event.type not in SCENE_TYPES or event.location_id in self.ignore_locations:
+            return None   # hub software events (module restarts, GPT, registry) are not about a place
+        self._scene(event.location_id, now).apply(event, now)
         reason = self.critical_reason(event)
         if reason:
-            self.pending_reason = self.pending_reason or reason
-            return self.tick()
+            self.pending.setdefault(event.location_id, reason)
+            return self.tick(event.location_id)
         return None
 
     def critical_reason(self, event: Event) -> Optional[str]:
@@ -415,20 +451,35 @@ class Aggregator:
             return f"unknown person {p['identity']} at {self.local_now().strftime('%H:%M')}"
         return None
 
-    def tick(self) -> Optional[Dict[str, Any]]:
-        """Produces a due snapshot (critical first, then the regular interval). :return: the snapshot or None"""
+    def tick(self, only: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Produces one due snapshot (critical first, then the regular interval, then the global one).
+
+        :param only: Look at this location only (an immediate snapshot of the location with the critical event)
+        :return: the snapshot or None
+        """
         now = self.clock()
-        if self.incidents is not None:
+        if self.incidents is not None and only is None:
             self.incidents.tick()
-        if self.pending_reason and now - self.last_immediate >= self.cfg.immediate_cooldown_sec:
-            reason, self.pending_reason = self.pending_reason, None
-            self.last_immediate = now
-            return self.snapshot("critical_event", now, reason)
-        if now - self.last_snapshot >= self.cfg.snapshot_interval_sec:
-            if self.state.scene_active or self.state.changed:
-                return self.snapshot("interval", now)
-            self.last_snapshot = now
-            self.state.reset_window(now)                                   # empty window: nothing to report
+        locations = [only] if only else list(self.states)
+        for location_id in locations:
+            if location_id in self.pending and \
+                    now - self.last_immediate.get(location_id, float("-inf")) >= self.cfg.immediate_cooldown_sec:
+                reason = self.pending.pop(location_id)
+                self.last_immediate[location_id] = now
+                return self.snapshot("critical_event", now, reason, location_id)
+        if only:
+            return None
+        for location_id in locations:
+            state = self.states[location_id]
+            if now - self.last_snapshot[location_id] >= self.cfg.snapshot_interval_sec:
+                if state.scene_active or state.changed:
+                    return self.snapshot("interval", now, location_id=location_id)
+                self.last_snapshot[location_id] = now
+                state.reset_window(now)                                    # empty window: nothing to report
+        if self.global_interval and now - self.last_global >= self.global_interval:
+            since, self.last_global = self.last_global, now
+            return self.global_snapshot(now, since)
         return None
 
     def add_frame(self, jpeg: bytes) -> None:
@@ -436,25 +487,60 @@ class Aggregator:
         if self.incidents is not None:
             self.incidents.add_frame(jpeg)
 
-    def snapshot(self, trigger: str, now: float, reason: Optional[str] = None) -> Dict[str, Any]:
+    def snapshot(self, trigger: str, now: float, reason: Optional[str] = None,
+                 location_id: Optional[str] = None) -> Dict[str, Any]:
+        location_id = location_id or next(iter(self.states), "unassigned")
+        state = self._scene(location_id, now)
         incident_id = self.incidents.start(reason or trigger) \
             if self.incidents is not None and trigger == "critical_event" else None
         if self.registry is not None:
             self.registry.poll()
-        snapshot = self.builder.build(self.state, trigger, now, reason, incident_id, self.registry)
-        digest = snapshot_digest(snapshot, incident_id)
+        name = self.location_name(location_id)
+        snapshot = self.builder.build(state, trigger, now, reason, incident_id, self.registry, location_id, name)
+        rules = self.locations.rules(location_id) if self.locations is not None else {}
+        digest = snapshot_digest(snapshot, incident_id, rules=rules)
         if incident_id:
             self.incidents.attach(snapshot, digest)
         self.outbox.add(snapshot, trigger, created_at=now, digest=digest)
-        if self.write_files:
-            os.makedirs(self.snapshot_dir, exist_ok=True)
-            name = f"{snapshot['window']['to'].replace(':', '').replace('-', '')}_{snapshot['snapshot_id'][:8]}.json"
-            with open(os.path.join(self.snapshot_dir, name), "w", encoding="utf-8") as f:
-                json.dump(snapshot, f, ensure_ascii=False, indent=1)
-        logger.info(f"Snapshot {trigger} ({self.builder.size(snapshot)} B){f': {reason}' if reason else ''}")
-        self.last_snapshot = now
-        self.state.reset_window(now)
+        self._write(snapshot)
+        logger.info(f"Snapshot {trigger} {location_id} ({self.builder.size(snapshot)} B)"
+                    f"{f': {reason}' if reason else ''}")
+        self.recent[location_id] = {"at": now, "name": name, "people": snapshot["people"], "alerts": snapshot["alerts"],
+                                    "gas": snapshot.get("gas") or {}}
+        self.last_snapshot[location_id] = now
+        state.reset_window(now)
         return snapshot
+
+    def global_snapshot(self, now: float, since: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """One line per location that reported since the previous global snapshot — the "whole site" view for GPT."""
+        since = now - self.global_interval if since is None else since
+        active = {loc: info for loc, info in self.recent.items() if info["at"] >= since}
+        if len(active) < 2:
+            return None  # one location: its own snapshots already say everything
+        lines = [f"site overview, last {int(self.global_interval // 60)} min, {len(active)} locations"]
+        for info in active.values():
+            people = ", ".join(f"{p['identity']} {'>'.join(p['actions'][-2:])}".strip() for p in info["people"][:5])
+            gas = info["gas"]
+            line = f"{info['name']}: {len(info['people'])} people" + (f" ({people})" if people else "")
+            if gas:
+                line += f"; gas {gas.get('gas')} {gas.get('trend')}"
+            if info["alerts"]:
+                line += f"; alerts {', '.join(info['alerts'][-3:])}"
+            lines.append(line)
+        snapshot = {"snapshot_id": str(uuid.uuid4()), "trigger": "global", "window": {
+            "from": utc_iso(since), "to": utc_iso(now)}, "locations": list(active)}
+        digest = "\n".join(lines)[:1200]
+        self.outbox.add(snapshot, "global", created_at=now, digest=digest)
+        self._write(snapshot)
+        return snapshot
+
+    def _write(self, snapshot: Dict[str, Any]) -> None:
+        if not self.write_files:
+            return
+        os.makedirs(self.snapshot_dir, exist_ok=True)
+        name = f"{snapshot['window']['to'].replace(':', '').replace('-', '')}_{snapshot['snapshot_id'][:8]}.json"
+        with open(os.path.join(self.snapshot_dir, name), "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, ensure_ascii=False, indent=1)
 
     def close(self) -> None:
         if self.incidents is not None:
@@ -462,6 +548,8 @@ class Aggregator:
         if self.csv is not None:
             self.csv.close()
         self.outbox.close()
+        if self.locations is not None:
+            self.locations.close()
 
 
 class AggregatorModule(BaseModule):
@@ -483,7 +571,15 @@ class AggregatorModule(BaseModule):
                 from core.identity import registry_from_config
 
                 registry = registry_from_config(self.config["identity"])
-            self.aggregator = Aggregator(self.config, registry=registry)
+            locations = None
+            if "network" in self.config:  # the device network is configured (always in config.yaml)
+                try:
+                    from core.locations import LocationRegistry
+
+                    locations = LocationRegistry(self.config["network"].get("devices_path", "data/devices.db"))
+                except Exception as e:  # snapshots keep working with location ids
+                    logger.warning(f"Location registry unavailable: {e}")
+            self.aggregator = Aggregator(self.config, registry=registry, locations=locations)
 
     def teardown(self) -> None:
         if self.aggregator is not None:

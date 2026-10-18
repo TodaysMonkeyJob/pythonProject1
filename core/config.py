@@ -19,6 +19,8 @@ ENV_MAP = {
     "AZURE_OPENAI_API_VERSION": ("llm", "azure_api_version"),
     "DASHBOARD_USER": ("dashboard", "user"),
     "DASHBOARD_PASS": ("dashboard", "password"),
+    "TELEGRAM_BOT_TOKEN": ("locations", "telegram_bot_token"),
+    "TELEGRAM_CHAT_ID": ("locations", "telegram_chat_id"),
 }
 
 

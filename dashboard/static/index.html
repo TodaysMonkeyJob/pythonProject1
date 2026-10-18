@@ -20,7 +20,24 @@
   section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
   #camera { grid-column: span 7; } #status { grid-column: span 5; } #gpt { grid-column: span 5; }
   #gas { grid-column: span 7; } #speech { grid-column: span 4; } #log { grid-column: span 8; }
-  #people { grid-column: span 12; } #devices { grid-column: span 12; }
+  #people { grid-column: span 12; } #devices { grid-column: span 12; } #locations { grid-column: span 12; }
+  .locs { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+  .loc { flex: 0 0 260px; scroll-snap-align: start; border-radius: 10px; padding: 10px; background: #12151b;
+         border: 1px solid var(--line); border-top: 6px solid var(--low); display: flex; flex-direction: column; gap: 3px; }
+  .loc.attention { border-top-color: var(--medium); } .loc.danger { border-top-color: var(--critical);
+         background: rgba(248, 81, 73, .08); } .loc.offline { border-top-color: var(--muted); opacity: .7; }
+  .loc .title { font-weight: 700; font-size: 15px; } .loc .st { font-weight: 700; text-transform: uppercase; font-size: 12px; }
+  .loc.safe .st { color: var(--low); } .loc.attention .st { color: var(--medium); } .loc.danger .st { color: var(--critical); }
+  #bell { position: relative; } #bell-count { position: absolute; top: -6px; right: -6px; background: var(--critical);
+         color: #fff; border-radius: 9px; font-size: 11px; padding: 0 5px; }
+  #notes { position: fixed; right: 12px; top: 48px; width: min(380px, 94vw); max-height: 70vh; overflow-y: auto; z-index: 20;
+           background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: none; }
+  .note { border-left: 4px solid var(--medium); padding: 4px 8px; margin-bottom: 6px; background: #12151b; }
+  .note.danger { border-color: var(--critical); } .note.acked { opacity: .5; }
+  #toasts { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 30; }
+  .toast { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--medium); border-radius: 6px;
+           padding: 8px 12px; max-width: 360px; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+  .toast.danger { border-left-color: var(--critical); }
   .devrow { display: grid; grid-template-columns: 18px minmax(140px, 1.4fr) 90px 90px minmax(150px, 1fr) 70px 110px;
             gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
   @media (max-width: 900px) { .devrow { grid-template-columns: 18px 1fr 1fr; } }
@@ -66,8 +83,14 @@
 </head>
 <body>
 <header><span id="ws-dot" class="dot" title="WebSocket"></span><h1>IoT Guard</h1>
-  <span id="mic" class="muted"></span><span id="clock" class="muted" style="margin-left:auto"></span></header>
+  <span id="mic" class="muted"></span><span id="clock" class="muted" style="margin-left:auto"></span>
+  <button id="bell" title="сповіщення">🔔<span id="bell-count" hidden></span></button></header>
+<div id="notes"><div class="filters"><b style="flex:1">Сповіщення</b><button id="browser-notify">Сповіщення браузера</button></div>
+  <div id="note-list"><div class="muted">немає</div></div></div>
+<div id="toasts"></div>
 <main>
+  <section id="locations"><h2>Локації <button id="manage-locs" style="margin-left:8px">керувати</button></h2>
+    <div class="locs" id="loc-cards"><div class="muted">немає даних</div></div></section>
   <section id="camera"><h2>Камера <select id="cam-select" title="камера"></select></h2>
     <img id="video" src="/video" alt="camera stream"></section>
   <section id="status"><h2>Стан системи</h2><div class="kv" id="status-kv"></div>
@@ -132,6 +155,8 @@ function describe(ev) {
     case "identity_renamed": return [nameSpan(p.person_id, p.display_name), ` (було ${p.previous})`];
     case "identity_merged": case "identity_linked":
       return [`${p.source_name || ""} → `, nameSpan(p.person_id, p.display_name), p.modality ? ` (${p.modality})` : ""];
+    case "location_state_changed": return `${p.location_id}: ${p.from} → ${p.to} (${p.reason})`;
+    case "notification": return `${p.title}: ${p.body}`;
     case "device_online": case "device_offline": case "device_updated":
       return `${KIND[p.kind] || p.kind} ${p.name} · ${p.location_id}${p.enabled === false ? " (вимкнено)" : ""}`;
     case "identity_created": case "identity_deleted": return `${p.display_name}${p.modality ? " (" + p.modality + ")" : ""}`;
@@ -226,6 +251,8 @@ function handle(ev) {
   else if (ev.type === "gas_reading") addGas(ev);
   else if (ev.type === "mic_state") $("mic").textContent = "мікрофон: " + ev.payload.state;
   else if (ev.type.startsWith("device_")) loadDevices();
+  else if (ev.type === "notification") { toast(ev.payload); loadNotes(); }
+  else if (ev.type === "notification_acked") loadNotes();
   else if (ev.type.startsWith("identity_")) {
     const p = ev.payload;
     if (ev.type === "identity_renamed" && persons[p.person_id]) { persons[p.person_id].display_name = p.display_name; renderNames(); }
@@ -297,7 +324,9 @@ function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   ws.onopen = () => { $("ws-dot").classList.add("on"); delay = 1000;
     $("events").replaceChildren(); $("transcripts").replaceChildren(); };
-  ws.onmessage = (m) => { try { handle(JSON.parse(m.data)); } catch (e) { console.warn(e); } };
+  ws.onmessage = (m) => { try { const ev = JSON.parse(m.data);
+    if (ev.type === "location_summary") { summaries[ev.payload.location_id] = ev.payload; renderLocations(); return; }
+    handle(ev); } catch (e) { console.warn(e); } };
   ws.onclose = () => { $("ws-dot").classList.remove("on"); setTimeout(connect, delay); delay = Math.min(delay * 2, 15000); };
 }
 connect();
@@ -390,6 +419,92 @@ $("onvif").onclick = async () => {
 $("cam-select").onchange = () => { chosenCamera = $("cam-select").value;
   $("video").src = "/video?device=" + encodeURIComponent(chosenCamera); };
 loadDevices(); setInterval(loadDevices, 5000);
+
+// --- locations (F12): live state per territory, notifications
+const STATE = { safe: "безпечно", attention: "увага", danger: "небезпека", offline: "офлайн" };
+let locationList = [], summaries = {};
+async function loadLocations() {
+  try { const r = await fetch("/api/locations"); if (!r.ok) return; const j = await r.json(); locationList = j.locations;
+    j.locations.forEach((l) => { if (l.summary) summaries[l.location_id] = l.summary; }); renderLocations(); } catch (e) { /* restarting */ }
+}
+function renderLocations() {
+  const box = $("loc-cards"); box.replaceChildren();
+  const ids = locationList.map((l) => l.location_id);
+  Object.keys(summaries).forEach((id) => { if (!ids.includes(id)) ids.push(id); });
+  if (!ids.length) { box.append(el("div", "muted", "локацій ще немає")); return; }
+  for (const id of ids) {
+    const meta = locationList.find((l) => l.location_id === id) || { name: id, icon: "" }, s = summaries[id];
+    const state = s ? s.state : "safe", card = el("div", "loc " + state);
+    card.append(el("div", "title", `${meta.icon || ""} ${s ? s.name : meta.name}`.trim()), el("div", "st", STATE[state] || state));
+    if (s) {
+      if (s.reason) card.append(el("div", "", s.reason));
+      card.append(el("div", "muted", `людей: ${s.people_count}${s.people.length ? " — " + s.people.map((p) => (p.name || "?") + (p.action ? " " + p.action : "")).join(", ") : ""}`));
+      if (s.last_speech) card.append(el("div", "muted", `${s.last_speech.name}: "${s.last_speech.text}"`));
+      if (s.gas) card.append(el("div", "muted", `газ: ${s.gas.main} ${s.gas.trend || ""}`));
+      card.append(el("div", "muted", `пристрої: ${s.devices.online}/${s.devices.total}`));
+      if (s.last_llm) card.append(el("div", "muted", `GPT: ${s.last_llm.risk_level} — ${s.last_llm.summary}`));
+      if (s.active_alerts) { const b = el("button", "", `Підтвердити (${s.active_alerts})`);
+        b.onclick = async () => { if (await api("POST", `/api/locations/${encodeURIComponent(id)}/ack`)) loadNotes(); }; card.append(b); }
+    } else card.append(el("div", "muted", "очікую дані…"));
+    box.append(card);
+  }
+}
+function toast(note) {
+  const t = el("div", "toast " + note.level); t.append(el("b", "", note.title), el("div", "", note.body));
+  $("toasts").append(t); setTimeout(() => t.remove(), 8000);
+  try { if (window.Notification && Notification.permission === "granted") new Notification(note.title, { body: note.body, tag: note.id }); }
+  catch (e) { /* not supported */ }
+}
+async function loadNotes() {
+  try { const r = await fetch("/api/notifications?limit=50"); if (!r.ok) return; const j = await r.json(); renderNotes(j.notifications); }
+  catch (e) { /* restarting */ }
+}
+function renderNotes(list) {
+  const box = $("note-list"); box.replaceChildren(); const open = list.filter((n) => !n.acknowledged_at).length;
+  $("bell-count").hidden = !open; $("bell-count").textContent = open;
+  if (!list.length) { box.append(el("div", "muted", "немає")); return; }
+  for (const n of list) {
+    const row = el("div", "note " + n.level + (n.acknowledged_at ? " acked" : ""));
+    row.append(el("b", "", n.title), el("div", "", n.body),
+               el("div", "muted", new Date(n.ts * 1000).toLocaleString("uk-UA") + " · " + n.channels.join(", ") +
+                  (n.acknowledged_at ? ` · підтвердив ${n.acknowledged_by}` : "")));
+    if (!n.acknowledged_at) { const b = el("button", "", "Підтвердити");
+      b.onclick = async () => { if (await api("POST", `/api/notifications/${encodeURIComponent(n.id)}/ack`)) loadNotes(); }; row.append(b); }
+    box.append(row);
+  }
+}
+$("bell").onclick = () => { const p = $("notes"); p.style.display = p.style.display === "block" ? "none" : "block"; loadNotes(); };
+$("browser-notify").onclick = async () => { if (window.Notification) await Notification.requestPermission(); };
+$("manage-locs").onclick = () => {
+  $("dlg-title").textContent = "Локації"; const body = $("dlg-body"); body.replaceChildren();
+  const list = el("div"); body.append(list);
+  const draw = () => {
+    list.replaceChildren();
+    locationList.forEach((l, i) => {
+      const row = el("div", "devrow"); row.style.gridTemplateColumns = "60px 1fr 90px 130px 110px";
+      const icon = el("input"); icon.value = l.icon || ""; icon.placeholder = "📦"; icon.maxLength = 4;
+      const name = el("input"); name.value = l.name;
+      const after = el("input"); after.value = (l.rules || {}).unknown_person_after || ""; after.placeholder = "20:00"; after.title = "невідомий після";
+      const save = el("button", "", "Зберегти");
+      save.onclick = async () => { await api("PATCH", `/api/locations/${encodeURIComponent(l.location_id)}`,
+        { name: name.value, icon: icon.value, rules: { ...(l.rules || {}), unknown_person_after: after.value || null } }); await loadLocations(); draw(); };
+      const tools = el("span");
+      const up = el("button", "", "↑"); up.disabled = i === 0 || l.location_id === "unassigned";
+      up.onclick = async () => { const ids = locationList.map((x) => x.location_id); [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+        await api("POST", "/api/locations/reorder", { order: ids }); await loadLocations(); draw(); };
+      const del = el("button", "", "✕"); del.disabled = l.location_id === "unassigned";
+      del.onclick = async () => { if (confirm(`Видалити ${l.name}? Пристрої перейдуть у «Unassigned».`) &&
+        await api("DELETE", `/api/locations/${encodeURIComponent(l.location_id)}`)) { await loadLocations(); loadDevices(); draw(); } };
+      tools.append(up, del);
+      row.append(icon, name, after, save, tools); list.append(row);
+    });
+    const add = el("button", "", "+ локація");
+    add.onclick = async () => { const n = prompt("Назва локації"); if (n && await api("POST", "/api/locations", { name: n })) { await loadLocations(); draw(); } };
+    list.append(add);
+  };
+  draw(); $("dlg").showModal();
+};
+loadLocations(); loadNotes(); setInterval(loadLocations, 10000);
 setInterval(() => $("clock").textContent = new Date().toLocaleTimeString("uk-UA", { hour12: false }), 1000);
 </script>
 </body>

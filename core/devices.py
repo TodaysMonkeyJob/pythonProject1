@@ -69,7 +69,8 @@ class DeviceRegistry:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout=10000")
         self.db.executescript(SCHEMA)
-        self.db.execute("INSERT OR IGNORE INTO locations VALUES (?, ?, ?)", (UNASSIGNED, "Unassigned", self.clock()))
+        self.db.execute("INSERT OR IGNORE INTO locations (location_id, name, created_at) VALUES (?, ?, ?)",
+                        (UNASSIGNED, "Unassigned", self.clock()))
 
     def close(self) -> None:
         with self._lock:
@@ -237,13 +238,13 @@ class DeviceRegistry:
     def add_location(self, name: str) -> Dict[str, Any]:
         location_id = slug(name)
         with self._lock:
-            self.db.execute("INSERT OR IGNORE INTO locations VALUES (?, ?, ?)", (location_id, name.strip()[:64],
-                                                                                  self.clock()))
+            self.db.execute("INSERT OR IGNORE INTO locations (location_id, name, created_at) VALUES (?, ?, ?)",
+                            (location_id, name.strip()[:64], self.clock()))
         return {"location_id": location_id, "name": name.strip()[:64]}
 
     def _ensure_location(self, location_id: str) -> None:
         with self._lock:
-            self.db.execute("INSERT OR IGNORE INTO locations VALUES (?, ?, ?)",
+            self.db.execute("INSERT OR IGNORE INTO locations (location_id, name, created_at) VALUES (?, ?, ?)",
                             (location_id, location_id.replace("_", " ").title(), self.clock()))
 
     def _emit(self, type: str, device: Dict[str, Any], **extra) -> None:

@@ -270,9 +270,9 @@ def test_aggregator_keeps_tracks_of_different_cameras_apart(tmp_path):
                                        device_id=device, location_id=location))
         aggregator.on_event(make_event("camera", "person_identified", {"track_id": 1, "identity": name},
                                        device_id=device, location_id=location))
-    snapshot = aggregator.snapshot("interval", aggregator.clock())
-    assert sorted((p["identity"], p["location_id"]) for p in snapshot["people"]) == [("Oleh", "room_a"),
-                                                                                     ("unknown_3", "room_b")]
-    digest = snapshot_digest(snapshot)
-    assert "Oleh" in digest and "@room_a" in digest and "@room_b" in digest
+    a = aggregator.snapshot("interval", aggregator.clock(), location_id="room_a")
+    b = aggregator.snapshot("interval", aggregator.clock(), location_id="room_b")
+    assert [(p["identity"], p["location_id"]) for p in a["people"]] == [("Oleh", "room_a")]     # per location
+    assert [(p["identity"], p["location_id"]) for p in b["people"]] == [("unknown_3", "room_b")]
+    assert a["location_id"] == "room_a" and snapshot_digest(a).startswith("room_a | ")
     aggregator.close()

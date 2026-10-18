@@ -5,7 +5,7 @@ import os
 import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUARDED = ("data/identity.db*", "data/devices.db*", "data/tls/*", "logs/*/*")
+GUARDED = ("data/identity.db*", "data/devices.db*", "data/notifications.db*", "data/tls/*", "logs/*/*")
 
 
 def _state():

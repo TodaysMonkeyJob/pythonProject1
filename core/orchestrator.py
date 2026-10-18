@@ -40,10 +40,12 @@ DEFAULT_MODULES = {
               ["scene_active", "object_detected", "person_identified", *IDENTITY_EVENTS]),
     "aggregator": ("modules.aggregator:run", "aggregator", ["*"]),
     "llm": ("modules.llm:run", "llm", []),          # works from the SQLite outbox
-    "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat"]),
+    "locations": ("modules.locations:run", "locations", ["*"]),   # F12 per-location state + notifications
+    "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary"]),
 }
 SELF_LOGGING_SECTIONS = ("vision", "actions", "identity")
 PER_DEVICE_MODULES = ("vision", "audio")   # with network.discovery: one process per camera / microphone
+UNLOGGED_EVENTS = ("heartbeat", "location_summary")   # frequent status: explicit subscribers only, not logged
 # Files a module can't start without: (config section, key, how to get it)
 REQUIRED_FILES = {
     "gas": [("gas", "classifier_path", "python -m modules.gas.train"),
@@ -353,12 +355,12 @@ class Orchestrator:
         except ValueError as e:
             logger.warning(f"Dropping malformed event: {e}")
             return
-        if event.type == "heartbeat":
-            module = self.modules.get(event.payload.get("module"))
+        if event.type in UNLOGGED_EVENTS:
+            module = self.modules.get(event.payload.get("module")) if event.type == "heartbeat" else None
             if module is not None:
                 module.last_heartbeat = self.clock()
             for subscriber in self.modules.values():  # only explicit subscribers (the dashboard), never via "*"
-                if "heartbeat" in subscriber.spec.subscribe:
+                if event.type in subscriber.spec.subscribe:
                     try:
                         subscriber.control.put_nowait(data)
                     except queue.Full:

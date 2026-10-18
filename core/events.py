@@ -42,6 +42,10 @@ EVENT_TYPES = (
     "device_online",        # F11 device registry (source system): device_id, kind, name, location_id
     "device_offline",
     "device_updated",
+    "location_state_changed",   # F12 (source system): location_id, from, to, reason, event_ids
+    "location_summary",         # F12 live summary per location (dashboard only, not logged)
+    "notification",             # F12: id, location_id, level, title, body
+    "notification_acked",
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"

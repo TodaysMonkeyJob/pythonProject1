@@ -37,24 +37,43 @@ def _tz_label(offset: timedelta) -> str:
     return "UTC" if hours == 0 else f"UTC{hours:+g}"
 
 
+def rules_line(rules: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Per-location rules GPT should apply (F12), e.g. ``rules: unknown person after 20:00; acetone ≥ 3.0%``."""
+    if not rules:
+        return None
+    parts = []
+    if rules.get("unknown_person_after"):
+        parts.append(f"unknown person suspicious after {rules['unknown_person_after']}")
+    for gas, limit in (rules.get("gas_thresholds") or {}).items():
+        parts.append(f"{gas} ≥ {limit}% is dangerous here")
+    return "rules: " + "; ".join(parts) if parts else None
+
+
 def snapshot_digest(snapshot: Dict[str, Any], incident_id: Optional[str] = None,
-                    local_now: Optional[datetime] = None, max_chars: int = 1200) -> str:
+                    local_now: Optional[datetime] = None, max_chars: int = 1200,
+                    rules: Optional[Dict[str, Any]] = None) -> str:
     """
     :param snapshot: Snapshot dict (schemas/snapshot.schema.json)
     :param incident_id: Local incident archive id to mention (the archive itself is never sent)
     :param local_now: Timezone-aware local time used for the UTC offset (tests)
     :param max_chars: Hard cap; lines are cut from the bottom-most optional sections first
+    :param rules: Per-location rules (F12) → a ``rules:`` line
     :return: Compact multi-line text
     """
     offset = _offset(local_now)
     start = datetime.strptime(snapshot["window"]["from"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     end = datetime.strptime(snapshot["window"]["to"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     header = f"{(start + offset):%H:%M:%S}-{(end + offset):%H:%M:%S} {_tz_label(offset)}"
+    if snapshot.get("location_name"):
+        header = f"{snapshot['location_name']} | {header}"
     if snapshot["trigger"] == "critical_event":
         header += f" CRITICAL {snapshot.get('reason', '')}".rstrip()
     if incident_id:
         header += f" | incident {incident_id}"
     lines = [header]
+    rule = rules_line(rules)
+    if rule:
+        lines.append(rule)
 
     people = []
     several_places = len({p.get("location_id") for p in snapshot["people"]}) > 1

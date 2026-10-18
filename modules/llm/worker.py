@@ -1,12 +1,14 @@
 """
 LLM worker (F6): sends snapshot digests from the SQLite outbox to GPT and publishes ``llm_decision`` events.
 
-* Critical snapshots go out immediately; non-critical ones at most once per ``min_llm_interval_sec`` — only the
-  newest pending one, older non-critical rows are skipped (cost control).
+* Critical snapshots go out immediately; non-critical ones at most once per ``min_llm_interval_sec`` PER LOCATION
+  (F12; the global "site" snapshot counts as its own location) — only the newest pending one, older non-critical rows
+  of that location are skipped (cost control). ``llm_decision`` carries the snapshot's ``location_id``.
 * Network / rate-limit / 5xx / timeout errors: exponential backoff, the row stays ``pending`` (nothing is lost
   offline). Credential / deployment errors: logged, retried rarely, rows stay pending.
 * A decision that is not valid JSON after one clarification retry marks the row ``failed``.
 """
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +17,10 @@ from modules.aggregator.outbox import Outbox
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
+
+def location_key(row: Dict[str, Any]) -> str:
+    return "__site__" if row["trigger"] == "global" else row["payload"].get("location_id") or ""
+
 
 SEVERITY = {"low": "info", "medium": "warning", "high": "critical", "critical": "critical"}
 
@@ -39,7 +45,7 @@ class LLMWorker(BaseModule):
         self.outbox = outbox
         self.clock = clock
         self._next_poll = 0.0
-        self._last_regular = float("-inf")
+        self._last_regular: Dict[str, float] = {}
         self._backoff = 0.0
         self._blocked_until = 0.0
         self.unavailable: Optional[str] = None
@@ -47,7 +53,7 @@ class LLMWorker(BaseModule):
     def setup(self) -> None:
         if self.outbox is None:
             agg = self.config.get("aggregator", {})
-            self.outbox = Outbox(agg.get("outbox_path", "exports/outbox.db"))
+            self.outbox = Outbox(agg.get("outbox_path", os.path.join(agg.get("export_dir", "exports"), "outbox.db")))
         if self.gpt is None:
             from modules.llm.azure_client import MissingCredentials
             from modules.llm.gpt_client import GPTClient
@@ -78,12 +84,16 @@ class LLMWorker(BaseModule):
         Older regular rows are skipped.
         """
         critical = [r for r in rows if r["trigger"] == "critical_event"]
-        regular = [r for r in rows if r["trigger"] != "critical_event"]
         chosen = list(critical)
-        if regular and now - self._last_regular >= self.min_interval:
-            for row in regular[:-1]:
-                self.outbox.mark_skipped(row["id"], "superseded by a newer snapshot")
-            chosen.append(regular[-1])
+        by_location: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            if row["trigger"] != "critical_event":
+                by_location.setdefault(location_key(row), []).append(row)
+        for key, regular in by_location.items():
+            if now - self._last_regular.get(key, float("-inf")) >= self.min_interval:
+                for row in regular[:-1]:
+                    self.outbox.mark_skipped(row["id"], "superseded by a newer snapshot")
+                chosen.append(regular[-1])
         return chosen
 
     def send(self, row: Dict[str, Any]) -> bool:
@@ -120,7 +130,7 @@ class LLMWorker(BaseModule):
 
         self._backoff = 0.0
         if row["trigger"] != "critical_event":
-            self._last_regular = self.clock()
+            self._last_regular[location_key(row)] = self.clock()
         self.outbox.mark_sent(row["id"])
         payload = {"snapshot_id": row["id"], "trigger": row["trigger"], **decision.model_dump(),
                    "model": getattr(self.gpt, "deployment", None), "prompt_tokens": usage.prompt_tokens,
@@ -128,7 +138,10 @@ class LLMWorker(BaseModule):
                    "latency_ms": usage.latency_ms}
         if row["payload"].get("incident_id"):
             payload["incident_id"] = row["payload"]["incident_id"]
-        self.emit("llm_decision", payload, severity=SEVERITY[decision.risk_level])
+        location_id = row["payload"].get("location_id")
+        if location_id:
+            payload["location_id"] = location_id
+        self.emit("llm_decision", payload, severity=SEVERITY[decision.risk_level], location_id=location_id)
         return True
 
     def _pause(self, error: Exception) -> None:

@@ -28,7 +28,8 @@ def config(tmp_path, **dashboard):
                            "incidents": {"dir": str(tmp_path / "exports" / "incidents")}},
             "gas": {"thresholds": {"acetone": 5.0}}, "vision": {},
             "identity": {"registry_path": str(tmp_path / "identity.db"), "faces_dir": str(tmp_path / "persons")},
-            "network": {"devices_path": str(tmp_path / "devices.db"), "node_port": 0}}
+            "network": {"devices_path": str(tmp_path / "devices.db"), "node_port": 0},
+            "locations": {"notify": {"path": str(tmp_path / "notifications.db")}}}
 
 
 def client(tmp_path, **dashboard):
