@@ -268,3 +268,64 @@ envelope:
       - {id: K2, rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS absent AND action_risk IS low THEN confirmation IS partial", weight: 0.6}
       - {id: K3, rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS present AND motion_level IS high AND action_risk IS low THEN confirmation IS partial"}
       - {id: K4, rule: "IF known_present IS present AND motion_level IS NOT high AND action_risk IS low THEN confirmation IS partial", weight: 0.5}   # no gas sensor here
+
+# --- F19 (TOD-30): fuzzy gating of LLM calls (component E) ----------------------------------------------------------
+# call_llm ≥ threshold → GPT; else a fuzzy-only decision (risk = r_floor, summary from the fired rules). Hard rules in
+# modules/llm/gating.py: critical_event / critical floor / untrusted lowering claim → always call; otherwise
+# llm.min_llm_interval_sec is respected.
+gating:
+  threshold: 0.5
+  baseline_minutes: 30        # novelty = what this location has not shown in the last 30 min
+  critical_floor: 0.8         # r_floor at / above this → always call (for an explanation)
+  output: call_llm
+  variables:
+    novelty:
+      universe: [0, 1, 0.01]
+      terms:
+        low: [trap, 0, 0, 0.1, 0.3]
+        medium: [tri, 0.2, 0.45, 0.7]
+        high: [trap, 0.5, 0.75, 1, 1]
+    uncertainty:              # corridor width + spread of fired output terms
+      universe: [0, 1, 0.01]
+      terms:
+        low: [trap, 0, 0, 0.15, 0.3]
+        medium: [tri, 0.2, 0.4, 0.6]
+        high: [trap, 0.45, 0.65, 1, 1]
+    untrusted_claims:         # 1 = low-trust de-escalation / instruction claim, 0.5 = other untrusted evidence
+      universe: [0, 1, 0.01]
+      terms:
+        none: [trap, 0, 0, 0.2, 0.4]
+        some: [tri, 0.3, 0.5, 0.7]
+        present: [trap, 0.6, 0.8, 1, 1]
+    time_since_last_llm:      # minutes (60 = never / an hour or more)
+      universe: [0, 60, 0.1]
+      unit: min
+      terms:
+        recent: [trap, 0, 0, 5, 10]
+        while: [trap, 5, 10, 20, 30]
+        long: [trap, 20, 30, 60, 60]
+    severity:                 # r_floor, with the risk output terms
+      universe: [0, 1, 0.01]
+      terms:
+        low: [trap, 0, 0, 0.1, 0.3]
+        medium: [tri, 0.15, 0.4, 0.6]
+        high: [tri, 0.45, 0.7, 0.85]
+        critical: [trap, 0.75, 0.9, 1, 1]
+    call_llm:
+      universe: [0, 1, 0.01]
+      terms:
+        skip: [trap, 0, 0, 0.1, 0.3]
+        maybe: [tri, 0.25, 0.5, 0.75]
+        call: [trap, 0.7, 0.9, 1, 1]
+  rules:
+    - {id: G1, rule: "IF novelty IS high THEN call_llm IS call"}
+    - {id: G2, rule: "IF novelty IS medium AND uncertainty IS NOT low THEN call_llm IS call"}
+    - {id: G3, rule: "IF novelty IS medium AND uncertainty IS low THEN call_llm IS maybe"}
+    - {id: G4, rule: "IF uncertainty IS high THEN call_llm IS call"}
+    - {id: G5, rule: "IF untrusted_claims IS present THEN call_llm IS call"}
+    - {id: G6, rule: "IF untrusted_claims IS some THEN call_llm IS maybe"}
+    - {id: G7, rule: "IF severity IS high OR severity IS critical THEN call_llm IS call"}
+    - {id: G8, rule: "IF severity IS medium AND time_since_last_llm IS NOT recent THEN call_llm IS maybe"}
+    - {id: G9, rule: "IF time_since_last_llm IS long THEN call_llm IS call", weight: 0.8}   # periodic refresh
+    - {id: G10, rule: "IF novelty IS low AND uncertainty IS low AND untrusted_claims IS none AND severity IS low AND time_since_last_llm IS NOT long THEN call_llm IS skip"}
+    - {id: G11, rule: "IF novelty IS low AND uncertainty IS NOT high AND untrusted_claims IS none AND severity IS medium AND time_since_last_llm IS recent THEN call_llm IS skip"}

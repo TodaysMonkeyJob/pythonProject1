@@ -148,6 +148,13 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   (`LLMDecision`, renormalised, optional). `modules/llm/calibration.py` (`RiskCalibrator`: r_LLM = centroid of
   Σ p·μ; Brier / ECE / reliability), `tools/calibrate_llm_risk.py` → `config/calibration.yaml` (used by the envelope
   only once it exists), `tools/snapshot_tokens.py` (v1 JSON / v1 digest / v2 tokens), `tools/test_llm.py --repeat`.
+- F19 (TOD-30) `modules/llm/gating.py` `LLMGate` in the LLM worker (`llm.gating`): novelty vs the location's last
+  30 min (`snapshot_features`), corridor uncertainty, untrusted claims, minutes since the last GPT call, severity →
+  `gating` rules in `config/fuzzy.yaml` → call / fuzzy-only. Hard: critical_event, critical floor, an untrusted
+  lowering claim (snapshot or envelope, new since the last call) → GPT at once; else `min_llm_interval_sec`. Fuzzy-only
+  → `llm_decision` `source: fuzzy_only`, risk = r_floor, `fuzzy_summary` (Ukrainian template), outbox row
+  `mark_handled`; works without Azure keys. `gating.jsonl` (inputs, tokens saved). Dashboard badge LLM / без GPT.
+  `tools/gating_replay.py` (synthetic routine hour or a real events.jsonl, read only): calls vs every snapshot.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

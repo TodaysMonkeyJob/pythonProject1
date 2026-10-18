@@ -119,6 +119,9 @@ h2 { font-size: .8em; text-transform: uppercase; letter-spacing: .06em; color: v
 .llm-panel .lvl.low { color: var(--low); } .llm-panel .lvl.medium { color: var(--medium); }
 .llm-panel .lvl.high { color: var(--high); } .llm-panel .lvl.critical { color: var(--critical); }
 .small { font-size: 12px; }
+.src { font-size: 10px; font-weight: 700; border-radius: 6px; padding: 0 5px; vertical-align: middle; }
+.src.llm { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+.src.fuzzy { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
 .trust { font-size: 11px; border-radius: 6px; padding: 0 5px; margin-left: 4px; white-space: nowrap; background: var(--panel2); }
 .trust.t-low { color: var(--critical); } .trust.t-medium { color: var(--medium); } .trust.t-high { color: var(--low); }
 .decision { border-left: 4px solid var(--muted); padding: 4px 8px; margin-bottom: 6px; background: var(--panel2); }
