@@ -125,6 +125,14 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   → `FuzzyConfigError`). Config `config/fuzzy.yaml` (variables, rules R1–R22, `maps.action_risk`, `locations:`
   overrides: terms / shift / rules / remove_rules / weights; also `fuzzy:` blocks in `config/locations.yaml`).
   `python -m core.fuzzy --check` / `python -m core.fuzzy gas_concentration=4.2 gas=acetone --location warehouse`.
+- `modules/trust/` — F16 (TOD-27) fuzzy trust in evidence, run by the orchestrator router on every evidence event
+  before it is logged / forwarded (`trust.enabled`): `channels.py` (`channel_of`: physical / identity / speech /
+  scene_text; `EvidenceState`: presence per location, cameras + health, gas readings, recent alarms — learned from
+  the stream), `claims.py` (UA + EN pattern detector: instruction_to_system > deescalation > escalation > none),
+  `scorer.py` (`TrustScorer`: τ = min(μ_source, μ_asr, μ_consistency) with the `trust.source` / `asr` / `identity`
+  rule bases in `config/fuzzy.yaml`; adds trust, trust_terms, provenance, claim_type, claim_spans,
+  playback_suspected, trust_reasons, trust_components). Speech events now carry `asr_confidence` (Whisper
+  avg_logprob / no_speech_prob) and `speaker_overlap`. New event type `scene_text`. See `modules/trust/README.md`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

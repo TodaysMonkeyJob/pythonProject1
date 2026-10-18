@@ -19,6 +19,7 @@ speaker attribution (F10).
 Only the transcript text goes further; audio never leaves the device except to the configured Whisper backend.
 """
 import io
+import math
 import re
 import threading
 import time
@@ -116,7 +117,10 @@ def _segments(raw, opts: Optional[WhisperOptions] = None) -> List[Dict[str, Any]
             continue
         if any(phrase in _normalized(text) for phrase in opts.hallucination_phrases):
             continue
-        out.append({"start": round(float(get("start")), 3), "end": round(float(get("end")), 3), "text": text})
+        segment = {"start": round(float(get("start")), 3), "end": round(float(get("end")), 3), "text": text}
+        if logprob is not None:     # F16 trust: how sure Whisper was about these words
+            segment["confidence"] = round(math.exp(min(0.0, float(logprob))) * (1.0 - float(no_speech or 0.0)), 3)
+        out.append(segment)
     return out
 
 

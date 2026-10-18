@@ -124,3 +124,114 @@ locations:
     rules:
       - {id: W1, rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS high"}
       - {id: W2, rule: "IF people_count IS NOT none AND time_of_day_risk IS night THEN risk IS high", weight: 0.8}
+
+# --- F16 (TOD-27): fuzzy trust in evidence (component B) ------------------------------------------------------------
+# τ(e) = min(μ_source, μ_asr, μ_consistency) per event that can reach the LLM (modules/trust). μ_source of speech,
+# μ_asr and identity trust come from the small rule bases below (same engine as the risk rules); physical sensors
+# and scene text use the base values. trust_terms = τ fuzzified with trust.terms.
+trust:
+  base:
+    physical: 0.95            # gas, motion, object detections, scene_active, pose / actions
+    physical_degraded: 0.3    # the device is offline / in error, or its readings disagree with a twin sensor
+    redundant_disagreement: 0.6
+    scene_text: 0.1           # text in the frame (signs, screens) is always weak evidence
+    identity_unknown: 0.8     # "an unknown person is here" is a physical observation
+    identity_unsettled: 0.8
+  gas_confidence_min: 0.5     # classifier probability below this lowers the reading's trust proportionally
+  gas_disagreement_pct: 1.0   # two gas sensors of one location differing more than this (within 30 s) disagree
+  presence_grace_sec: 3       # a person seen this close to a speech segment counts as visible during it
+  presence_stale_sec: 600     # person tracks without any update for this long are forgotten
+  alarm_memory_sec: 300       # physical alerts / risky actions this recent make a calming claim contradictory
+  consistency:
+    deescalation_floor: 0.1   # μ_consistency of a calming claim when the sensors are fully alarming (graded)
+    instruction: 0.05         # instructions to the system ("report safe") never get trust
+  terms:
+    low: [trap, 0, 0, 0.2, 0.45]
+    medium: [tri, 0.25, 0.5, 0.75]
+    high: [trap, 0.55, 0.8, 1, 1]
+  claims: {}                  # extra patterns: {deescalation: ["regex", …], instruction_to_system: [...], escalation: [...]}
+
+  source:                     # μ_source of a speech segment
+    output: source
+    variables:
+      speaker:                # unknown 0.1, uncertain 0.4, known ≥ 0.7 (from the voice registry match)
+        universe: [0, 1, 0.01]
+        terms:
+          unknown: [trap, 0, 0, 0.2, 0.35]
+          uncertain: [tri, 0.2, 0.4, 0.6]
+          known: [trap, 0.5, 0.7, 1, 1]
+      face_voice:             # mismatch 0, off camera 0.35, people visible but not identified 0.65, match 1
+        universe: [0, 1, 0.01]
+        terms:
+          mismatch: [trap, 0, 0, 0.1, 0.25]
+          off_camera: [tri, 0.15, 0.35, 0.5]
+          possible: [tri, 0.45, 0.65, 0.85]
+          match: [trap, 0.8, 0.95, 1, 1]
+      playback:               # 1 = speech in a location with working cameras and nobody visible
+        universe: [0, 1, 0.01]
+        terms:
+          not_suspected: [trap, 0, 0, 0.3, 0.7]
+          suspected: [trap, 0.3, 0.7, 1, 1]
+      overlap:                # 1 = another speaker talked during the segment
+        universe: [0, 1, 0.01]
+        default: 0
+        terms:
+          absent: [trap, 0, 0, 0.3, 0.7]
+          present: [trap, 0.3, 0.7, 1, 1]
+      source:
+        universe: [0, 1, 0.01]
+        terms:
+          very_low: [trap, 0, 0, 0.05, 0.15]
+          low: [tri, 0.1, 0.3, 0.5]
+          medium: [tri, 0.45, 0.6, 0.75]
+          high: [trap, 0.7, 0.8, 1, 1]
+    rules:
+      - {id: S1, rule: "IF playback IS suspected THEN source IS very_low"}
+      - {id: S2, rule: "IF speaker IS unknown AND playback IS not_suspected THEN source IS low"}
+      - {id: S3, rule: "IF face_voice IS mismatch AND playback IS not_suspected THEN source IS low"}
+      - {id: S4, rule: "IF speaker IS known AND face_voice IS match AND playback IS not_suspected THEN source IS high"}
+      - {id: S5, rule: "IF speaker IS known AND face_voice IS off_camera AND playback IS not_suspected THEN source IS medium"}
+      - {id: S6, rule: "IF speaker IS known AND face_voice IS possible AND playback IS not_suspected THEN source IS medium"}
+      - {id: S7, rule: "IF speaker IS uncertain AND face_voice IS NOT match AND playback IS not_suspected THEN source IS low"}
+      - {id: S8, rule: "IF speaker IS uncertain AND face_voice IS match AND playback IS not_suspected THEN source IS medium", weight: 0.7}
+      - {id: S9, rule: "IF overlap IS present THEN source IS low", weight: 0.5}
+
+  asr:                        # μ_asr from Whisper's confidence (exp(avg_logprob) × (1 − no_speech_prob))
+    output: asr
+    variables:
+      asr_confidence:
+        universe: [0, 1, 0.01]
+        terms:
+          poor: [trap, 0, 0, 0.2, 0.4]
+          fair: [tri, 0.25, 0.5, 0.75]
+          good: [trap, 0.6, 0.8, 1, 1]
+      asr:
+        universe: [0, 1, 0.01]
+        terms:
+          low: [trap, 0, 0, 0.15, 0.35]
+          medium: [tri, 0.3, 0.55, 0.8]
+          high: [trap, 0.7, 0.9, 1, 1]
+    rules:
+      - {id: A1, rule: "IF asr_confidence IS poor THEN asr IS low"}
+      - {id: A2, rule: "IF asr_confidence IS fair THEN asr IS medium"}
+      - {id: A3, rule: "IF asr_confidence IS good THEN asr IS high"}
+
+  identity:                   # trust in a face identification (known person, by SFace gallery similarity)
+    output: identity
+    variables:
+      face_match:
+        universe: [0, 1, 0.01]
+        terms:
+          weak: [trap, 0, 0, 0.35, 0.45]
+          fair: [tri, 0.4, 0.5, 0.6]
+          strong: [trap, 0.55, 0.65, 1, 1]
+      identity:
+        universe: [0, 1, 0.01]
+        terms:
+          low: [trap, 0, 0, 0.15, 0.35]
+          medium: [tri, 0.3, 0.55, 0.8]
+          high: [trap, 0.7, 0.9, 1, 1]
+    rules:
+      - {id: I1, rule: "IF face_match IS weak THEN identity IS low"}
+      - {id: I2, rule: "IF face_match IS fair THEN identity IS medium"}
+      - {id: I3, rule: "IF face_match IS strong THEN identity IS high"}

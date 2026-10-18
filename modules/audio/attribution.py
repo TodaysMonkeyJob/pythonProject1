@@ -29,11 +29,14 @@ class Segment:
     end: float
     text: str
     cluster: Optional[int] = None
+    confidence: Optional[float] = None   # ASR confidence 0..1 (F16 trust): exp(avg_logprob) × (1 − no_speech_prob)
+    overlap: bool = False                # another speaker talked during this Whisper segment
 
 
 def whisper_segments(result: Dict[str, Any], duration: float) -> List[Segment]:
     """Segments from a transcriber result; the whole chunk as one segment when the backend gave none."""
-    segments = [Segment(max(0.0, float(s["start"])), min(duration, float(s["end"])), str(s["text"]).strip())
+    segments = [Segment(max(0.0, float(s["start"])), min(duration, float(s["end"])), str(s["text"]).strip(),
+                        confidence=s.get("confidence"))
                 for s in result.get("segments") or [] if str(s.get("text", "")).strip()]
     if not segments and (result.get("text") or "").strip():
         segments = [Segment(0.0, duration, result["text"].strip())]
@@ -73,7 +76,7 @@ def align(segments: Sequence[Segment], turns: Sequence[Turn], min_split_sec: flo
         pieces = [(turn, _overlap(segment.start, segment.end, turn.start, turn.end)) for turn in turns]
         pieces = [(turn, seconds) for turn, seconds in pieces if seconds > 0]
         if not pieces:
-            out.append(Segment(segment.start, segment.end, segment.text, None))
+            out.append(Segment(segment.start, segment.end, segment.text, None, segment.confidence))
             continue
         # Neighbouring turns of the same speaker count as one
         merged: List[List[Any]] = []
@@ -86,12 +89,13 @@ def align(segments: Sequence[Segment], turns: Sequence[Turn], min_split_sec: flo
         long = [m for m in merged if m[3] >= min_split_sec]
         if len(long) < 2:
             best = max(merged, key=lambda m: m[3])
-            out.append(Segment(segment.start, segment.end, segment.text, best[0]))
+            out.append(Segment(segment.start, segment.end, segment.text, best[0], segment.confidence,
+                               overlap=len(merged) > 1))
             continue
         texts = _split_words(segment.text, [m[3] for m in long])
         for (cluster, start, end, _), text in zip(long, texts, strict=True):
             if text:
-                out.append(Segment(start, end, text, cluster))
+                out.append(Segment(start, end, text, cluster, segment.confidence, overlap=True))
     return out
 
 

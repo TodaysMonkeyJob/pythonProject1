@@ -469,6 +469,10 @@ class MicController(BaseModule):
         for piece in attributed:
             payload = {"text": piece.text, **base, "duration_sec": round(piece.end - piece.start, 2),
                        "start": iso(chunk_start + piece.start), "end": iso(chunk_start + piece.end)}
+            if piece.confidence is not None:
+                payload["asr_confidence"] = piece.confidence
+            if piece.overlap:
+                payload["speaker_overlap"] = True
             if diarization is not None:
                 who = diarization.speaker(piece.cluster)
                 payload.update(person_id=who.person_id, speaker_name=who.name, speaker_score=who.score,
