@@ -34,3 +34,7 @@ data/node_agent/
 
 # Third-party test videos (copyrighted, keep local; labels.csv and README are tracked)
 data/human_behaviour_video/*.mp4
+# F20 evaluation: raw recordings never leave the machine; generated sets and the simulated-LLM cache are rebuilt
+data/eval/raw/
+data/eval/scripted/
+experiments/cache/llm_sim.sqlite

@@ -151,7 +151,8 @@ class FuzzyEngine:
         :return: {"crisp", "memberships" (output term → activation), "fired_rules" [{id, rule, strength, weight,
                  term, source, explanation}] strongest first, "inputs" {variable: {value, terms, defaulted}},
                  "skipped_rules", "location_id", "cut" [lo, hi] of the aggregated output set at ``alpha`` × its height
-                 (None when nothing fired) — the F17 corridor uses its upper end as ``r_ceil``}
+                 (None when nothing fired) — the F17 corridor uses its upper end as ``r_ceil``, "mom" the mean of
+                 maxima of that set (F17 floor)}
         """
         fuzzified: Dict[str, Dict[str, float]] = {}
         described: Dict[str, Dict[str, Any]] = {}
@@ -192,13 +193,14 @@ class FuzzyEngine:
             aggregate = np.minimum(aggregate, 1.0)
         crisp = self._defuzzify(aggregate)
         fired.sort(key=lambda r: -r["strength"])
-        cut = None
+        cut, mom = None, self.default_output
         if aggregate.max() > MIN_STRENGTH:
             inside = np.flatnonzero(aggregate >= alpha * aggregate.max() - 1e-9)
             cut = [round(float(self._grid[inside[0]]), 4), round(float(self._grid[inside[-1]]), 4)]
+            mom = float(self._grid[aggregate >= aggregate.max() - 1e-9].mean())
         return {"crisp": round(crisp, 4), "memberships": {t: round(v, 4) for t, v in activation.items()},
                 "fired_rules": fired, "inputs": described, "skipped_rules": skipped, "location_id": self.location_id,
-                "cut": cut}
+                "cut": cut, "mom": round(mom, 4)}
 
     def _implicate(self, term: str, strength: float) -> np.ndarray:
         curve = self._curves[term]

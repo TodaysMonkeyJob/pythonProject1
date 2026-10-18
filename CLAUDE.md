@@ -155,6 +155,11 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   → `llm_decision` `source: fuzzy_only`, risk = r_floor, `fuzzy_summary` (Ukrainian template), outbox row
   `mark_handled`; works without Azure keys. `gating.jsonl` (inputs, tokens saved). Dashboard badge LLM / без GPT.
   `tools/gating_replay.py` (synthetic routine hour or a real events.jsonl, read only): calls vs every snapshot.
+- `experiments/` — F20 (TOD-31) evaluation harness: `python -m experiments.run --all --seed 42 [--scripted --llm sim]`
+  replays every scenario of `data/eval/recorded` (or the generated `data/eval/scripted`) through 4 configurations +
+  4 ablations (`configs.py`, `pipeline.py`), GPT cached by payload hash (`experiments/cache/llm_<backend>.sqlite`),
+  metrics + bootstrap CIs + McNemar (`metrics.py`) → `reports/experiment_<date>/` (`report.py`, `RESULTS.md`).
+  `record.py` cuts / labels the recorded set (raw media in git-ignored `data/eval/raw/`). See `experiments/README.md`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

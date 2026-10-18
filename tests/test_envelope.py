@@ -226,3 +226,31 @@ def test_location_state_uses_the_bounded_risk():
     summary = engine.summary("warehouse", T0)
     assert summary["state"] == "danger"
     assert summary["last_llm"]["risk_level_final"] == "high" and summary["last_llm"]["envelope_applied"] is True
+
+
+# --- regressions found by the TOD-31 harness ---------------------------------------------------------------------
+
+def test_ongoing_action_holds_without_new_events():
+    lying = ev("camera", "action", {"track_id": 1, "action": "lying", "trust": 0.95})
+    env = envelope(*person(known=True), lying)
+    d = decide(env, "low", t=T0 + 15 * 60)                       # lying still: the action module sent nothing more
+    assert d["risk_level_final"] == "critical" and d["risk_floor"] > 0.85
+
+
+def test_a_stranger_never_confirms_safety():
+    office = [e.model_copy(update={"location_id": "office"}) for e in person(known=False)]
+    calm_gas = gas(0.05, 0.0, "stable", name="clean_air").model_copy(update={"location_id": "office"})
+    d = decide(envelope(*office, calm_gas), "low", hour=23, location="office")
+    assert d["confirmation"] == 0.0 and d["risk_level_final"] == "high"
+
+
+def test_floor_is_not_diluted_by_milder_rules():
+    stranger = person(known=False)                                # stranger in daytime → R14 medium (weight 0.5)
+    d = decide(envelope(*stranger, gas(6.5, 0.5, "rising")), "low")
+    assert d["risk_floor"] >= 0.85 and d["risk_level_final"] == "critical"
+    root = __import__("yaml").safe_load(Path(CONFIG).read_text())
+    root["envelope"]["floor"] = "centroid"                        # the old behaviour, kept for the ablation
+    centroid = RiskEnvelope(root, CONFIG, None)
+    for event in [*stranger, gas(6.5, 0.5, "rising")]:
+        centroid.observe(event)
+    assert centroid.decide("warehouse", "low", now=T0 + 60, local_hour=NOON)["risk_floor"] < d["risk_floor"]

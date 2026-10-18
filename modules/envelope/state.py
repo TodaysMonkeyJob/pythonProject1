@@ -47,11 +47,13 @@ class LocationTrust:
 class TrustedState:
     def __init__(self, theta: float = 0.6, theta_by_location: Optional[Dict[str, float]] = None,
                  gas_fresh_sec: float = 120.0, action_fresh_sec: float = 60.0, motion_fresh_sec: float = 30.0,
-                 claim_memory_sec: float = 600.0, presence_stale_sec: float = 600.0):
+                 claim_memory_sec: float = 600.0, presence_stale_sec: float = 3600.0):
         self.theta = theta
         self.theta_by_location = theta_by_location or {}
         self.gas_fresh_sec, self.action_fresh_sec = gas_fresh_sec, action_fresh_sec
         self.motion_fresh_sec, self.claim_memory_sec = motion_fresh_sec, claim_memory_sec
+        # Cameras report changes only (a person lying still sends nothing); tracks leave on "disappeared" — this only
+        # guards against a missed one (module restart)
         self.presence_stale_sec = presence_stale_sec
         self.locations: Dict[str, LocationTrust] = {}
 
@@ -120,7 +122,9 @@ class TrustedState:
                                   "motion_level": loc.motion_level if now - loc.motion_at <= self.motion_fresh_sec
                                   else 0.0}
         inputs["unknown_share"] = (sum(not t.known for t in identified) / len(identified)) if identified else 0.0
-        actions = [a for key, (a, t) in loc.actions.items() if now - t <= self.action_fresh_sec and key in loc.tracks]
+        # The action module publishes only CHANGES: a person lying still sends nothing more, so the current action of
+        # a track holds until it changes or the track disappears (no time expiry)
+        actions = [a for key, (a, _) in loc.actions.items() if key in loc.tracks]
         inputs["action_risk"] = max((float(action_map.get(a, 0.0)) for a in actions), default=0.0)
         gas = loc.gas if loc.gas and now - loc.gas["at"] <= self.gas_fresh_sec else None
         if gas and gas["concentration"] is not None:
