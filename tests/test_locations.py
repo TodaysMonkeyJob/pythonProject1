@@ -160,7 +160,9 @@ def test_summary_and_hub_events_ignored():
     world.event("warehouse", type="gas_reading", gas="clean_air", concentration_pct=0, trend="stable")
     world.event("hub", type="alert", source="system", severity="critical", reason="module_restarted")
     summary = world.engine.summary("warehouse", world.now)
-    assert summary["people"] == [{"person_id": "p4", "name": "unknown_4", "action": "walking"}]
+    (person,) = summary["people"]
+    assert (person["person_id"], person["name"], person["action"], person["device_id"]) == \
+        ("p4", "unknown_4", "walking", "dev-warehouse") and person["since"].endswith("Z")
     assert summary["last_speech"]["name"] == "Oleh" and summary["gas"]["main"] == "clean_air"
     assert summary["devices"] == {"online": 1, "total": 1} and summary["state"] == SAFE
     assert "hub" not in world.engine.live
@@ -330,7 +332,6 @@ def test_dashboard_locations_and_notifications_api(tmp_path):
     assert http.post("/api/locations/warehouse/ack", auth=AUTH).json()["by"] == "admin"
     assert http.delete("/api/locations/unassigned", auth=AUTH).status_code == 422
     assert http.delete("/api/locations/warehouse", auth=AUTH).json()["deleted"] == "warehouse"
-    assert "loc-cards" in http.get("/", auth=AUTH).text
     state.locations.close()
     state.notifications.close()
     json.dumps(summary)

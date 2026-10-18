@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import queue
+import re
 import socket
 import threading
 import time
@@ -285,6 +286,16 @@ def test_identity_events_from_other_processes_refresh_the_cache(tmp_path):
     assert http.get("/api/persons", auth=AUTH).json()["persons"][0]["display_name"] == "Anna"
 
 
-def test_page_has_people_panel(tmp_path):
-    page = client(tmp_path)[0].get("/", auth=AUTH).text
-    assert 'id="people"' in page and "/api/persons" in page and "renderNames" in page
+def test_control_room_app_is_served_without_cdn(tmp_path):
+    http = client(tmp_path)[0]
+    page = http.get("/", auth=AUTH).text
+    assert 'src="/static/app/main.js"' in page and "#/people" in page and "=\"http" not in page   # no CDN
+    assert http.get("/static/app/main.js").status_code == 401                        # behind the login too
+    script = http.get("/static/app/main.js", auth=AUTH)
+    assert script.status_code == 200 and script.headers["content-type"].startswith("text/javascript")
+    for module in ("store.js", "video.js", "charts.js", "views/overview.js", "views/location.js", "views/admin.js"):
+        text = http.get(f"/static/app/{module}", auth=AUTH).text
+        assert "innerHTML" not in text                                                   # no HTML injection
+        assert not re.search(r"""(from|src=|fetch\(|import\()\s*["'`]https?://""", text)    # nothing from the internet
+    assert http.get("/static/../server.py", auth=AUTH).status_code == 404               # no path traversal
+    assert http.get("/static/%2e%2e/server.py", auth=AUTH).status_code == 404
