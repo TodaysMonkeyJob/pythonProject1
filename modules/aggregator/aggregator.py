@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.events import Event
 from core.module import BaseModule
 from modules.aggregator.digest import snapshot_digest
+from modules.aggregator.llm_view import llm_view, payload_text
 from modules.aggregator.incidents import IncidentRecorder
 from modules.aggregator.outbox import Outbox
 from system_setup.logger_setup import init_logger
@@ -76,6 +77,7 @@ class Person:
     location_id: Optional[str] = None   # F11: where (several cameras / rooms)
     actions: List[str] = field(default_factory=list)
     present: bool = True
+    trust: Optional[float] = None       # F16 trust of the face identification (F18: trusted / untrusted evidence)
 
 
 @dataclass
@@ -141,6 +143,8 @@ class SceneState:
                 person.identity, person.known, person.last_seen = p.get("identity", person.identity), \
                     bool(p.get("known")), now
                 person.person_id = p.get("person_id")
+                if p.get("trust") is not None:
+                    person.trust = float(p["trust"])
         elif event.type == "action":
             person = self._person(key, event, now)
             person.last_seen = now
@@ -157,6 +161,11 @@ class SceneState:
                 entry.update(person_id=p["person_id"], speaker=p.get("speaker_name") or p.get("speaker"))
             elif p.get("speaker_status") == "uncertain":
                 entry["speaker"] = "?"                                    # overlapping / too short to tell
+            for key in ("trust", "claim_type", "provenance"):            # F16 tags → F18 trusted / untrusted split
+                if p.get(key) is not None:
+                    entry[key] = p[key]
+            if p.get("trust_reasons"):
+                entry["trust_reasons"] = [str(r)[:100] for r in p["trust_reasons"][:3]]
             self.speech.append(entry)
         elif event.type == "sound":
             self.sounds.append({"t": hms(event), "label": p.get("label", "loud_noise"), "db": p.get("rms_db", 0)})
@@ -167,6 +176,9 @@ class SceneState:
             detail = p.get("gas") or p.get("module") or ""
             text = f"{reason} {detail}".strip()
             (self.gas_alerts if event.source == "gas" else self.alerts).append(text)
+        elif event.type == "scene_text":                                  # F16: signs / screens — always weak evidence
+            self.speech.append({"t": hms(event), "text": p.get("text", ""), "kind": "scene_text",
+                                **{k: p[k] for k in ("trust", "claim_type", "provenance") if p.get(k) is not None}})
         elif event.type == "mic_state":
             self.mic_state = p.get("state")
         elif event.type == "scene_active":
@@ -220,6 +232,7 @@ class SnapshotBuilder:
                         "known": known(p.person_id, p.known), "actions": p.actions[-10:], "present": p.present,
                         "in_frame_sec": int(max(0, (now if p.present else p.last_seen) - p.first_seen)),
                         **({"person_id": p.person_id} if p.person_id else {}),
+                        **({"trust": round(p.trust, 3)} if p.trust is not None else {}),
                         **({"location_id": p.location_id[:64]}
                            if p.location_id and p.location_id != "unassigned" else {})}
                        for p in people],
@@ -257,6 +270,10 @@ class SnapshotBuilder:
                 gas["trend"] = state.gas["trend"]
             if isinstance(state.gas.get("gas_confidence"), (int, float)):
                 gas["confidence"] = round(float(state.gas["gas_confidence"]), 2)
+            if isinstance(state.gas.get("rise_rate_pct_per_min"), (int, float)):
+                gas["rise_rate_pct_per_min"] = round(float(state.gas["rise_rate_pct_per_min"]), 3)
+            if isinstance(state.gas.get("trust"), (int, float)):
+                gas["trust"] = round(float(state.gas["trust"]), 3)
         if state.gas_alerts:
             gas["alerts"] = list(dict.fromkeys(state.gas_alerts))[-10:]
         return gas
@@ -369,7 +386,7 @@ class EventCsv:
 
 
 SCENE_TYPES = ("object_detected", "person_identified", "action", "speech", "sound", "gas_reading", "alert",
-               "mic_state", "scene_active")
+               "mic_state", "scene_active", "scene_text")
 
 
 class Aggregator:
@@ -407,6 +424,11 @@ class Aggregator:
         self.pending: Dict[str, str] = {}
         self.last_global = clock()
         self.recent: Dict[str, Dict[str, Any]] = {}       # location → summary of its last snapshot (global digest)
+        # F18: what GPT gets — "v2" (fuzzified, trust-tagged JSON view) or "digest" (the v1 text, for ablations)
+        self.llm_format = agg.get("llm_format", "v2")
+        self.fuzzy_path = config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml")
+        self._fuzzy: Dict[str, Any] = {}
+        self._fuzzy_root: Optional[Dict[str, Any]] = None
 
     @property
     def state(self) -> SceneState:
@@ -498,7 +520,14 @@ class Aggregator:
         name = self.location_name(location_id)
         snapshot = self.builder.build(state, trigger, now, reason, incident_id, self.registry, location_id, name)
         rules = self.locations.rules(location_id) if self.locations is not None else {}
-        digest = snapshot_digest(snapshot, incident_id, rules=rules)
+        if self.llm_format == "digest":
+            digest = snapshot_digest(snapshot, incident_id, rules=rules)
+        else:
+            engine, theta = self._fuzzy_for(location_id)
+            snapshot["schema_version"] = 2
+            snapshot["llm_view"] = llm_view(snapshot, engine, theta, rules)
+            self.builder.validator.validate(snapshot)
+            digest = payload_text(snapshot["llm_view"])
         if incident_id:
             self.incidents.attach(snapshot, digest)
         self.outbox.add(snapshot, trigger, created_at=now, digest=digest)
@@ -510,6 +539,27 @@ class Aggregator:
         self.last_snapshot[location_id] = now
         state.reset_window(now)
         return snapshot
+
+    def _fuzzy_for(self, location_id: str):
+        """:return: (the location's FuzzyEngine or None, trust threshold θ) for the v2 view"""
+        if location_id not in self._fuzzy:
+            engine, theta = None, 0.6
+            try:
+                import yaml
+
+                from core.fuzzy import FuzzyEngine
+
+                if self._fuzzy_root is None:
+                    with open(self.fuzzy_path, encoding="utf-8") as f:
+                        self._fuzzy_root = yaml.safe_load(f) or {}
+                envelope = self._fuzzy_root.get("envelope") or {}
+                theta = float(((envelope.get("locations") or {}).get(location_id) or {}).get(
+                    "theta", envelope.get("theta", 0.6)))
+                engine = FuzzyEngine.from_config(self.fuzzy_path, location_id)
+            except (OSError, ValueError, KeyError) as e:
+                logger.warning(f"Fuzzy terms unavailable for {location_id} ({e}); the LLM view keeps labels only")
+            self._fuzzy[location_id] = (engine, theta)
+        return self._fuzzy[location_id]
 
     def global_snapshot(self, now: float, since: Optional[float] = None) -> Optional[Dict[str, Any]]:
         """One line per location that reported since the previous global snapshot — the "whole site" view for GPT."""

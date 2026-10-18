@@ -247,6 +247,7 @@ envelope:
   llm_levels: {low: 0.1, medium: 0.4, high: 0.7, critical: 0.95}   # LLM level → number (TOD-29 calibrates)
   thresholds: {medium: 0.25, high: 0.5, critical: 0.8}              # number → level (r ≥ threshold)
   over_reaction_margin: 0.3   # LLM risk above r_ceil + margin is flagged for the operator (never capped)
+  calibration_path: config/calibration.yaml   # F18: fitted level sets (python -m tools.calibrate_llm_risk); absent → llm_levels
   confirmation:
     inherit: [gas_concentration, gas_trend, motion_level, action_risk]   # shared terms (gas: no default)
     output: confirmation

@@ -192,8 +192,11 @@ def test_large_window_is_truncated_to_budget(tmp_path):
     feed(aggregator, clock, events, dt=0.01)
     clock.now += 5
     snapshot = aggregator.tick()
-    assert len(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")).encode()) <= 2048
-    assert snapshot["truncated"] is True
+    record = {k: v for k, v in snapshot.items() if k != "llm_view"}         # the budget is for the v1 record …
+    assert len(json.dumps(record, ensure_ascii=False, separators=(",", ":")).encode()) <= 2048
+    (row,) = aggregator.outbox.pending()
+    assert len(row["digest"].encode()) <= 2048                               # … and for what GPT gets (F18 view)
+    assert snapshot["truncated"] is True and snapshot["llm_view"]["truncated"] is True
     jsonschema.validate(snapshot, SCHEMA)
     assert snapshot["people"]                                             # people kept, details dropped first
 

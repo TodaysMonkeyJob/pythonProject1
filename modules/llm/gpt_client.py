@@ -13,12 +13,15 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from modules.llm.azure_client import create_client
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
+
+
+RISK_LEVELS = ("low", "medium", "high", "critical")
 
 
 class LLMDecision(BaseModel):
@@ -27,6 +30,28 @@ class LLMDecision(BaseModel):
     recommended_action: Literal["ignore", "log", "notify", "alarm"]
     reasons: List[str] = Field(default_factory=list, max_length=10)
     follow_up: Optional[str] = Field(default=None, max_length=300)
+    # F18: the model's probability per level (renormalised to sum 1); optional — older answers stay valid
+    risk_distribution: Optional[Dict[str, float]] = None
+
+    @field_validator("risk_distribution", mode="before")
+    @classmethod
+    def _normalise(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("risk_distribution must be an object {low, medium, high, critical}")
+        unknown = set(value) - set(RISK_LEVELS)
+        if unknown:
+            raise ValueError(f"unknown levels in risk_distribution: {sorted(unknown)}")
+        probs = {level: max(0.0, float(value.get(level) or 0.0)) for level in RISK_LEVELS}
+        total = sum(probs.values())
+        if total <= 0:
+            return None                      # nothing usable: fall back to risk_level
+        return {level: round(p / total, 4) for level, p in probs.items()}
+
+    def distribution(self) -> Dict[str, float]:
+        """:return: risk_distribution, or a one-hot of risk_level when the model gave none"""
+        return self.risk_distribution or {level: float(level == self.risk_level) for level in RISK_LEVELS}
 
 
 class InvalidResponse(RuntimeError):
@@ -94,7 +119,8 @@ class GPTClient:
             logger.warning(f"Invalid GPT answer, asking again: {str(first_error)[:200]}")
             messages += [{"role": "assistant", "content": text or ""},
                          {"role": "user", "content": "Your previous reply was not a valid JSON object with keys "
-                                                     "risk_level, summary, recommended_action, reasons, follow_up "
+                                                     "risk_level, risk_distribution, summary, recommended_action, "
+                                                     "reasons, follow_up "
                                                      f"({str(first_error)[:200]}). Reply with that JSON only."}]
             text = self._complete(messages, usage)
             try:
