@@ -84,11 +84,52 @@ function summarySection(location, s, go, neighbours) {
         h("h2", {}, `Люди зараз (${s.people_count})`), peopleNow(s),
         h("h2", {}, "Останні фрази"), lastSpeech(),
         h("h2", {}, "Газ"), gasNow(s),
-        h("h2", {}, "GPT"), s.last_llm ? h("div", {}, h("b", {}, s.last_llm.risk_level), ` — ${s.last_llm.summary} `,
-                                           h("span", { class: "muted" }, `(${hms(s.last_llm.ts)})`))
-                                     : h("div", { class: "muted" }, "ще немає оцінки"))),
+        h("h2", {}, "GPT"), s.last_llm ? llmPanel(s.last_llm) : h("div", { class: "muted" }, "ще немає оцінки"))),
     h("button", { class: "to-details", onclick: (e) => e.target.closest(".loc-page").querySelector(".details").scrollIntoView({ behavior: "smooth" }) },
       "▼ Деталі"));
+}
+
+// --- F17: the fuzzy risk corridor around the LLM decision ----------------------------------------------------------
+const fmt2 = (v) => (v === null || v === undefined ? "—" : Number(v).toFixed(2));
+const LEVEL_LABEL = { low: "низький", medium: "середній", high: "високий", critical: "критичний" };
+
+export function corridorBand(d) {
+  if (d.risk_floor === undefined || d.risk_final === undefined) return null;
+  const pct = (v) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
+  return h("div", { class: "corridor", title: `коридор ${d.risk_floor}–${d.risk_ceil}, GPT ${d.risk_llm}, підсумок ${d.risk_final}` },
+    h("div", { class: "band", style: { left: pct(d.risk_floor), width: pct(Math.max(0.01, d.risk_ceil - d.risk_floor)) } }),
+    h("div", { class: "mark llm", style: { left: pct(d.risk_llm) }, title: `GPT ${d.risk_llm}` }),
+    h("div", { class: "mark final", style: { left: pct(d.risk_final) }, title: `підсумок ${d.risk_final}` }));
+}
+
+function envelopeReasons(d) {
+  const r = d.envelope_reason || {};
+  const items = [...(r.fired || []).map((x) => `правило: ${x}`), ...(r.confirmation || []).map((x) => `підтвердження: ${x}`),
+                 ...(r.ignored_claims || []).map((c) => `проігноровано (τ ${c.trust ?? "?"}): ${c.provenance} «${c.text}»`)];
+  return items.length ? h("ul", { class: "env-reasons" }, items.map((x) => h("li", {}, x))) : null;
+}
+
+function llmPanel(llm) {
+  const final = llm.risk_level_final || llm.risk_level;
+  return h("div", { class: "llm-panel" },
+    h("div", {}, h("b", { class: `lvl ${final}` }, LEVEL_LABEL[final] || final),
+      final !== llm.risk_level ? h("span", { class: "muted" }, ` (GPT: ${LEVEL_LABEL[llm.risk_level] || llm.risk_level})`) : null,
+      ` — ${llm.summary} `, h("span", { class: "muted" }, `(${hms(llm.ts)})`)),
+    corridorBand(llm),
+    llm.risk_floor !== undefined ? h("div", { class: "muted small" },
+      `коридор ${fmt2(llm.risk_floor)}–${fmt2(llm.risk_ceil)} · GPT ${fmt2(llm.risk_llm)} → ${fmt2(llm.risk_final)} · підтвердження c = ${fmt2(llm.confirmation)}`,
+      llm.over_reaction ? " · GPT, можливо, перебільшує" : "") : null,
+    llm.envelope_applied ? h("details", { class: "rejected" },
+      h("summary", {}, h("span", { class: "badge-rejected" }, "зниження відхилено")), envelopeReasons(llm)) : null);
+}
+
+// F16 trust degree beside a transcript line (colour by trust term, reasons on hover)
+export function trustBadge(p) {
+  if (p.trust === undefined || p.trust === null) return null;
+  const level = p.trust >= 0.6 ? "high" : p.trust >= 0.3 ? "medium" : "low";
+  const claim = p.claim_type && p.claim_type !== "none" ? { deescalation: " ⚠ заспокоює", instruction_to_system: " ⚠ команда системі",
+                                                           escalation: " ‼" }[p.claim_type] || "" : "";
+  return h("span", { class: `trust t-${level}`, title: (p.trust_reasons || []).join("\n") }, `τ ${Number(p.trust).toFixed(2)}${claim}`);
 }
 
 function peopleNow(s) {
@@ -115,7 +156,8 @@ function lastSpeech() {
   if (!items.length) return h("div", { class: "muted" }, current.data ? "тиша" : "завантажую…");
   return h("div", { class: "speech" }, items.map((ev) => h("div", {},
     h("span", { class: "muted" }, hms(ev.payload.start || ev.timestamp) + " "),
-    h("b", { style: { color: personColour(ev.payload.person_id) } }, speakerName(ev)), `: "${ev.payload.text}"`)));
+    h("b", { style: { color: personColour(ev.payload.person_id) } }, speakerName(ev)), `: "${ev.payload.text}" `,
+    trustBadge(ev.payload))));
 }
 
 function gasNow(s) {
@@ -185,7 +227,7 @@ function transcriptLog(location) {
     box.replaceChildren(...(rows.length ? rows.slice(0, 500).map((ev) => h("div", { class: "row" },
       h("span", { class: "muted" }, hms(ev.payload.start || ev.timestamp)),
       h("b", { style: { color: personColour(ev.payload.person_id) } }, speakerName(ev)),
-      h("span", {}, ev.payload.text))) : [h("div", { class: "muted" }, "нічого")]));
+      h("span", {}, ev.payload.text), trustBadge(ev.payload))) : [h("div", { class: "muted" }, "нічого")]));
     return rows;
   };
   const select = (key, options, label) => h("select", { onchange: (e) => { f[key] = e.target.value; fill(); } },
@@ -228,9 +270,11 @@ function eventTable() {
 
 function gptHistory() {
   if (!current.data.llm.length) return h("div", { class: "muted" }, "ще немає");
-  return h("div", { class: "scroll-list" }, current.data.llm.slice(0, 50).map((ev) => h("div", { class: `decision ${ev.payload.risk_level}` },
-    h("div", {}, h("b", {}, ev.payload.risk_level), ` · ${ev.payload.recommended_action} · `, h("span", { class: "muted" }, hms(ev.timestamp))),
-    h("div", {}, ev.payload.summary),
+  return h("div", { class: "scroll-list" }, current.data.llm.slice(0, 50).map((ev) => h("div", { class: `decision ${ev.payload.risk_level_final || ev.payload.risk_level}` },
+    h("div", {}, h("b", {}, ev.payload.risk_level_final || ev.payload.risk_level),
+      ev.payload.envelope_applied ? h("span", { class: "badge-rejected" }, `GPT: ${ev.payload.risk_level} — зниження відхилено`) : null,
+      ` · ${ev.payload.recommended_action} · `, h("span", { class: "muted" }, hms(ev.timestamp))),
+    h("div", {}, ev.payload.summary), corridorBand(ev.payload), ev.payload.envelope_applied ? envelopeReasons(ev.payload) : null,
     h("button", { onclick: async () => {
       try { const j = await api("GET", `/api/snapshot/${encodeURIComponent(ev.payload.snapshot_id)}`);
         dialog(`Знімок ${ev.payload.snapshot_id}`, h("p", { class: "muted" }, "Надіслано в GPT:"), h("pre", {}, j.digest_sent_to_gpt || "—"), json(j.snapshot));

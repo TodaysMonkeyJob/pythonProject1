@@ -133,6 +133,13 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   rule bases in `config/fuzzy.yaml`; adds trust, trust_terms, provenance, claim_type, claim_spans,
   playback_suspected, trust_reasons, trust_components). Speech events now carry `asr_confidence` (Whisper
   avg_logprob / no_speech_prob) and `speaker_overlap`. New event type `scene_text`. See `modules/trust/README.md`.
+- `modules/envelope/` — F17 (TOD-28) fuzzy risk corridor in the LLM worker: the orchestrator forwards trust-scored
+  evidence (`ENVELOPE_EVENTS`) to the llm module; `state.TrustedState` (τ ≥ θ only, low-trust lowering claims kept as
+  "ignored", operator acks), `corridor.py` (risk FIS → r_floor = crisp, r_ceil = α-cut top; `FuzzyEngine.infer` now
+  returns `cut`), `confirmation.py` (`envelope.confirmation` rules; ack → c = 1), `projection.py`
+  (r_final = max(r_LLM, (1 − c)·r_floor), level maps). `llm_decision` gets risk_llm / risk_floor / risk_ceil /
+  confirmation / risk_final / risk_level_final / envelope_applied / envelope_reason; raised → `deescalation_rejected`;
+  both → `logs/<date>/envelope.jsonl`. Location state uses `risk_level_final`; the location page shows the corridor.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

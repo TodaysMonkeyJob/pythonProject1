@@ -39,7 +39,9 @@ DEFAULT_MODULES = {
     "audio": ("modules.audio.mic_controller:run", "audio",
               ["scene_active", "object_detected", "person_identified", *IDENTITY_EVENTS]),
     "aggregator": ("modules.aggregator:run", "aggregator", ["*"]),
-    "llm": ("modules.llm:run", "llm", []),          # works from the SQLite outbox
+    "llm": ("modules.llm:run", "llm", [            # works from the SQLite outbox; F17 envelope needs the evidence
+        "gas_reading", "motion", "object_detected", "person_identified", "action", "alert", "speech", "scene_text",
+        "notification_acked"]),
     "locations": ("modules.locations:run", "locations", ["*"]),   # F12 per-location state + notifications
     "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary"]),
 }

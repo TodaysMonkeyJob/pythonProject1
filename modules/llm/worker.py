@@ -7,11 +7,17 @@ LLM worker (F6): sends snapshot digests from the SQLite outbox to GPT and publis
 * Network / rate-limit / 5xx / timeout errors: exponential backoff, the row stays ``pending`` (nothing is lost
   offline). Credential / deployment errors: logged, retried rarely, rows stay pending.
 * A decision that is not valid JSON after one clarification retry marks the row ``failed``.
+* F17 (TOD-28): before publishing, the fuzzy risk corridor (``modules.envelope.RiskEnvelope``, fed with the forwarded
+  trust-scored events) projects the LLM's risk: ``r_final = max(r_LLM, (1 − c) · r_floor)``. The decision carries
+  risk_llm / risk_floor / risk_ceil / confirmation / risk_final / risk_level_final / envelope_applied /
+  envelope_reason; a raised level also publishes ``deescalation_rejected``. Every decision → ``envelope.jsonl``.
 """
 import os
 import time
 from typing import Any, Dict, List, Optional
 
+from core.events import Event
+from core.logger import JsonlLogger
 from core.module import BaseModule
 from modules.aggregator.outbox import Outbox
 from system_setup.logger_setup import init_logger
@@ -30,10 +36,11 @@ class LLMWorker(BaseModule):
     source = "llm"
 
     def __init__(self, event_queue, control_queue, config: Dict[str, Any], gpt=None, outbox: Optional[Outbox] = None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, envelope=None, wall_clock=time.time):
         """
         :param gpt: object with analyze(digest) -> (LLMDecision, Usage); GPTClient from config when None
         :param outbox: snapshot outbox; aggregator.outbox_path when None
+        :param envelope: ``RiskEnvelope`` (tests); from ``trust.fuzzy_config`` when None and ``envelope.enabled``
         """
         super().__init__(event_queue, control_queue, config)
         llm = config.get("llm", {})
@@ -49,8 +56,22 @@ class LLMWorker(BaseModule):
         self._backoff = 0.0
         self._blocked_until = 0.0
         self.unavailable: Optional[str] = None
+        self.envelope = envelope
+        self.wall_clock = wall_clock
+        self.envelope_log: Optional[JsonlLogger] = None
 
     def setup(self) -> None:
+        if self.envelope is None and self.config.get("envelope", {}).get("enabled", True):
+            from modules.envelope import RiskEnvelope
+
+            path = self.config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml")
+            if os.path.isfile(path):
+                self.envelope = RiskEnvelope.from_config(path)
+            else:
+                logger.warning(f"Risk envelope off: {path} not found — LLM decisions are published unbounded")
+        if self.envelope is not None and self.config.get("envelope", {}).get("log", True):
+            log_cfg = self.config.get("logging", {})
+            self.envelope_log = JsonlLogger("envelope", log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048))
         if self.outbox is None:
             agg = self.config.get("aggregator", {})
             self.outbox = Outbox(agg.get("outbox_path", os.path.join(agg.get("export_dir", "exports"), "outbox.db")))
@@ -67,6 +88,16 @@ class LLMWorker(BaseModule):
     def teardown(self) -> None:
         if self.outbox is not None:
             self.outbox.close()
+        if self.envelope_log is not None:
+            self.envelope_log.close()
+
+    def handle_control(self, message: Any) -> None:
+        """Forwarded (trust-scored) evidence events feed the risk envelope."""
+        if not (isinstance(message, str) and message.startswith("{")):
+            super().handle_control(message)
+            return
+        if self.envelope is not None:
+            self.envelope.observe(Event.from_json(message))
 
     def step(self) -> None:
         now = self.clock()
@@ -141,7 +172,24 @@ class LLMWorker(BaseModule):
         location_id = row["payload"].get("location_id")
         if location_id:
             payload["location_id"] = location_id
-        self.emit("llm_decision", payload, severity=SEVERITY[decision.risk_level], location_id=location_id)
+        level = decision.risk_level
+        if self.envelope is not None:
+            payload.update(self.envelope.decide(None if row["trigger"] == "global" else location_id, level,
+                                                now=self.wall_clock()))
+            level = payload["risk_level_final"]
+        event = self.emit("llm_decision", payload, severity=SEVERITY[level], location_id=location_id)
+        if self.envelope_log is not None:
+            self.envelope_log.write(event)
+        if payload.get("envelope_applied"):
+            rejected = self.emit("deescalation_rejected", {
+                "snapshot_id": row["id"], "decision_event_id": event.event_id, "location_id": location_id,
+                "risk_level_llm": decision.risk_level, "risk_level_final": level, "risk_llm": payload["risk_llm"],
+                "risk_floor": payload["risk_floor"], "confirmation": payload["confirmation"],
+                "risk_final": payload["risk_final"], "reasons": payload["envelope_reason"]},
+                severity="warning", location_id=location_id)
+            logger.warning(f"Envelope raised the GPT risk for {location_id}: {decision.risk_level} → {level}")
+            if self.envelope_log is not None:
+                self.envelope_log.write(rejected)
         return True
 
     def _pause(self, error: Exception) -> None:
