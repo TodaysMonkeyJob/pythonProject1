@@ -1,0 +1,126 @@
+# Fuzzy inference core (F15 / TOD-26): linguistic variables, membership functions, rule base → crisp risk 0..1.
+# Shared by the fuzzy trust layer (TOD-27) and the fuzzy risk corridor around the LLM (TOD-28). Deterministic,
+# local, never calls the LLM. Explain a case: python -m core.fuzzy gas_concentration=4.2 gas=acetone
+#
+# Terms: [tri, a, b, c] | [trap, a, b, c, d] (a == b / c == d = shoulder) | [gauss, mean, sigma];
+# a list of shapes = their max (wraps around midnight). Every universe must be fully covered (checked on load).
+version: 1
+output: risk
+defuzzification: centroid          # centroid | bisector | mom | som | lom
+operators: {and: min, or: max, implication: min, aggregation: max}
+default_output: 0.0                # crisp risk when no rule fires
+
+variables:
+  gas_concentration:               # TOD-19 classifier, concentration_pct (gas.thresholds: 3–5 %)
+    universe: [0, 10, 0.01]
+    unit: "%"
+    default: 0                     # no gas sensor in this location → clean
+    terms:                         # base = the stricter 3 % limit (ammonia, toluol, unknown gases)
+      clean: [trap, 0, 0, 0.2, 0.5]
+      slight: [trap, 0.2, 0.5, 1.0, 1.8]
+      elevated: [trap, 1.0, 1.8, 2.6, 3.4]
+      dangerous: [trap, 2.6, 3.4, 10, 10]
+    variants_by: gas               # inputs["gas"] picks the gas's own terms
+    variants:
+      ethanol: &limit5             # gas.thresholds 5 %
+        slight: [trap, 0.2, 0.5, 1.5, 2.5]
+        elevated: [trap, 1.5, 2.5, 4.0, 5.0]
+        dangerous: [trap, 4.0, 5.0, 10, 10]
+      acetone: *limit5
+  gas_trend:                       # % per minute (gas.rise_rate_threshold: 2 %/min)
+    universe: [-10, 10, 0.01]
+    unit: "%/min"
+    default: 0
+    terms:
+      falling: [trap, -10, -10, -0.5, -0.1]
+      stable: [trap, -0.5, -0.1, 0.1, 0.5]
+      rising: [trap, 0.1, 0.5, 1.5, 2.5]
+      sharply_rising: [trap, 1.5, 2.5, 10, 10]
+  motion_level:                    # share of the frame / time with motion
+    universe: [0, 1, 0.01]
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0.05, 0.15]
+      low: [trap, 0.05, 0.15, 0.4, 0.6]
+      high: [trap, 0.4, 0.6, 1, 1]
+  people_count:
+    universe: [0, 10, 0.05]
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0.3, 0.8]
+      one: [tri, 0.3, 1, 2]
+      several: [trap, 1, 2, 4, 6]
+      crowd: [trap, 4, 6, 10, 10]
+  unknown_share:                   # unknown persons / persons in view (0 when nobody is there)
+    universe: [0, 1, 0.01]
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0.05, 0.2]
+      some: [trap, 0.05, 0.2, 0.8, 0.95]
+      all: [trap, 0.8, 0.95, 1, 1]
+  action_risk:                     # the riskiest current action, mapped by maps.action_risk
+    universe: [0, 1, 0.01]
+    default: 0
+    terms:
+      low: [trap, 0, 0, 0.2, 0.4]
+      medium: [tri, 0.2, 0.5, 0.8]
+      high: [trap, 0.6, 0.8, 1, 1]
+  time_of_day_risk:                # local hour 0..24 (per-location schedule via overrides)
+    universe: [0, 24, 0.05]
+    unit: h
+    terms:
+      normal: [trap, 7, 8.5, 18, 19.5]
+      off_hours: [[trap, 5, 6, 7, 8.5], [trap, 18, 19.5, 21, 22.5]]
+      night: [[trap, 0, 0, 5, 6], [trap, 21, 22.5, 24, 24]]
+  risk:                            # output
+    universe: [0, 1, 0.01]
+    terms:
+      low: [trap, 0, 0, 0.1, 0.3]
+      medium: [tri, 0.15, 0.4, 0.6]
+      high: [tri, 0.45, 0.7, 0.85]
+      critical: [trap, 0.75, 0.9, 1, 1]
+
+maps:
+  action_risk: {lying: 1.0, possible_smoking: 0.6, sitting: 0.1, standing: 0.1, walking: 0.2}
+
+rules:
+  # Gas (independent physical sensor)
+  - {id: R1, rule: "IF gas_concentration IS dangerous THEN risk IS critical"}
+  - {id: R2, rule: "IF gas_concentration IS elevated AND gas_trend IS sharply_rising THEN risk IS critical"}
+  - {id: R3, rule: "IF gas_concentration IS elevated AND gas_trend IS NOT sharply_rising THEN risk IS high"}
+  - {id: R4, rule: "IF gas_concentration IS slight AND gas_trend IS sharply_rising THEN risk IS high"}
+  - {id: R5, rule: "IF gas_concentration IS slight AND gas_trend IS rising THEN risk IS medium"}
+  - {id: R6, rule: "IF gas_concentration IS slight AND (gas_trend IS stable OR gas_trend IS falling) THEN risk IS low"}
+  # People and actions
+  - {id: R7, rule: "IF action_risk IS high AND motion_level IS none THEN risk IS critical"}      # lying motionless
+  - {id: R8, rule: "IF action_risk IS high AND motion_level IS NOT none THEN risk IS high"}
+  - {id: R9, rule: "IF action_risk IS medium AND gas_concentration IS NOT clean THEN risk IS high"}   # smoking + gas
+  - {id: R10, rule: "IF action_risk IS medium AND gas_concentration IS clean THEN risk IS medium"}
+  # Strangers and time of day
+  - {id: R11, rule: "IF unknown_share IS all AND time_of_day_risk IS night THEN risk IS high"}
+  - {id: R12, rule: "IF unknown_share IS some AND time_of_day_risk IS night THEN risk IS medium"}
+  - {id: R13, rule: "IF unknown_share IS all AND time_of_day_risk IS off_hours THEN risk IS medium"}
+  - {id: R14, rule: "IF unknown_share IS all AND time_of_day_risk IS normal THEN risk IS medium", weight: 0.5}
+  - {id: R21, rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS medium", weight: 0.6}
+  - {id: R22, rule: "IF unknown_share IS some AND time_of_day_risk IS normal THEN risk IS low"}   # visitors with staff
+  - {id: R15, rule: "IF people_count IS crowd AND time_of_day_risk IS night THEN risk IS high"}
+  - {id: R16, rule: "IF people_count IS crowd AND time_of_day_risk IS NOT night THEN risk IS medium", weight: 0.5}
+  # Motion without anyone identified as a person (occlusion, animal, someone hiding)
+  - {id: R17, rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS night THEN risk IS high"}
+  - {id: R18, rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS NOT night THEN risk IS medium"}
+  # Calm
+  - {id: R19, rule: "IF people_count IS none AND motion_level IS NOT high AND gas_concentration IS clean THEN risk IS low"}
+  - {id: R20, rule: "IF people_count IS NOT none AND unknown_share IS none AND action_risk IS low AND gas_concentration IS clean THEN risk IS low"}
+
+# Per-location overrides (ids from config/locations.yaml); also possible as a `fuzzy:` block in locations.yaml
+locations:
+  warehouse:                       # nobody should be there after 19:00: night starts earlier, strangers count more
+    terms:
+      time_of_day_risk:
+        normal: [trap, 7, 8.5, 17.5, 19]
+        off_hours: [[trap, 5, 6, 7, 8.5], [trap, 17.5, 19, 19.5, 20.5]]
+        night: [[trap, 0, 0, 5, 6], [trap, 19.5, 20.5, 24, 24]]
+    remove_rules: [R21]            # replaced by the stricter W1 (same condition → would conflict)
+    rules:
+      - {id: W1, rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS high"}
+      - {id: W2, rule: "IF people_count IS NOT none AND time_of_day_risk IS night THEN risk IS high", weight: 0.8}

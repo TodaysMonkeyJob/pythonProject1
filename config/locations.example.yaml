@@ -7,6 +7,9 @@ locations:
     rules:                    # optional per-location overrides
       unknown_person_after: "20:00"   # an unknown person only counts as a warning from 20:00 to 06:00
       gas_thresholds: {acetone: 3.0}  # % — a reading above is critical (danger) in this location
+    fuzzy:                    # optional F15 overrides of config/fuzzy.yaml for this location (see core/fuzzy)
+      rules:
+        - {id: WH1, rule: "IF people_count IS crowd AND time_of_day_risk IS off_hours THEN risk IS high"}
   - id: office
     name: "Office"
     order: 2
