@@ -38,7 +38,7 @@ class RiskEnvelope:
         self.margin = float(cfg.get("over_reaction_margin", 0.3))
         thetas = {loc: float(v["theta"]) for loc, v in (cfg.get("locations") or {}).items() if "theta" in v}
         self.state = TrustedState(float(cfg.get("theta", 0.6)), thetas)
-        self.corridor = Corridor(path, locations_path, float(cfg.get("alpha", 0.5)))
+        self.corridor = Corridor(path, locations_path, float(cfg.get("alpha", 0.5)), cfg.get("floor", "mom"))
         self.confirmation = Confirmation(root, cfg["confirmation"], float(cfg.get("ack_valid_min", 30)))
         self.action_map = (root.get("maps") or {}).get("action_risk") or {}
         # F18: r_LLM from the model's risk distribution once a calibration was fitted (else the fixed mapping)
