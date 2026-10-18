@@ -19,9 +19,9 @@ Details per module: `CLAUDE.md`, `modules/vision/README.md`, `modules/trust/READ
 ```mermaid
 flowchart LR
   subgraph Devices
-    CAM["Cameras / phone / RTSP"]:::dev
-    MIC["Microphones"]:::dev
-    GAS["Gas sensor"]:::dev
+    CAM["Cameras / phone / RTSP"]
+    MIC["Microphones"]
+    GAS["Gas sensor"]
   end
   subgraph Perception["Perception, one process per device"]
     VIS["vision@cam<br/>YOLO + ByteTrack, motion"]
@@ -53,7 +53,6 @@ flowchart LR
   ORCH --> LOC & DASH
   DEV --- ORCH & LOC & DASH
   FUZ -.-> ORCH & AGG & LLM
-  classDef dev fill:#eef,stroke:#88a
 ```
 
 | Package | Depends on | Provides |
