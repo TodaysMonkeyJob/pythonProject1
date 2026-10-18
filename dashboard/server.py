@@ -57,6 +57,54 @@ def cpu_temperature() -> Optional[float]:
         return None
 
 
+def reverse_lines(path: str, chunk: int = 1 << 20):
+    """Lines of a file from the last one to the first, read in chunks (big event logs are not loaded whole)."""
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        position, rest = f.tell(), b""
+        while position > 0:
+            step = min(chunk, position)
+            position -= step
+            f.seek(position)
+            lines = (f.read(step) + rest).split(b"\n")
+            rest = lines[0]
+            for line in reversed(lines[1:]):
+                if line.strip():
+                    yield line.decode("utf-8", "replace")
+        if rest.strip():
+            yield rest.decode("utf-8", "replace")
+
+
+def query_history(log_dir: str, location_id: Optional[str] = None, types: Optional[List[str]] = None,
+                  since: Optional[str] = None, limit: int = 1000, max_days: int = 2) -> List[Dict[str, Any]]:
+    """
+    F13 details pages: events of a location from ``logs/<day>/events.jsonl``, newest first.
+
+    :param types: event types to keep (cheap substring pre-filter before parsing)
+    :param since: ISO timestamp; older events end the scan
+    """
+    needles = [f'"type":"{t}"' for t in types or []]
+    out: List[Dict[str, Any]] = []
+    for path in sorted(glob.glob(os.path.join(log_dir, "*", "events.jsonl")), reverse=True)[:max_days]:
+        for line in reverse_lines(path):
+            if needles and not any(n in line for n in needles):
+                continue
+            if location_id and f'"location_id":"{location_id}"' not in line:
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if since and event.get("timestamp", "") < since:
+                return out
+            if location_id and event.get("location_id") != location_id:
+                continue
+            out.append(event)
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def load_history(log_dir: str, limit: int) -> List[str]:
     """
     :return: The last `limit` events (JSON strings) from the newest events.jsonl files
@@ -471,17 +519,52 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
                 source = {**vision, "shared_buffer": buffer_name(chosen["device_id"])}
         return StreamingResponse(mjpeg_frames(source, fps), media_type="multipart/x-mixed-replace; boundary=frame")
 
+    def ws_allowed(websocket: WebSocket) -> bool:
+        if not (user and password):
+            return websocket.url.scheme != "wss"  # the LAN-facing node port never serves an open dashboard
+        header = websocket.headers.get("authorization", "")
+        try:
+            username, _, secret = base64.b64decode(header.split(" ", 1)[1]).decode().partition(":")
+        except Exception:
+            return False
+        return valid(username, secret)
+
+    # --- F13 control room: static app, history for detail views, one video WebSocket per page ---------------------
+
+    @app.get("/static/{path:path}", dependencies=[Depends(auth)])
+    async def static_file(path: str):
+        full = os.path.realpath(os.path.join(STATIC_DIR, path))
+        if not full.startswith(os.path.realpath(STATIC_DIR) + os.sep) or not os.path.isfile(full):
+            raise HTTPException(404, "not found")
+        media = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}.get(os.path.splitext(full)[1])
+        return FileResponse(full, media_type=media, headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/history", dependencies=[Depends(auth)])
+    def api_history(location_id: Optional[str] = None, types: Optional[str] = None, since: Optional[str] = None,
+                    limit: int = 1000):
+        return {"events": query_history(log_dir, location_id, [t for t in (types or "").split(",") if t], since,
+                                        max(1, min(limit, 5000)))}
+
+    from dashboard.video import FrameCache, stream
+
+    frames = FrameCache(tuple(vision.get("resolution", [640, 480])), state.node_hub.previews)
+
+    @app.websocket("/ws/video")
+    async def video_socket(websocket: WebSocket):
+        if not ws_allowed(websocket):
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        try:
+            await stream(websocket, frames, float(cfg.get("grid_fps", 4)), float(cfg.get("focus_fps", 10)))
+        except WebSocketDisconnect:
+            pass
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
-        if user and password:
-            header = websocket.headers.get("authorization", "")
-            try:
-                username, _, secret = base64.b64decode(header.split(" ", 1)[1]).decode().partition(":")
-            except Exception:
-                username = secret = ""
-            if not valid(username, secret):
-                await websocket.close(code=1008)
-                return
+        if not ws_allowed(websocket):
+            await websocket.close(code=1008)
+            return
         await websocket.accept()
         state.loop = asyncio.get_running_loop()  # events from the module thread are scheduled on this loop
         for data in load_history(log_dir, history):

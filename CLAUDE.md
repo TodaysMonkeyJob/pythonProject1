@@ -117,6 +117,13 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   The aggregator keeps one scene per location (immediate snapshot of the critical location only, location name +
   rules in the digest, `global` site snapshot every `global_snapshot_min`); the LLM worker throttles per location
   and `llm_decision` carries `location_id`.
+- `dashboard/static/` — F13 (TOD-24) control room, plain ES modules (no build step, no CDN, nothing vendored):
+  `app/main.js` (hash router `#/overview` `#/loc/<id>[/details]` `#/people` `#/devices` `#/locations`, carousel ← →,
+  swipe, dots, ↓/↑ summary ⇄ details), `store.js` (REST + /ws state, names via person_id), `video.js` (one /ws/video
+  socket, subscribes to visible tiles only), `charts.js` (canvas), `views/` (overview, grid, location, admin),
+  `app.css` (no page scroll ≥ 1280×720, light/dark). Backend: `dashboard/video.py` (`FrameCache`: one 320 px frame per
+  camera frame shared by all pages; `[4-byte len][header JSON][JPEG]`), `/static/{path}` (behind auth),
+  `/api/history` (events of a location, read backwards from logs). See `dashboard/README.md`.
 - `dashboard/` — F7 (TOD-18): `server.DashboardModule` runs uvicorn (FastAPI) in a background thread on
   `dashboard.port` (8000); the orchestrator forwards all events + heartbeats (`subscribe: ["*", "heartbeat"]`).
   `/api/persons` (F9: list, PATCH rename, POST merge, DELETE, thumbnail) is the single rename point.

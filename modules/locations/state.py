@@ -118,13 +118,13 @@ class LocationStateEngine:
             if p.get("state") == "disappeared":
                 loc.people.pop(key, None)
             else:
-                loc.people.setdefault(key, {"person_id": None, "name": "?", "action": None})
+                loc.people.setdefault(key, self._new_person(event))
         elif event.type == "person_identified" and p.get("track_id") is not None:
-            person = loc.people.setdefault(key, {"person_id": None, "name": "?", "action": None})
+            person = loc.people.setdefault(key, self._new_person(event))
             if p.get("identity") != "not_visible":
                 person.update(person_id=p.get("person_id"), name=p.get("identity"))
         elif event.type == "action" and p.get("track_id") is not None:
-            loc.people.setdefault(key, {"person_id": None, "name": "?", "action": None})["action"] = p.get("action")
+            loc.people.setdefault(key, self._new_person(event))["action"] = p.get("action")
         elif event.type == "speech":
             loc.last_speech = {"name": p.get("speaker_name") or p.get("speaker") or "?",
                                "person_id": p.get("person_id"), "text": p.get("text", ""), "ts": event.timestamp}
@@ -143,6 +143,10 @@ class LocationStateEngine:
         elif event.severity == "warning" and event.source != "llm" and self._counts_as_warning(event):
             loc.warnings.append((now, describe(event), event.event_id))
         return self.evaluate(now, [loc.location_id])
+
+    @staticmethod
+    def _new_person(event: Event) -> Dict[str, Any]:
+        return {"person_id": None, "name": "?", "action": None, "since": event.timestamp, "device_id": event.device_id}
 
     def _critical(self, loc: LocationLive, event: Event, now: float, reason: str) -> None:
         existing = next((a for a in loc.alerts if not a.acknowledged and a.reason == reason), None)
@@ -221,7 +225,8 @@ class LocationStateEngine:
     def summary(self, location_id: str, now: float) -> Dict[str, Any]:
         loc = self._live(location_id, now)
         devices = [d for d in self.devices() if d["location_id"] == location_id]
-        people = [{"person_id": p["person_id"], "name": p["name"], "action": p["action"]} for p in loc.people.values()]
+        people = [{k: p.get(k) for k in ("person_id", "name", "action", "since", "device_id")}
+                  for p in loc.people.values()]
         llm = loc.last_llm
         return {"location_id": location_id, "name": self.names(location_id), "state": loc.state, "reason": loc.reason,
                 "since": utc_timestamp(datetime.fromtimestamp(loc.since).astimezone()) if loc.since else None,

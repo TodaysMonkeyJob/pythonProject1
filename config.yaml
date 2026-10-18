@@ -271,5 +271,7 @@ dashboard:                  # F7: http://<pi-ip>:8000 (login DASHBOARD_USER / DA
   enabled: true
   host: 0.0.0.0             # without DASHBOARD_USER / DASHBOARD_PASS the server only listens on 127.0.0.1
   port: 8000
-  dashboard_fps: 8          # MJPEG frames per second (spares the Pi)
+  dashboard_fps: 8          # /video MJPEG frames per second (single-camera link)
+  grid_fps: 4               # F13 control room: small 320 px frames per visible camera tile (one WebSocket per page)
+  focus_fps: 10             # … the enlarged camera at full size
   history_events: 200       # sent to a browser on connect, from logs/<date>/events.jsonl
