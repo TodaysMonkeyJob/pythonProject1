@@ -307,6 +307,10 @@ llm:                        # F6: GPT analysis of snapshot digests (Azure OpenAI
   # AZURE_OPENAI_API_VERSION set → AzureOpenAI client (endpoint = https://<resource>.openai.azure.com/);
   # not set → v1 endpoint https://<resource>.openai.azure.com/openai/v1/
 
+trust:                      # F16 (TOD-27): fuzzy trust degree on every evidence event (orchestrator router)
+  enabled: true
+  fuzzy_config: config/fuzzy.yaml   # trust section: base values, source / asr / identity rules, claim patterns
+
 dashboard:                  # F7: http://<pi-ip>:8000 (login DASHBOARD_USER / DASHBOARD_PASS from .env)
   enabled: true
   host: 0.0.0.0             # without DASHBOARD_USER / DASHBOARD_PASS the server only listens on 127.0.0.1

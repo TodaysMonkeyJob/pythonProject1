@@ -180,6 +180,7 @@ class Orchestrator:
         self.discovery = bool(config.get("network", {}).get("discovery", False))
         self._stopping = False
         self.routed = 0
+        self.trust = self._trust_scorer(config)    # F16: trust degree on evidence events, before logging
 
     # --- setup -----------------------------------------------------------------------------------------------
 
@@ -223,12 +224,28 @@ class Orchestrator:
 
     # --- processes -------------------------------------------------------------------------------------------
 
+    @staticmethod
+    def _trust_scorer(config: Dict[str, Any]):
+        """F16 (TOD-27) ``modules.trust.TrustScorer`` from ``trust.fuzzy_config``; None when off or misconfigured."""
+        cfg = config.get("trust", {})
+        if not cfg.get("enabled", True):
+            return None
+        path = cfg.get("fuzzy_config", "config/fuzzy.yaml")
+        if not os.path.isfile(path):
+            logger.warning(f"Trust scoring off: {path} not found")
+            return None
+        from modules.trust import TrustScorer
+
+        return TrustScorer.from_config(path)    # a broken trust rule base fails the start loudly
+
     def start(self) -> None:
         self._create_frame_buffer()
         if self.discovery:
             from core.device_manager import DeviceManager
 
             self.devices = DeviceManager(self, self.config, scan=self.device_scan)
+            if self.trust is not None:
+                self.trust.state.seed_devices(self.devices.registry.list_devices())
             if "gas" in self.modules:
                 sensor = self.config.get("gas", {}).get("sensor_id", "gas-1")
                 device = self.devices.register_static("gas", f"Gas sensor {sensor}", f"gas:{sensor}")
@@ -367,6 +384,12 @@ class Orchestrator:
                         pass
             return
         self.routed += 1
+        if self.trust is not None:
+            try:
+                if self.trust.apply(event):
+                    data = event.to_json()
+            except Exception as e:  # scoring must never stop the router
+                logger.exception(f"Trust scoring failed for {event.type}: {e}")
         if self.log is not None:
             self.log.write(event)
         if event.type.startswith("device_"):  # every module may hold devices (locations, buffers to read)

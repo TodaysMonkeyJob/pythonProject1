@@ -27,6 +27,7 @@ EVENT_TYPES = (
     "action",
     "person_identified",
     "speech",
+    "scene_text",               # F16: text seen in the frame (sign / screen; OCR or captioning) — weak evidence
     "sound",
     "gas_reading",
     "alert",
