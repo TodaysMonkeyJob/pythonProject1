@@ -19,37 +19,37 @@ Details per module: `CLAUDE.md`, `modules/vision/README.md`, `modules/trust/READ
 ```mermaid
 flowchart LR
   subgraph Devices
-    CAM[Cameras / phone / RTSP]:::dev
-    MIC[Microphones]:::dev
-    GAS[Gas sensor]:::dev
+    CAM["Cameras / phone / RTSP"]:::dev
+    MIC["Microphones"]:::dev
+    GAS["Gas sensor"]:::dev
   end
-  subgraph Perception["Perception (one process per device)"]
-    VIS[vision@cam<br/>YOLO + ByteTrack, motion]
-    ACT[actions<br/>pose rules]
-    IDN[identity<br/>YuNet + SFace, quality gate, dedup]
-    AUD[audio@mic<br/>VAD, Whisper, ECAPA speakers]
-    GASM[gas<br/>classifier + trend]
+  subgraph Perception["Perception, one process per device"]
+    VIS["vision@cam<br/>YOLO + ByteTrack, motion"]
+    ACT["actions<br/>pose rules"]
+    IDN["identity<br/>YuNet + SFace, quality gate, dedup"]
+    AUD["audio@mic<br/>VAD, Whisper, ECAPA speakers"]
+    GASM["gas<br/>classifier + trend"]
   end
-  REG[(identity registry<br/>data/identity.db)]
-  DEV[(device / location registry<br/>data/devices.db)]
-  ORCH{{orchestrator router<br/>+ F16 trust scoring}}
-  AGG[aggregator<br/>snapshots v2, CSV, incidents]
-  OUT[(outbox.db)]
-  LLM[LLM worker<br/>F19 gate · GPT · F17 corridor]
-  LOC[locations<br/>state + notifications]
-  DASH[dashboard<br/>control room]
-  FUZ[[core/fuzzy<br/>config/fuzzy.yaml]]
+  REG[("identity registry<br/>data/identity.db")]
+  DEV[("device / location registry<br/>data/devices.db")]
+  ORCH{{"orchestrator router<br/>+ F16 trust scoring"}}
+  AGG["aggregator<br/>snapshots v2, CSV, incidents"]
+  OUT[("outbox.db")]
+  LLM["LLM worker<br/>F19 gate · GPT · F17 corridor"]
+  LOC["locations<br/>state + notifications"]
+  DASH["dashboard<br/>control room"]
+  FUZ[["core/fuzzy<br/>config/fuzzy.yaml"]]
 
   CAM --> VIS --> ACT & IDN
   MIC --> AUD
   GAS --> GASM
   IDN <--> REG
   AUD <--> REG
-  VIS & ACT & IDN & AUD & GASM -->|events| ORCH
-  ORCH -->|logs/&lt;date&gt;/events.jsonl| ORCH
+  VIS & ACT & IDN & AUD & GASM -->|"events"| ORCH
+  ORCH -->|"logs/date/events.jsonl"| ORCH
   ORCH --> AGG --> OUT --> LLM
-  ORCH -->|trusted evidence| LLM
-  LLM -->|llm_decision| ORCH
+  ORCH -->|"trusted evidence"| LLM
+  LLM -->|"llm_decision"| ORCH
   ORCH --> LOC & DASH
   DEV --- ORCH & LOC & DASH
   FUZ -.-> ORCH & AGG & LLM
@@ -71,27 +71,27 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  E[Event from a device] --> T{F16 trust scoring<br/>τ = min(source, ASR, consistency)}
-  T -->|claim lowers risk?| C[claim_type deescalation /<br/>instruction_to_system]
-  T --> S[Aggregator snapshot<br/>fuzzified, trusted / untrusted evidence]
+  E["Event from a device"] --> T{"F16 trust scoring<br/>τ = min(source, ASR, consistency)"}
+  T -->|"claim lowers risk?"| C["claim_type deescalation /<br/>instruction_to_system"]
+  T --> S["Aggregator snapshot<br/>fuzzified, trusted / untrusted evidence"]
   C --> S
-  S --> G{F19 gate}
-  G -->|critical event · critical floor ·<br/>untrusted lowering claim| CALL[GPT call]
-  G -->|novel / uncertain / refresh<br/>and interval allows| CALL
-  G -->|routine| FZ[fuzzy-only decision<br/>risk = r_floor, rule summary]
-  G -->|needed but interval not over| WAIT[wait — newer snapshot supersedes]
-  CALL --> R[GPT: risk_level + risk_distribution]
-  R --> K[F18 calibration<br/>r_LLM = centroid Σ p·μ]
-  K --> P{F17 corridor<br/>r_final = max(r_LLM, (1 − c)·r_floor)}
-  P -->|r_final level > GPT level| REJ[deescalation_rejected]
-  P --> D[llm_decision → location state,<br/>notifications, dashboard]
+  S --> G{"F19 gate"}
+  G -->|"critical event · critical floor ·<br/>untrusted lowering claim"| CALL["GPT call"]
+  G -->|"novel / uncertain / refresh<br/>and interval allows"| CALL
+  G -->|"routine"| FZ["fuzzy-only decision<br/>risk = r_floor, rule summary"]
+  G -->|"needed but interval not over"| WAIT["wait — newer snapshot supersedes"]
+  CALL --> R["GPT: risk_level + risk_distribution"]
+  R --> K["F18 calibration<br/>r_LLM = centroid Σ p·μ"]
+  K --> P{"F17 corridor<br/>r_final = max(r_LLM, (1 − c)·r_floor)"}
+  P -->|"r_final level > GPT level"| REJ["deescalation_rejected"]
+  P --> D["llm_decision → location state,<br/>notifications, dashboard"]
   FZ --> D
   REJ --> D
 
-  subgraph Corridor["F17 inputs (trusted evidence only, τ ≥ θ)"]
-    F1[r_floor = MOM of the risk rules]
-    F2[r_ceil = α-cut top, informational]
-    F3[c = safety confirmation:<br/>clean gas, normal motion, known person,<br/>no stranger, no risky action · operator ack = 1]
+  subgraph Corridor["F17 inputs: trusted evidence only, τ ≥ θ"]
+    F1["r_floor = MOM of the risk rules"]
+    F2["r_ceil = α-cut top, informational"]
+    F3["c = safety confirmation:<br/>clean gas, normal motion, known person,<br/>no stranger, no risky action · operator ack = 1"]
   end
   Corridor -.-> P
 ```
