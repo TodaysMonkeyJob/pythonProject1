@@ -1,60 +1,205 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/TodaysMonkeyJob/pythonProject1/schemas/snapshot.schema.json",
-  "title": "Situation snapshot (F5 → F6)",
-  "description": "Compact picture of one time window for GPT: who is in frame, what they do, what was said, gas, alerts. No raw coordinates, no images, no audio.",
+  "title": "Situation snapshot (F5 → F6), v2 with the LLM view (F18)",
+  "description": "Compact picture of one time window. The v1 sections (people, speech, gas …) are the local / debug record with raw values and F16 trust tags; only llm_view (v2: fuzzified terms, trusted / untrusted evidence, no raw sensor numbers) is sent to GPT. No coordinates, images or audio.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["snapshot_id", "window", "trigger", "people", "objects", "speech", "sounds", "gas", "alerts", "system"],
+  "required": [
+    "snapshot_id",
+    "window",
+    "trigger",
+    "people",
+    "objects",
+    "speech",
+    "sounds",
+    "gas",
+    "alerts",
+    "system"
+  ],
   "properties": {
-    "snapshot_id": {"type": "string", "format": "uuid"},
+    "snapshot_id": {
+      "type": "string",
+      "format": "uuid"
+    },
     "window": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["from", "to"],
+      "required": [
+        "from",
+        "to"
+      ],
       "properties": {
-        "from": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
-        "to": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"}
+        "from": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+        }
       }
     },
-    "trigger": {"type": "string", "enum": ["interval", "critical_event"]},
-    "reason": {"type": "string", "maxLength": 120, "description": "What caused a critical_event snapshot"},
-    "location_id": {"type": "string", "maxLength": 64, "description": "F12: the location this snapshot describes"},
-    "location_name": {"type": "string", "maxLength": 64},
-    "incident_id": {"type": "string", "pattern": "^\\d{8}-\\d{6}-[0-9a-f]{4}$", "description": "Local incident archive (exports/incidents/<id>.zip); never sent itself"},
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "interval",
+        "critical_event"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "What caused a critical_event snapshot"
+    },
+    "location_id": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "F12: the location this snapshot describes"
+    },
+    "location_name": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "incident_id": {
+      "type": "string",
+      "pattern": "^\\d{8}-\\d{6}-[0-9a-f]{4}$",
+      "description": "Local incident archive (exports/incidents/<id>.zip); never sent itself"
+    },
     "people": {
       "type": "array",
       "maxItems": 20,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["track_id", "identity", "actions", "in_frame_sec"],
+        "required": [
+          "track_id",
+          "identity",
+          "actions",
+          "in_frame_sec"
+        ],
         "properties": {
-          "track_id": {"type": "integer"},
-          "identity": {"type": "string", "maxLength": 64},
-          "known": {"type": "boolean"},
-          "actions": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 32}},
-          "in_frame_sec": {"type": "integer", "minimum": 0},
-          "present": {"type": "boolean"},
-          "person_id": {"type": "string", "maxLength": 36, "description": "Identity registry id (F9)"},
-          "location_id": {"type": "string", "maxLength": 64, "description": "Where (F11)"}
+          "track_id": {
+            "type": "integer"
+          },
+          "identity": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "known": {
+            "type": "boolean"
+          },
+          "actions": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "maxLength": 32
+            }
+          },
+          "in_frame_sec": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "person_id": {
+            "type": "string",
+            "maxLength": 36,
+            "description": "Identity registry id (F9)"
+          },
+          "location_id": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Where (F11)"
+          },
+          "trust": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
         }
       }
     },
-    "objects": {"type": "array", "maxItems": 30, "items": {"type": "string", "maxLength": 32}},
+    "objects": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "string",
+        "maxLength": 32
+      }
+    },
     "speech": {
       "type": "array",
       "maxItems": 20,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["t", "text"],
+        "required": [
+          "t",
+          "text"
+        ],
         "properties": {
-          "t": {"type": "string", "pattern": "^\\d{2}:\\d{2}:\\d{2}$"},
-          "text": {"type": "string", "maxLength": 300},
-          "language": {"type": ["string", "null"], "maxLength": 8},
-          "person_id": {"type": "string", "maxLength": 36},
-          "speaker": {"type": ["string", "null"], "maxLength": 64}
+          "t": {
+            "type": "string",
+            "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 8
+          },
+          "person_id": {
+            "type": "string",
+            "maxLength": 36
+          },
+          "speaker": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "speech",
+              "scene_text"
+            ]
+          },
+          "trust": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "claim_type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "deescalation",
+              "instruction_to_system",
+              "escalation"
+            ]
+          },
+          "provenance": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "trust_reasons": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            }
+          }
         }
       }
     },
@@ -64,11 +209,23 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["t", "label", "db"],
+        "required": [
+          "t",
+          "label",
+          "db"
+        ],
         "properties": {
-          "t": {"type": "string", "pattern": "^\\d{2}:\\d{2}:\\d{2}$"},
-          "label": {"type": "string", "maxLength": 32},
-          "db": {"type": "number"}
+          "t": {
+            "type": "string",
+            "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "db": {
+            "type": "number"
+          }
         }
       }
     },
@@ -76,24 +233,478 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "gas": {"type": "string", "maxLength": 32},
-        "concentration_ppm": {"type": "integer", "minimum": 0},
-        "trend": {"type": "string", "enum": ["rising", "falling", "stable"]},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "alerts": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 64}}
+        "gas": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "concentration_ppm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trend": {
+          "type": "string",
+          "enum": [
+            "rising",
+            "falling",
+            "stable"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "alerts": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "rise_rate_pct_per_min": {
+          "type": "number"
+        },
+        "trust": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
-    "alerts": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 80}},
+    "alerts": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "maxLength": 80
+      }
+    },
     "system": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "mic_state": {"type": "string", "enum": ["active", "standby"]},
-        "scene_active": {"type": "boolean"},
-        "cpu_temp_c": {"type": ["number", "null"]},
-        "events_in_window": {"type": "integer", "minimum": 0}
+        "mic_state": {
+          "type": "string",
+          "enum": [
+            "active",
+            "standby"
+          ]
+        },
+        "scene_active": {
+          "type": "boolean"
+        },
+        "cpu_temp_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "events_in_window": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-    "truncated": {"type": "boolean", "description": "Lists/transcripts were shortened to fit max_snapshot_bytes"}
+    "truncated": {
+      "type": "boolean",
+      "description": "Lists/transcripts were shortened to fit max_snapshot_bytes"
+    },
+    "schema_version": {
+      "type": "integer",
+      "enum": [
+        1,
+        2
+      ],
+      "description": "absent = 1"
+    },
+    "llm_view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "window",
+        "trigger",
+        "trusted_evidence"
+      ],
+      "description": "F18: the only part sent to GPT (as compact JSON); risk_floor is added by the LLM worker",
+      "properties": {
+        "v": {
+          "const": 2
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "window": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "interval",
+            "critical_event"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "incident": {
+          "type": "boolean",
+          "description": "a local incident archive was saved"
+        },
+        "rules": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "trusted_evidence": {
+          "type": "array",
+          "maxItems": 80,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "description": "One piece of evidence. Sensor values only as {term: mu}; durations / loudness as words.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gas",
+                  "person",
+                  "objects",
+                  "alert",
+                  "sound",
+                  "speech",
+                  "scene_text"
+                ]
+              },
+              "gas": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "level": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "maxProperties": 6,
+                    "additionalProperties": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "loud",
+                      "very_loud"
+                    ]
+                  }
+                ]
+              },
+              "trend": {
+                "type": "object",
+                "maxProperties": 6,
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "alerts": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^#-?\\d+$"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "known": {
+                "type": "boolean"
+              },
+              "actions": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              },
+              "stay": {
+                "type": "string",
+                "enum": [
+                  "brief",
+                  "minutes",
+                  "long"
+                ]
+              },
+              "left": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "t": {
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "lang": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 8
+              },
+              "speaker": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "trust": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "claim_type": {
+                "type": "string",
+                "enum": [
+                  "deescalation",
+                  "instruction_to_system",
+                  "escalation"
+                ]
+              },
+              "reasons": {
+                "type": "array",
+                "maxItems": 2,
+                "items": {
+                  "type": "string",
+                  "maxLength": 100
+                }
+              },
+              "times": {
+                "type": "array",
+                "maxItems": 5,
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+                }
+              }
+            }
+          }
+        },
+        "untrusted_evidence": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "description": "One piece of evidence. Sensor values only as {term: mu}; durations / loudness as words.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gas",
+                  "person",
+                  "objects",
+                  "alert",
+                  "sound",
+                  "speech",
+                  "scene_text"
+                ]
+              },
+              "gas": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "level": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "maxProperties": 6,
+                    "additionalProperties": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "loud",
+                      "very_loud"
+                    ]
+                  }
+                ]
+              },
+              "trend": {
+                "type": "object",
+                "maxProperties": 6,
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "alerts": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^#-?\\d+$"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "known": {
+                "type": "boolean"
+              },
+              "actions": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              },
+              "stay": {
+                "type": "string",
+                "enum": [
+                  "brief",
+                  "minutes",
+                  "long"
+                ]
+              },
+              "left": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                  "type": "string",
+                  "maxLength": 32
+                }
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "t": {
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "lang": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 8
+              },
+              "speaker": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "trust": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "claim_type": {
+                "type": "string",
+                "enum": [
+                  "deescalation",
+                  "instruction_to_system",
+                  "escalation"
+                ]
+              },
+              "reasons": {
+                "type": "array",
+                "maxItems": 2,
+                "items": {
+                  "type": "string",
+                  "maxLength": 100
+                }
+              },
+              "times": {
+                "type": "array",
+                "maxItems": 5,
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
+                }
+              }
+            }
+          }
+        },
+        "system": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "risk_floor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "term",
+            "mu"
+          ],
+          "properties": {
+            "term": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ]
+            },
+            "mu": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    }
   }
 }

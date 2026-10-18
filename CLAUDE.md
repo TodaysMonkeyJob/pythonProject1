@@ -140,6 +140,14 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   (r_final = max(r_LLM, (1 − c)·r_floor), level maps). `llm_decision` gets risk_llm / risk_floor / risk_ceil /
   confirmation / risk_final / risk_level_final / envelope_applied / envelope_reason; raised → `deescalation_rejected`;
   both → `logs/<date>/envelope.jsonl`. Location state uses `risk_level_final`; the location page shows the corridor.
+- F18 (TOD-29) what GPT sees and how its risk is read: `modules/aggregator/llm_view.py` builds snapshot v2's
+  `llm_view` (fuzzified terms via `FuzzyEngine.fuzzify`, words for durations / loudness, `trusted_evidence` /
+  `untrusted_evidence` split at θ, no raw sensor numbers; the v1 sections stay as the local debug record; also the
+  v1 → v2 adapter); the outbox `digest` column holds its compact JSON (`aggregator.llm_format: digest` = old text);
+  the LLM worker adds `risk_floor {term, mu}` from the corridor. Prompt: spotlighting + `risk_distribution`
+  (`LLMDecision`, renormalised, optional). `modules/llm/calibration.py` (`RiskCalibrator`: r_LLM = centroid of
+  Σ p·μ; Brier / ECE / reliability), `tools/calibrate_llm_risk.py` → `config/calibration.yaml` (used by the envelope
+  only once it exists), `tools/snapshot_tokens.py` (v1 JSON / v1 digest / v2 tokens), `tools/test_llm.py --repeat`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

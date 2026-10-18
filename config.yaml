@@ -268,6 +268,7 @@ gas:
 aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
   enabled: true
   global_snapshot_min: 10   # F12: "whole site" digest (one line per active location) for GPT; 0 = off
+  llm_format: v2            # F18: GPT gets the fuzzified, trust-tagged JSON view (no raw numbers); digest = v1 text
   export_dir: exports       # everything below lives here (set snapshot_dir / outbox_path to move one part)
   export_csv: true          # <export_dir>/events_YYYY-MM-DD.csv
   write_snapshot_files: true  # <export_dir>/snapshots/*.json; the SQLite queue read by F6: <export_dir>/outbox.db

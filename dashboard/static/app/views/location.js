@@ -277,8 +277,14 @@ function gptHistory() {
     h("div", {}, ev.payload.summary), corridorBand(ev.payload), ev.payload.envelope_applied ? envelopeReasons(ev.payload) : null,
     h("button", { onclick: async () => {
       try { const j = await api("GET", `/api/snapshot/${encodeURIComponent(ev.payload.snapshot_id)}`);
-        dialog(`Знімок ${ev.payload.snapshot_id}`, h("p", { class: "muted" }, "Надіслано в GPT:"), h("pre", {}, j.digest_sent_to_gpt || "—"), json(j.snapshot));
+        dialog(`Знімок ${ev.payload.snapshot_id}`, h("p", { class: "muted" }, "Надіслано в GPT:"), h("pre", {}, prettyPayload(j.digest_sent_to_gpt)), json(j.snapshot));
       } catch (e) { dialog("Знімок", h("p", {}, e.message)); } } }, "знімок"))));
+}
+
+// F18: the v2 view is compact JSON — show it indented (text digests unchanged)
+function prettyPayload(text) {
+  if (!text) return "—";
+  try { return text.startsWith("{") ? JSON.stringify(JSON.parse(text), null, 1) : text; } catch (e) { return text; }
 }
 
 function deviceHealth(location) {

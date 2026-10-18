@@ -265,7 +265,8 @@ def test_critical_in_one_location_snapshots_only_that_location(tmp_path):
     assert snapshot["location_id"] == "warehouse" and snapshot["location_name"] == "Warehouse"
     assert snapshot["trigger"] == "critical_event" and len(snapshot["people"]) == 1
     row = aggregator.outbox.pending()[0]
-    assert row["digest"].startswith("Warehouse | ") and "rules: acetone ≥ 3.0% is dangerous here" in row["digest"]
+    view = json.loads(row["digest"])                                               # F18 v2 view for GPT
+    assert view["location"] == "Warehouse" and view["rules"] == "acetone ≥ 3.0% is dangerous here"
     assert aggregator.tick() is None                                            # office: nothing critical
     clock[0] += 61
     assert aggregator.tick()["location_id"] == "office"                         # its regular snapshot

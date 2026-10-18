@@ -137,6 +137,11 @@ class LLMWorker(BaseModule):
         from modules.llm.gpt_client import InvalidResponse
 
         digest = row.get("digest") or row["payload"].get("reason") or ""
+        location_id = row["payload"].get("location_id")
+        if self.envelope is not None and row["trigger"] != "global":   # F18: the corridor floor, for consistency
+            from modules.aggregator.llm_view import with_risk_floor
+
+            digest = with_risk_floor(digest, self.envelope.floor_term(location_id, now=self.wall_clock()))
         try:
             decision, usage = self.gpt.analyze(digest)
         except InvalidResponse as e:
@@ -169,13 +174,12 @@ class LLMWorker(BaseModule):
                    "latency_ms": usage.latency_ms}
         if row["payload"].get("incident_id"):
             payload["incident_id"] = row["payload"]["incident_id"]
-        location_id = row["payload"].get("location_id")
         if location_id:
             payload["location_id"] = location_id
         level = decision.risk_level
         if self.envelope is not None:
             payload.update(self.envelope.decide(None if row["trigger"] == "global" else location_id, level,
-                                                now=self.wall_clock()))
+                                                now=self.wall_clock(), distribution=decision.risk_distribution))
             level = payload["risk_level_final"]
         event = self.emit("llm_decision", payload, severity=SEVERITY[level], location_id=location_id)
         if self.envelope_log is not None:

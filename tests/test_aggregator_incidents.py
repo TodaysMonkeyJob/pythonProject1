@@ -78,8 +78,7 @@ def test_outbox_row_has_digest(tmp_path):
     feed(aggregator, clock, scene_events())
     snapshot = aggregator.on_event(critical_gas())
     (row,) = aggregator.outbox.pending()
-    assert row["digest"].startswith(row["digest"].splitlines()[0])
-    assert f"incident {snapshot['incident_id']}" in row["digest"]
+    assert json.loads(row["digest"])["incident"] is True                    # F18: the v2 view says an archive exists
     assert row["payload"]["incident_id"] == snapshot["incident_id"]
 
 
