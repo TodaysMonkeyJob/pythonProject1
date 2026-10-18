@@ -26,6 +26,9 @@ def main() -> None:
     if args.only:
         wanted = {name.strip() for name in args.only.split(",")}
         specs = [spec for spec in specs if spec.name in wanted]
+        network = config.setdefault("network", {})  # per-device pipelines follow --only too
+        network["discover_cameras"] = network.get("discover_cameras", True) and "vision" in wanted
+        network["discover_mics"] = network.get("discover_mics", True) and "audio" in wanted
     Orchestrator(config, specs).run()
 
 

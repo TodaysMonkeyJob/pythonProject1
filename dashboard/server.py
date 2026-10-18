@@ -13,10 +13,15 @@ Real-time monitoring dashboard (F7): FastAPI + uvicorn in its own process.
 * ``/api/persons`` (F9) — the identity registry: ``GET`` list (+ ``aliases`` of merged ids), ``PATCH /{id}``
   ``{display_name}``, ``POST /{id}/merge`` ``{target_id}``, ``DELETE /{id}``, ``GET /{id}/thumbnail``. The single
   rename point: changes are published as ``identity_*`` events, so every module and browser updates at once.
+* ``/api/devices`` (F11) — cameras / microphones / sensors with status, location, enabled and the live state of
+  their pipelines; ``PATCH /api/devices/{id}`` ``{location_id, name, enabled}``, ``POST /api/locations`` ``{name}``.
+  ``/video?device=<id>`` streams one camera.
 
 HTTP Basic auth with ``DASHBOARD_USER`` / ``DASHBOARD_PASS`` (.env). Without credentials the server only listens on
-127.0.0.1. The web server runs in a background thread; the module loop keeps sending heartbeats and handles "stop",
-so a closed browser tab never affects other modules.
+127.0.0.1. F11: a second HTTPS server (``network.node_port``, 8443, self-signed certificate from the system openssl)
+serves remote nodes (``dashboard/node.py``: phone page ``/node``, Pi agents) on the LAN with pairing tokens; on that
+port the dashboard itself needs the credentials. The web servers run in background threads; the module loop keeps
+sending heartbeats and handles "stop", so a closed browser tab never affects other modules.
 """
 import asyncio
 import base64
@@ -77,6 +82,10 @@ class DashboardState:
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.recent: Deque[str] = collections.deque(maxlen=500)
         self.registry = None  # core.identity.IdentityRegistry (F9), set by the module
+        self.devices = None   # core.devices.DeviceRegistry (F11), set by the module
+        from dashboard.node import NodeHub
+
+        self.node_hub = NodeHub(self, config)
 
     def on_event(self, data: str) -> None:
         """Called in the module thread for every forwarded event (JSON string)."""
@@ -91,6 +100,8 @@ class DashboardState:
             self.mic_state = event.payload.get("state")
         elif event.type.startswith("identity_") and self.registry is not None:
             self.registry.poll()
+        elif event.type == "device_updated":
+            self.node_hub.forward_to_edge(event)  # a location / enabled change for a Pi's device
         self.recent.append(data)
         if self.loop is not None and self.clients:
             asyncio.run_coroutine_threadsafe(self.broadcast(data), self.loop)
@@ -112,13 +123,20 @@ class DashboardState:
         memory = psutil.virtual_memory()
         return {"modules": modules,
                 "mic_state": self.mic_state or self.heartbeats.get("audio", {}).get("mic_state"),
-                "video_fps": self.heartbeats.get("vision", {}).get("frame_fps"),
-                "yolo_fps": self.heartbeats.get("vision", {}).get("yolo_fps"),
+                "video_fps": self._vision().get("frame_fps"),
+                "yolo_fps": self._vision().get("yolo_fps"),
                 "cpu_temp_c": cpu_temperature(), "cpu_percent": psutil.cpu_percent(interval=None),
                 "ram_used_mb": round((memory.total - memory.available) / 1e6),
                 "ram_total_mb": round(memory.total / 1e6),
                 "uptime_sec": round(now - self.started),
                 "gas_thresholds": self.config.get("gas", {}).get("thresholds", {})}
+
+
+    def _vision(self) -> Dict[str, Any]:
+        """Heartbeat of the vision module (single camera) or the first camera pipeline (``vision@<device>``)."""
+        if "vision" in self.heartbeats:
+            return self.heartbeats["vision"]
+        return next((hb for name, hb in sorted(self.heartbeats.items()) if name.startswith("vision@")), {})
 
 
 def placeholder_jpeg(text: str = "no camera") -> bytes:
@@ -175,7 +193,7 @@ def person_json(person: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def create_app(state: DashboardState, config: Dict[str, Any]):
-    from fastapi import Body, Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+    from fastapi import Body, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
     from fastapi.responses import FileResponse, Response, StreamingResponse
     from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
@@ -197,9 +215,13 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         return bool(user and password) and secrets.compare_digest(username.encode(), str(user).encode()) \
             and secrets.compare_digest(secret.encode(), str(password).encode())
 
-    def auth(credentials: Annotated[Optional[HTTPBasicCredentials], Depends(security)] = None) -> None:
+    def auth(request: Request,
+             credentials: Annotated[Optional[HTTPBasicCredentials], Depends(security)] = None) -> None:
         if not (user and password):
-            return  # no credentials configured: the server is bound to 127.0.0.1 only
+            if request.url.scheme == "https":  # the LAN-facing node server: never an open dashboard
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "set DASHBOARD_USER / DASHBOARD_PASS in .env to "
+                                    "use the dashboard over the network")
+            return  # no credentials configured: the HTTP server is bound to 127.0.0.1 only
         if credentials is None or not valid(credentials.username, credentials.password):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": 'Basic realm="dashboard"'})
 
@@ -285,9 +307,66 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         registry().delete(person_or_404(person_id))
         return {"deleted": person_id}
 
+    # --- devices (F11) ------------------------------------------------------------------------------------------
+
+    def devices():
+        if state.devices is None:
+            raise HTTPException(503, "device registry not available")
+        return state.devices
+
+    def device_json(device: Dict[str, Any]) -> Dict[str, Any]:
+        module = f"{'vision' if device['kind'] == 'camera' else 'audio'}@{device['device_id']}"
+        heartbeat = state.heartbeats.get(module) or (state.heartbeats.get("gas") if device["kind"] == "gas" else None)
+        alive = bool(heartbeat) and time.time() - heartbeat["at"] <= HEARTBEAT_ALIVE_SEC
+        return {**{k: device[k] for k in ("device_id", "node_id", "kind", "transport", "name", "location_id",
+                                          "enabled", "status", "last_seen")},
+                "running": alive, "fps": (heartbeat or {}).get("frame_fps"),
+                "mic_state": (heartbeat or {}).get("mic_state")}
+
+    @app.get("/api/devices", dependencies=[Depends(auth)])
+    def api_devices():
+        reg = devices()
+        from core.tls import lan_ip
+
+        port = config.get("network", {}).get("node_port", 8443)
+        return {"devices": [device_json(d) for d in reg.list_devices()], "locations": reg.list_locations(),
+                "node_url": f"https://{lan_ip()}:{port}/node" if port else None}
+
+    @app.patch("/api/devices/{device_id}", dependencies=[Depends(auth)])
+    def api_device_update(device_id: str, location_id: Annotated[Optional[str], Body()] = None,
+                          name: Annotated[Optional[str], Body()] = None,
+                          enabled: Annotated[Optional[bool], Body()] = None):
+        try:
+            return device_json(devices().update(device_id, location_id=location_id, name=name, enabled=enabled))
+        except KeyError as e:
+            raise HTTPException(404, "unknown device") from e
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+
+    @app.post("/api/locations", dependencies=[Depends(auth)])
+    def api_add_location(name: Annotated[str, Body(embed=True)]):
+        if not name.strip():
+            raise HTTPException(422, "empty name")
+        return devices().add_location(name)
+
+    from dashboard.node import add_node_routes, preview_frames
+
+    add_node_routes(app, state.node_hub, auth, STATIC_DIR)
+
     @app.get("/video", dependencies=[Depends(auth)])
-    async def video():
-        return StreamingResponse(mjpeg_frames(vision, fps), media_type="multipart/x-mixed-replace; boundary=frame")
+    async def video(device: Optional[str] = None):
+        if device and device in state.node_hub.previews:  # a Raspberry Pi camera: its previews (~ every 2 s)
+            return StreamingResponse(preview_frames(state.node_hub, device, 2.0),
+                                     media_type="multipart/x-mixed-replace; boundary=frame")
+        source = vision
+        if state.devices is not None and (device or config.get("network", {}).get("discovery")):
+            from core.device_manager import buffer_name
+
+            cameras = [d for d in state.devices.list_devices(kind="camera") if d["status"] == "online"]
+            chosen = next((d for d in cameras if d["device_id"] == device), cameras[0] if cameras else None)
+            if chosen is not None:
+                source = {**vision, "shared_buffer": buffer_name(chosen["device_id"])}
+        return StreamingResponse(mjpeg_frames(source, fps), media_type="multipart/x-mixed-replace; boundary=frame")
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
@@ -325,6 +404,35 @@ class DashboardModule(BaseModule):
         self.state = DashboardState(config)
         self.server = None
         self.thread: Optional[threading.Thread] = None
+        self.node_server = None
+        self.node_thread: Optional[threading.Thread] = None
+        self._announce_stop = threading.Event()
+
+    def start_node_server(self, app) -> None:
+        """HTTPS for phones / Pi agents on the LAN (``network.node_port``) + UDP announcements of the hub."""
+        import uvicorn
+
+        from core.tls import ensure_certificate, lan_ip
+        from dashboard.node import announce
+
+        network = self.config.get("network", {})
+        port = network.get("node_port", 8443)
+        if not port:
+            return
+        try:
+            cert, key = ensure_certificate(network.get("tls_dir", "data/tls"))
+        except Exception as e:  # no openssl: the hub still works, only remote browser nodes don't
+            logger.error(f"No HTTPS certificate ({e}); remote nodes disabled")
+            return
+        self.node_server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=int(port), ssl_certfile=cert,
+                                                         ssl_keyfile=key, log_level="warning", access_log=False))
+        self.node_thread = threading.Thread(target=self.node_server.run, name="uvicorn-nodes", daemon=True)
+        self.node_thread.start()
+        url = f"https://{lan_ip()}:{port}"
+        logger.warning(f"Remote nodes: open {url}/node on a phone (pairing code on the dashboard Devices page)")
+        if network.get("announce", True):
+            threading.Thread(target=announce, args=(url, self.device_id.split(":")[0], self._announce_stop),
+                             name="announce", daemon=True).start()
 
     def setup(self) -> None:
         import uvicorn
@@ -341,7 +449,17 @@ class DashboardModule(BaseModule):
             self.state.registry = registry_from_config(self.config.get("identity", {}), publish=self.publish)
         except Exception as e:  # the rest of the dashboard works without it
             logger.error(f"Identity registry unavailable: {e}")
+        try:
+            from core.devices import DeviceRegistry
+
+            network = self.config.get("network", {})
+            self.state.devices = DeviceRegistry(network.get("devices_path", "data/devices.db"), network.get("node_id"),
+                                                publish=self.publish)
+        except Exception as e:
+            logger.error(f"Device registry unavailable: {e}")
+        self.state.node_hub.publish = self.publish
         app = create_app(self.state, self.config)
+        self.start_node_server(app)
         self.server = uvicorn.Server(uvicorn.Config(app, host=host, port=int(cfg.get("port", 8000)),
                                                     log_level="warning", access_log=False))
         self.thread = threading.Thread(target=self.server.run, name="uvicorn", daemon=True)
@@ -361,12 +479,19 @@ class DashboardModule(BaseModule):
         time.sleep(0.05)
 
     def teardown(self) -> None:
+        self._announce_stop.set()
+        if self.node_server is not None:
+            self.node_server.should_exit = True
+        if self.node_thread is not None:
+            self.node_thread.join(timeout=5)
         if self.server is not None:
             self.server.should_exit = True
         if self.thread is not None:
             self.thread.join(timeout=5)
         if self.state.registry is not None:
             self.state.registry.close()
+        if self.state.devices is not None:
+            self.state.devices.close()
 
 
 def run(event_queue, control_queue, config):

@@ -13,6 +13,8 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   queues), watchdog (dead process or 3 missed heartbeats → restart with backoff, `system` `alert`), graceful
   SIGINT/SIGTERM, creates/unlinks the vision shared buffer. Modules whose model files are missing are skipped with
   a hint; F5–F7 are picked up automatically once `modules.aggregator` / `modules.llm` / `modules.dashboard` have `run`.
+  With `network.discovery` (default) vision / audio are not static modules but per-device pipelines
+  (`add_module` / `remove_module` at runtime); `device_*` events go to every module. `--only` limits discovery too.
   Module names must equal the `BaseModule.name` (heartbeats are matched by it). `deploy/iot-guard.service` — systemd.
 - `speech_to_text_whisper/` — the package:
   - `audio_recorder.py` — `AudioToTextRecorder`: orchestrates processes/threads (`torch.multiprocessing`),
@@ -28,14 +30,32 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   - `audio_recorder_testing.py` — old/experimental recorder (wake words, porcupine). Not imported.
   - `parameters_explanation.txt` — recorder parameter reference (partly outdated).
 - `core/` — IoT security framework (Linear project fixit-mobile, Step 0 / TOD-11):
-  - `events.py` — pydantic `Event` (unified schema: event_id, timestamp UTC ms `Z`, source, type, severity,
-    payload, confidence), `make_event()`, `to_json()`/`from_json()`. New event types go into `EVENT_TYPES`.
+  - `events.py` — pydantic `Event` (unified schema v2: schema_version, event_id, timestamp UTC ms `Z`, source, type,
+    severity, payload, confidence + required `device_id`, `node_id`, `location_id`), `make_event()` (device / node /
+    location from `set_context()` unless given), `to_json()`/`from_json()` (v1 log lines still readable).
+    New event types go into `EVENT_TYPES`.
   - `bus.py` — `multiprocessing.Queue` carrying events as JSON strings (`publish`/`receive`, `CONTROL_STOP`).
   - `logger.py` — `JsonlLogger`: `logs/YYYY-MM-DD/<module>.jsonl`, UTC daily rotation, total size cap
     (oldest days deleted first, current day never).
   - `config.py` — `load_config()`: `config.yaml` + secrets from env/`.env` via `ENV_MAP`; fails fast on
     missing sections or `required_env`.
-  - `module.py` — `BaseModule`: `setup/step/teardown` loop, heartbeat every 5 s, stops on `"stop"`.
+  - `module.py` — `BaseModule`: `setup/step/teardown` loop, heartbeat every 5 s, stops on `"stop"`. Per-device
+    instances get `config["_device"]` / `config["_module"]` (`vision@camera-…`); `emit()` stamps device + location;
+    a forwarded `device_updated` for its device changes `self.location_id`.
+  - `devices.py` — F11 (TOD-22) `DeviceRegistry`: SQLite `data/devices.db` (devices: stable `device_id` = kind +
+    hash(node, hw key), kind camera/mic/gas, transport, location (new → `unassigned`), enabled, status; locations).
+    Publishes `device_online` / `device_offline` / `device_updated`.
+  - `discovery.py` — local cameras (macOS `system_profiler` = AVFoundation / OpenCV order, Continuity iPhone →
+    `continuity`; Linux `/sys/class/video4linux` + picamera2) and mics (sounddevice, virtual ones ignored); `diff()`.
+  - `device_manager.py` — in the orchestrator: scans every `network.discovery_interval_sec`, starts / stops /
+    restarts one `vision@<id>` (own shared buffer `iotv_<hash>`) or `audio@<id>` process per enabled device; also for
+    remote `browser` / `rtsp` devices (on their device_online / offline). Child processes get small OMP / BLAS
+    thread pools via env (`orchestrator.child_threads`, `<section>.threads`) — without them 4 cameras were 14× slower.
+  - `tls.py` (self-signed HTTPS cert via the system openssl), `onvif.py` (WS-Discovery probe, stdlib).
+  - Remote nodes (see `deploy/NETWORK.md`, no MQTT / extra programs): `dashboard/node.py` on the HTTPS port 8443 —
+    pairing codes → tokens (hashes in `devices.db`), phone page `static/node.html` (JPEG `0x01` + PCM `0x02` over WSS →
+    `IngestSource` shared buffer / `SocketSource` unix socket), Pi agents (`node_agent/agent.py` + `modules/uplink.py`:
+    events + previews over WSS, hub found by UDP announce, cert pinned), RTSP / ONVIF endpoints.
 - `modules/<name>/__init__.py` exposes `run(event_queue, control_queue, config)`.
   - `modules/gas` — gas classifier (TOD-19). `data.py` loads `data/gas/data.xls` (4 sheets = gases, row = R at
     16 gate voltages Ug 0.0..1.5 V, col 0 = C %; C = 0 rows → class `clean_air`) and writes `data_clean.xlsx` /
@@ -54,7 +74,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     via the control queue); `action` events only on change. `eval_actions.py` → labelled-video accuracy.
     `identity.py` (F3, TOD-14) → `IdentityRecognizer`: YuNet + SFace on person boxes matched in the F9 registry,
     `person_identified` (`person_id` + `identity` = display name, `unknown_N` / `not_visible`) on change. F2 and F3
-    share `consumer.SharedFrameConsumer`. `tools/eval_faces.py` → accuracy / false accepts on a face folder.
+    share `consumer.SharedFrameConsumer`, which with discovery serves EVERY camera buffer in one process
+    (`scheduler.FairScheduler`: active cameras at the module fps, idle ones at `idle_fps`, round-robin; per-camera
+    engines because track ids are per camera). `tools/eval_faces.py` → accuracy / false accepts on a face folder.
     Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id); `identity_*` events
     (or `sync_sec` polling) relabel live tracks. `legacy_faces.py` imports the old `faces.npz` / unknown folders
     into an empty registry. F2/F3 events go to `logs/<date>/actions.jsonl` / `identity.jsonl`.
@@ -185,6 +207,8 @@ YOLO_POSE_TEST_MODEL=yolo11n-pose.pt python -m pytest -k real_pose
 - `.idea/` (local IDE settings, git-ignored).
 - `multi_model_sentence_data.xlsx`, `speech_to_text_whisper/warmup_audio.wav` — data/binaries.
 - `speech_to_text_whisper/voices/`, `model/` — reference voices and model cache (never commit).
+- `data/devices.db*` — the user's device registry (locations, enabled, node tokens), never delete.
+- `data/tls/` (hub HTTPS key), `data/node_agent/` (edge token) — secrets, git-ignored, never commit.
 - `data/faces/`, `data/identity.db*` — face photos, face / voice embeddings (biometric data, git-ignored, never
   commit). Tests must use `tmp_path` registries and log dirs: `tests/conftest.py` fails the run if real
   `data/identity.db*` or `logs/*/*` change. Never delete them without checking — they hold the user's live data.

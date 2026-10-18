@@ -1,11 +1,11 @@
-"""Guard: tests must never touch the real identity registry or logs (biometric data / the user's history)."""
+"""Guard: tests must never touch the real registries (identity, devices) or logs (biometric data, user history)."""
 import glob
 import os
 
 import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUARDED = ("data/identity.db*", "logs/*/*")
+GUARDED = ("data/identity.db*", "data/devices.db*", "data/tls/*", "logs/*/*")
 
 
 def _state():

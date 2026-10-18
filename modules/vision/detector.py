@@ -111,7 +111,8 @@ class VisionDetector(BaseModule):
 
             event = Event.from_json(message)
             p = event.payload
-            if event.type == "person_identified" and p.get("track_id") is not None:
+            if event.type == "person_identified" and p.get("track_id") is not None \
+                    and event.device_id in (self.device_id, "unknown"):  # track ids are per camera
                 if p.get("identity") in (None, "not_visible"):
                     self.person_names.pop(p["track_id"], None)
                 else:
@@ -129,6 +130,9 @@ class VisionDetector(BaseModule):
                                                   cfg.get("confidence_threshold", 0.4), cfg.get("classes"),
                                                   cfg.get("tracker", "bytetrack.yaml"))
             self.object_detector.load()
+            from modules.vision.yolo import limit_threads
+
+            limit_threads(cfg.get("threads", 2))  # after loading: importing ultralytics resets torch's threads
         if self.frame_buffer is None and cfg.get("shared_buffer"):
             self.frame_buffer = SharedFrameBuffer.create(cfg["shared_buffer"], width, height)
         if cfg.get("log_events", True):

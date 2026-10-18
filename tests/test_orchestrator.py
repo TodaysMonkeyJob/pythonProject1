@@ -24,7 +24,7 @@ def pump(orchestrator, seconds, until=None):
     """Runs the router + watchdog loop for up to `seconds` (or until `until()` is true)."""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        orchestrator.route_pending(timeout=0.05)
+        orchestrator.poll(timeout=0.05)
         orchestrator.check_health()
         if until and until():
             return True
@@ -137,6 +137,9 @@ def test_person_enters_mic_active_within_one_second(tmp_path):
 def test_module_specs_from_config():
     config = load_config()
     names = [s.name for s in Orchestrator.module_specs(config)]
+    assert names == ["gas", "actions", "identity", "aggregator", "llm", "dashboard"]   # cameras / mics: per device
+    config["network"]["discovery"] = False
+    names = [s.name for s in Orchestrator.module_specs(config)]
     assert names == ["gas", "vision", "actions", "identity", "audio", "aggregator", "llm", "dashboard"]
     config["identity"]["enabled"] = False
     config["orchestrator"]["modules"] = {"gas": {"enabled": False}, "audio": {"target": "modules.audio:run"}}
@@ -159,3 +162,47 @@ def test_malformed_events_are_dropped(tmp_path, bad):
     orch = make(tmp_path, [])
     orch._route(bad)
     assert orch.routed == 0
+
+
+def test_discovered_devices_get_their_own_processes(tmp_path):
+    from core.discovery import FoundDevice
+
+    cam = FoundDevice("camera", "local", "USB cam", f"test:{tmp_path.name}", {"source": 7})
+    mic = FoundDevice("mic", "local", "Test mic", f"mic:{tmp_path.name}", {"device": "Test mic"})
+    found = [cam, mic]
+    config = {
+        "orchestrator": {"startup_grace_sec": 30, "stop_timeout_sec": 5,
+                         "modules": {"vision": {"target": f"{D}:steady"}, "audio": {"target": f"{D}:steady"}}},
+        "logging": {"dir": str(tmp_path / "logs")},
+        "network": {"discovery": True, "devices_path": str(tmp_path / "devices.db"), "node_id": "testhub",
+                    "discovery_interval_sec": 0.2},
+        "vision": {"enabled": True, "model": "yolo11n.pt", "resolution": [64, 48]}, "audio": {"enabled": True},
+    }
+    orch = Orchestrator(config, [], device_scan=lambda cfg: list(found))
+    orch.start()
+    try:
+        pipelines = [n for n in orch.modules if "@" in n]
+        assert sorted(n.split("@")[0] for n in pipelines) == ["audio", "vision"]
+        assert pump(orch, 20, until=lambda: all(orch.modules[n].last_heartbeat for n in pipelines))
+        found.remove(cam)                                                   # camera unplugged
+        assert pump(orch, 5, until=lambda: not any(n.startswith("vision@") for n in orch.modules))
+        found.append(cam)                                                   # plugged back
+        assert pump(orch, 5, until=lambda: any(n.startswith("vision@") for n in orch.modules))
+    finally:
+        orch.shutdown()
+    events = logged(tmp_path)
+    kinds = [(e["type"], e["payload"].get("kind")) for e in events if e["type"].startswith("device_")]
+    assert kinds.count(("device_online", "camera")) == 2 and ("device_offline", "camera") in kinds
+    assert all(e["device_id"] and e["node_id"] and e["location_id"] for e in events)       # every event
+    assert {e["node_id"] for e in events} == {"testhub"}
+    assert not orch.device_buffers                                          # shared memory released
+
+
+def test_child_processes_get_small_thread_pools():
+    from core.orchestrator import thread_env
+
+    env = thread_env({"vision": {"threads": 3}}, "vision")
+    assert env["OMP_NUM_THREADS"] == "3" and env["VECLIB_MAXIMUM_THREADS"] == "3"
+    assert env["OMP_WAIT_POLICY"] == "PASSIVE"                       # no busy-waiting on shared cores
+    assert thread_env({"orchestrator": {"child_threads": 4}}, "aggregator")["OMP_NUM_THREADS"] == "4"
+    assert thread_env({}, None)["MKL_NUM_THREADS"] == "2"

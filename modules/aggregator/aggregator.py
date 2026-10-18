@@ -73,6 +73,7 @@ class Person:
     identity: str = "unidentified"
     known: bool = False
     person_id: Optional[str] = None     # identity registry id (F9); the name is resolved at snapshot time
+    location_id: Optional[str] = None   # F11: where (several cameras / rooms)
     actions: List[str] = field(default_factory=list)
     present: bool = True
 
@@ -99,8 +100,8 @@ class SceneState:
 
     def __init__(self, started: float):
         self.window_start = started
-        self.people: Dict[int, Person] = {}
-        self.object_tracks: Dict[int, str] = {}      # live non-person tracks: track id → class
+        self.people: Dict[tuple, Person] = {}
+        self.object_tracks: Dict[tuple, str] = {}    # live non-person tracks: (device, track id) → class
         self.objects_seen: List[str] = []
         self.speech: List[Dict[str, Any]] = []
         self.sounds: List[Dict[str, Any]] = []
@@ -117,15 +118,17 @@ class SceneState:
         self.events += 1
         if event.type != "gas_reading":
             self.changed = True
+        # Track ids are per camera (F11): people / objects are keyed by (device, track id)
+        key = (event.device_id, p.get("track_id"))
         if event.type == "object_detected":
-            track_id, cls = p.get("track_id"), p.get("class", "object")
+            cls = p.get("class", "object")
             if cls == "person":
-                person = self.people.setdefault(track_id, Person(track_id, now, now))
+                person = self._person(key, event, now)
                 person.present, person.last_seen = p.get("state") != "disappeared", now
             elif p.get("state") == "disappeared":
-                self.object_tracks.pop(track_id, None)
+                self.object_tracks.pop(key, None)
             else:
-                self.object_tracks[track_id] = cls
+                self.object_tracks[key] = cls
             if cls not in self.objects_seen:
                 self.objects_seen.append(cls)
         elif event.type == "person_identified":
@@ -133,13 +136,13 @@ class SceneState:
                 for person in self.people.values():
                     if person.identity == p["renamed_from"]:
                         person.identity, person.known = p["identity"], True
-            elif p.get("identity") != "not_visible" or p.get("track_id") not in self.people:
-                person = self.people.setdefault(p["track_id"], Person(p["track_id"], now, now))
+            elif p.get("identity") != "not_visible" or key not in self.people:
+                person = self._person(key, event, now)
                 person.identity, person.known, person.last_seen = p.get("identity", person.identity), \
                     bool(p.get("known")), now
                 person.person_id = p.get("person_id")
         elif event.type == "action":
-            person = self.people.setdefault(p["track_id"], Person(p["track_id"], now, now))
+            person = self._person(key, event, now)
             person.last_seen = now
             if p.get("action") and p["action"] not in person.actions:
                 person.actions.append(p["action"])
@@ -168,6 +171,11 @@ class SceneState:
             self.mic_state = p.get("state")
         elif event.type == "scene_active":
             self.scene_active = bool(p.get("active"))
+
+    def _person(self, key, event: Event, now: float) -> Person:
+        person = self.people.setdefault(key, Person(key[1], now, now))
+        person.location_id = event.location_id
+        return person
 
     def reset_window(self, now: float) -> None:
         self.window_start = now
@@ -210,7 +218,9 @@ class SnapshotBuilder:
             "people": [{"track_id": int(p.track_id), "identity": names(p.person_id, p.identity)[:64],
                         "known": known(p.person_id, p.known), "actions": p.actions[-10:], "present": p.present,
                         "in_frame_sec": int(max(0, (now if p.present else p.last_seen) - p.first_seen)),
-                        **({"person_id": p.person_id} if p.person_id else {})}
+                        **({"person_id": p.person_id} if p.person_id else {}),
+                        **({"location_id": p.location_id[:64]}
+                           if p.location_id and p.location_id != "unassigned" else {})}
                        for p in people],
             "objects": state.objects_seen[:30],
             "speech": [{**s, "text": s["text"][:cfg.max_text_chars],

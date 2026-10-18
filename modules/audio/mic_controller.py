@@ -163,6 +163,59 @@ class SoundDeviceSource:
             self.stream = None
 
 
+class SocketSource:
+    """
+    Microphone of a remote node (a phone's browser, F11): the dashboard forwards its 16 kHz int16 PCM as datagrams to
+    a unix socket this source binds; read() re-cuts them into ``frame_samples`` frames.
+    """
+
+    def __init__(self, path: str, frame_samples: int = 480):
+        self.path, self.frame_samples = path, frame_samples
+        self.sock = None
+        self.pending = np.zeros(0, np.int16)
+
+    def open(self) -> None:
+        import os
+        import socket as sockets
+
+        if os.path.exists(self.path):
+            os.remove(self.path)  # stale socket of a previous run
+        self.sock = sockets.socket(sockets.AF_UNIX, sockets.SOCK_DGRAM)
+        self.sock.bind(self.path)
+        self.sock.setblocking(False)
+
+    def read(self) -> List[np.ndarray]:
+        chunks = []
+        while True:
+            try:
+                chunks.append(np.frombuffer(self.sock.recv(65536), np.int16))
+            except BlockingIOError:
+                break
+        if chunks:
+            self.pending = np.concatenate([self.pending, *chunks])
+        frames = []
+        while len(self.pending) >= self.frame_samples:
+            frames.append(self.pending[:self.frame_samples].copy())
+            self.pending = self.pending[self.frame_samples:]
+        return frames
+
+    def close(self) -> None:
+        import os
+
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+            if os.path.exists(self.path):
+                os.remove(self.path)
+
+
+def audio_socket_path(device_id: str) -> str:
+    """Where the dashboard sends a remote node's microphone audio (short: unix socket paths are limited)."""
+    import tempfile
+
+    return f"{tempfile.gettempdir().rstrip('/')}/iotguard_{device_id.split('-')[-1][:12]}.sock"
+
+
 def webrtc_vad(aggressiveness: int, sample_rate: int) -> Callable[[np.ndarray], bool]:
     import webrtcvad
 
@@ -204,15 +257,17 @@ class MicController(BaseModule):
         self.clock = clock
         self.wall_clock = wall_clock
         identity = config.get("identity", {})
-        self.location_id = identity.get("location_id") or "home"
-        self.device_id = cfg.get("device_id") or f"mic-{socket.gethostname().split('.')[0]}"
+        if not config.get("_device"):  # single microphone without discovery: the configured location
+            self.location_id = identity.get("location_id") or "home"
+        self.device_id = cfg.get("device_id") or (config.get("_device") or {}).get("device_id") \
+            or f"mic-{socket.gethostname().split('.')[0]}"
         self.presence = PresenceTracker(self.location_id, clock=wall_clock)
         self.transcript_log = None
         self.speaker = speaker if speaker is not None or cfg.get("speaker_id", False) else False
         self.linker: Optional[VoiceFaceLinker] = None
         if self.speaker:
             self._attach_linker(self.speaker.registry)
-        self.scene_active = False
+        self.scene_by_camera: Dict[str, bool] = {}   # cameras in this microphone's location → scene active
         self.transcriptions = 0
         self.executor: Optional[ThreadPoolExecutor] = None
         self._source_ok = False
@@ -221,10 +276,32 @@ class MicController(BaseModule):
         self._last_sound_event = float("-inf")
         self._lock = threading.Lock()
 
+    @property
+    def scene_active(self) -> bool:
+        """A camera in the same location sees something (F11: scene_active is per location)."""
+        return any(self.scene_by_camera.values())
+
+    @scene_active.setter
+    def scene_active(self, value: bool) -> None:  # tests / single-camera callers
+        self.scene_by_camera = {"*": bool(value)}
+
+    def _same_location(self, location_id: str) -> bool:
+        """Only cameras in this microphone's location — unless one of them has no location yet (then: everywhere)."""
+        return location_id in ("unassigned", "unknown") or self.location_id in ("unassigned", location_id)
+
+    def on_device_updated(self, event: Event) -> None:
+        super().on_device_updated(event)
+        if event.payload.get("device_id") == self.device_id:
+            self.presence.location_id = self.location_id
+            self.scene_by_camera.clear()  # re-learnt from the next scene_active of the new location
+
     def heartbeat_payload(self) -> Dict[str, Any]:
         return {"mic_state": self.state.state, "microphone_ok": self._source_ok}
 
     def setup(self) -> None:
+        device = self.cfg.get("device")
+        if self.frame_source is None and isinstance(device, str) and device.startswith("socket:"):
+            self.frame_source = SocketSource(device[len("socket:"):], self.sample_rate * self.frame_ms // 1000)
         if self.frame_source is None:
             self.frame_source = SoundDeviceSource(self.sample_rate, self.sample_rate * self.frame_ms // 1000,
                                                   self.cfg.get("device"))
@@ -255,7 +332,10 @@ class MicController(BaseModule):
             return
         event = Event.from_json(message)
         if event.type == "scene_active":
-            self.scene_active = bool(event.payload.get("active"))
+            if self._same_location(event.location_id):
+                self.scene_by_camera[event.device_id] = bool(event.payload.get("active"))
+            else:
+                self.scene_by_camera.pop(event.device_id, None)   # that camera is elsewhere (or was moved)
             self._update_state(False, False)
         elif event.type in ("object_detected", "person_identified"):
             with self._lock:
@@ -304,7 +384,8 @@ class MicController(BaseModule):
             state, reason = change
             if state == STANDBY:
                 self.segmenter.reset()
-            self.publish(make_event("system", "mic_state", {"state": state, "reason": reason, "module": self.name}))
+            self.publish(make_event("system", "mic_state", {"state": state, "reason": reason, "module": self.name},
+                                    device_id=self.device_id, location_id=self.location_id))
             logger.info(f"Microphone {state} ({reason})")
 
     def _submit(self, segment: np.ndarray) -> None:

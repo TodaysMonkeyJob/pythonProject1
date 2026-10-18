@@ -9,6 +9,20 @@ import numpy as np
 from modules.vision.state import Detection
 
 
+def limit_threads(threads) -> None:
+    """
+    CPU threads for torch / OpenCV in this process. Several camera pipelines each using every core fight over the CPU
+    (4 cameras on a 10-core Mac: 570 ms per YOLO frame instead of ~40 ms), so each gets a small share.
+    """
+    if not threads:
+        return
+    import cv2
+    import torch
+
+    torch.set_num_threads(int(threads))
+    cv2.setNumThreads(int(threads))
+
+
 class ObjectDetector:
     def __init__(self, model_path: str, imgsz: int = 320, conf: float = 0.4,
                  classes: Optional[Sequence[int]] = None, tracker: str = "bytetrack.yaml"):

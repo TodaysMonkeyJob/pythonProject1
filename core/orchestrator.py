@@ -43,6 +43,7 @@ DEFAULT_MODULES = {
     "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat"]),
 }
 SELF_LOGGING_SECTIONS = ("vision", "actions", "identity")
+PER_DEVICE_MODULES = ("vision", "audio")   # with network.discovery: one process per camera / microphone
 # Files a module can't start without: (config section, key, how to get it)
 REQUIRED_FILES = {
     "gas": [("gas", "classifier_path", "python -m modules.gas.train"),
@@ -55,9 +56,33 @@ REQUIRED_FILES = {
 }  # their own JSONL logging is off under the orchestrator
 
 
+THREAD_ENV = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+
+
+def thread_env(config: Dict[str, Any], section: Optional[str]) -> Dict[str, str]:
+    """
+    CPU thread limits for a module process, set BEFORE torch / numpy are imported. Without them every process starts
+    an OpenMP pool as big as the machine and busy-waits: 4 camera pipelines on a 10-core Mac took 570 ms per YOLO
+    frame instead of 40 ms. ``<section>.threads`` or ``orchestrator.child_threads`` (default 2).
+    """
+    threads = (config.get(section or "", {}) or {}).get("threads") or config.get("orchestrator", {}).get(
+        "child_threads", 2)
+    env = {name: str(int(threads)) for name in THREAD_ENV}
+    env["OMP_WAIT_POLICY"] = "PASSIVE"  # idle threads sleep instead of spinning on cores other processes need
+    return env
+
+
 def _child_main(target: str, event_queue, control_queue, config: Dict[str, Any]) -> None:
     """Process entry point: Ctrl+C is handled by the orchestrator, which sends "stop"."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    for name, value in config.get("_thread_env", {}).items():
+        os.environ.setdefault(name, value)  # an explicit OMP_NUM_THREADS from the shell wins
+    from core.events import default_node_id, set_context
+
+    network, device = config.get("network", {}), config.get("_device") or {}
+    node = network.get("node_id") or default_node_id()
+    set_context(node_id=node, device_id=device.get("device_id") or f"{node}:{config.get('_module', 'module')}",
+                location_id=device.get("location_id") or network.get("hub_location") or "unassigned")
     module_name, _, function = target.partition(":")
     getattr(importlib.import_module(module_name), function)(event_queue, control_queue, config)
 
@@ -85,11 +110,27 @@ def target_available(target: str) -> bool:
         return False
 
 
+def pipeline_template(kind: str, config: Dict[str, Any]):
+    """:return: (target, subscribe) of the per-device pipeline for a camera / mic, or None when that module is off"""
+    name, section = {"camera": ("vision", "vision"), "mic": ("audio", "audio")}.get(kind, (None, None))
+    if name is None or not config.get(section, {}).get("enabled", False):
+        return None
+    problems = missing_files(name, config)
+    if problems:
+        logger.warning(f"{name} pipelines not started: {'; '.join(problems)}")
+        return None
+    target, _, subscribe = DEFAULT_MODULES[name]
+    override = (config.get("orchestrator", {}).get("modules", {}) or {}).get(name, {}) or {}
+    return override.get("target", target), list(override.get("subscribe", subscribe))
+
+
 @dataclass
 class ModuleSpec:
     name: str
     target: str
     subscribe: List[str] = field(default_factory=list)
+    config: Optional[Dict[str, Any]] = None     # merged over the child config (per-device pipelines)
+    device_id: Optional[str] = None
 
     def wants(self, event_type: str) -> bool:
         return "*" in self.subscribe or event_type in self.subscribe
@@ -108,11 +149,13 @@ class ModuleProcess:
 
 class Orchestrator:
     def __init__(self, config: Dict[str, Any], modules: Optional[Sequence[ModuleSpec]] = None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, device_scan=None):
         """
         :param config: Full merged config
         :param modules: Module specs; built from DEFAULT_MODULES + ``orchestrator.modules`` + ``enabled`` flags if None
+        :param device_scan: network config → [FoundDevice]; ``core.discovery.scan`` by default (tests inject a fake)
         """
+        self.device_scan = device_scan
         self.config = config
         self.cfg = config.get("orchestrator", {})
         self.ctx = mp.get_context("spawn")
@@ -130,6 +173,9 @@ class Orchestrator:
         self.log = JsonlLogger("events", log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048),
                                log_cfg.get("check_every", 100)) if self.cfg.get("log_events", True) else None
         self.frame_buffer = None
+        self.device_buffers: Dict[str, Any] = {}    # module name → SharedFrameBuffer of its camera
+        self.devices = None                         # DeviceManager (network.discovery)
+        self.discovery = bool(config.get("network", {}).get("discovery", False))
         self._stopping = False
         self.routed = 0
 
@@ -138,8 +184,11 @@ class Orchestrator:
     @staticmethod
     def module_specs(config: Dict[str, Any]) -> List[ModuleSpec]:
         overrides = config.get("orchestrator", {}).get("modules", {}) or {}
+        discovery = config.get("network", {}).get("discovery", False)
         specs = []
         for name, (target, section, subscribe) in DEFAULT_MODULES.items():
+            if discovery and name in PER_DEVICE_MODULES:
+                continue  # one pipeline per discovered camera / microphone instead (core/device_manager.py)
             override = overrides.get(name, {}) or {}
             if override.get("enabled") is False or not config.get(section, {}).get("enabled", False):
                 continue
@@ -174,14 +223,67 @@ class Orchestrator:
 
     def start(self) -> None:
         self._create_frame_buffer()
+        if self.discovery:
+            from core.device_manager import DeviceManager
+
+            self.devices = DeviceManager(self, self.config, scan=self.device_scan)
+            if "gas" in self.modules:
+                sensor = self.config.get("gas", {}).get("sensor_id", "gas-1")
+                device = self.devices.register_static("gas", f"Gas sensor {sensor}", f"gas:{sensor}")
+                self.modules["gas"].spec.config = {"_device": {k: device[k] for k in ("device_id", "location_id")}}
+                self.modules["gas"].spec.device_id = device["device_id"]
         for module in self.modules.values():
             self._start(module)
         logger.warning(f"Orchestrator started: {', '.join(self.modules) or 'no modules'}")
+        if self.devices is not None:
+            self.devices.start()
+
+    def add_module(self, spec: ModuleSpec, buffer: Optional[str] = None) -> None:
+        """Starts a module at runtime (a device pipeline); ``buffer`` = shared frame buffer to create for it."""
+        if spec.name in self.modules:
+            return
+        if buffer:
+            from modules.vision.shared_frame import SharedFrameBuffer
+
+            width, height = self.config.get("vision", {}).get("resolution", [640, 480])
+            try:
+                SharedFrameBuffer.attach(buffer, width, height).unlink()  # stale block of a crashed run
+            except FileNotFoundError:
+                pass
+            self.device_buffers[spec.name] = SharedFrameBuffer.create(buffer, width, height)
+        module = ModuleProcess(spec, self.ctx.Queue(maxsize=1000))
+        self.modules[spec.name] = module
+        self._start(module)
+
+    def remove_module(self, name: str) -> None:
+        """Stops a module at runtime (device unplugged / disabled) and releases its frame buffer."""
+        module = self.modules.pop(name, None)
+        if module is not None and module.process is not None:
+            if module.process.is_alive():
+                module.control.put(CONTROL_STOP)
+                module.process.join(self.stop_timeout / 2)
+            self._kill(module)
+            logger.info(f"Stopped {name}")
+        buffer = self.device_buffers.pop(name, None)
+        if buffer is not None:
+            buffer.close()
+            try:
+                buffer.unlink()
+            except FileNotFoundError:
+                pass
 
     def _start(self, module: ModuleProcess) -> None:
         self._drain(module.control)
+        config = self.child_config
+        if module.spec.config:
+            from core.device_manager import merge
+
+            config = merge(config, module.spec.config)
+        name = module.spec.name.split("@")[0]                       # vision@camera-… → vision
+        section = DEFAULT_MODULES[name][1] if name in DEFAULT_MODULES else name
+        config = {**config, "_module": module.spec.name, "_thread_env": thread_env(config, section)}
         module.process = self.ctx.Process(target=_child_main, name=module.spec.name, daemon=False,
-                                          args=(module.spec.target, self.events, module.control, self.child_config))
+                                          args=(module.spec.target, self.events, module.control, config))
         module.process.start()
         module.started_at = self.clock()
         module.last_heartbeat = None
@@ -224,6 +326,8 @@ class Orchestrator:
                     self._restart(module, f"no heartbeat within {self.startup_grace:.0f} s of start")
             elif now - module.last_heartbeat > self.heartbeat_timeout:
                 self._restart(module, f"no heartbeat for {now - module.last_heartbeat:.0f} s")
+            if module.spec.device_id and module.restarts == 5 and self.devices is not None:
+                self.devices.registry.offline(module.spec.device_id, status="error")  # keeps failing
 
     # --- routing ---------------------------------------------------------------------------------------------
 
@@ -263,12 +367,28 @@ class Orchestrator:
         self.routed += 1
         if self.log is not None:
             self.log.write(event)
+        if event.type.startswith("device_"):  # every module may hold devices (locations, buffers to read)
+            if self.devices is not None:
+                self.devices.on_event(event)
+            for module in self.modules.values():
+                try:
+                    module.control.put_nowait(data)
+                except queue.Full:
+                    pass
+            return
         for module in self.modules.values():
             if module.spec.wants(event.type):
                 try:
                     module.control.put_nowait(data)
                 except queue.Full:
                     logger.warning(f"Control queue of {module.spec.name} is full; event dropped")
+
+    def poll(self, timeout: float = 0.05) -> int:
+        """One main-loop pass: routes queued events and applies the latest device scan. :return: events routed"""
+        count = self.route_pending(timeout=timeout)
+        if self.devices is not None:
+            self.devices.tick()
+        return count
 
     def emit(self, event: Event) -> None:
         """Publishes an orchestrator event into the router (logged and forwarded like any other)."""
@@ -290,7 +410,7 @@ class Orchestrator:
         try:
             last_check = 0.0
             while not self._stopping and (duration is None or self.clock() - started < duration):
-                self.route_pending(timeout=0.05)
+                self.poll(timeout=0.05)
                 if self.clock() - last_check >= 0.5:
                     last_check = self.clock()
                     self.check_health()
@@ -302,6 +422,8 @@ class Orchestrator:
     def shutdown(self) -> None:
         """Sends "stop" to every module, waits, then terminates stragglers; releases shared memory."""
         self._stopping = True
+        if self.devices is not None:
+            self.devices.stop()
         for module in self.modules.values():
             if module.process is not None and module.process.is_alive():
                 module.control.put(CONTROL_STOP)
@@ -314,6 +436,18 @@ class Orchestrator:
                     self._kill(module)
         while self.route_pending(timeout=0.05):  # last events (e.g. final mic_state) still get logged
             pass
+        if self.devices is not None:
+            manager, self.devices = self.devices, None   # routing below must not reach the closed registry
+            manager.close()
+            while self.route_pending(timeout=0.2):  # device_offline events
+                pass
+        for buffer in self.device_buffers.values():
+            buffer.close()
+            try:
+                buffer.unlink()
+            except FileNotFoundError:
+                pass
+        self.device_buffers.clear()
         if self.log is not None:
             self.log.close()
         if self.frame_buffer is not None:

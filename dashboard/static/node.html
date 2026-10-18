@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IoT Guard node</title>
+<style>
+  :root { --bg: #0f1115; --panel: #171a21; --line: #262a33; --text: #d7dae0; --muted: #8a909c; --ok: #3fb950;
+          --bad: #f85149; --accent: #58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, sans-serif; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  label { display: block; color: var(--muted); font-size: 14px; margin: 8px 0 4px; }
+  input, select, button { width: 100%; font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
+                          background: #0d1017; color: var(--text); }
+  button { background: var(--accent); color: #0d1017; font-weight: 600; border: 0; margin-top: 12px; }
+  button.secondary { background: #0d1017; color: var(--text); border: 1px solid var(--line); }
+  video { width: 100%; border-radius: 8px; background: #000; margin-top: 10px; }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+  .status { font-size: 14px; color: var(--muted); } .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .meter { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .meter div { height: 100%; width: 0; background: var(--ok); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>IoT Guard — пристрій</h1>
+
+<section id="pair">
+  <label for="code">Код сполучення (дашборд → Пристрої → «Підключити телефон»)</label>
+  <input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+  <label for="name">Назва пристрою</label>
+  <input id="name" placeholder="iPhone у кімнаті B">
+  <button id="pair-btn">Сполучити</button>
+  <div id="pair-status" class="status"></div>
+</section>
+
+<section id="stream" class="hidden">
+  <label for="location">Локація</label>
+  <div class="row"><select id="location"></select><button id="new-loc" class="secondary" style="margin-top:0;flex:0 0 auto;width:auto">+</button></div>
+  <div class="row">
+    <label><input type="checkbox" id="use-camera" checked style="width:auto"> камера</label>
+    <label><input type="checkbox" id="use-mic" checked style="width:auto"> мікрофон</label>
+  </div>
+  <label for="fps">Кадрів за секунду</label>
+  <select id="fps"><option>2</option><option selected>5</option><option>8</option><option>10</option></select>
+  <button id="start">Почати трансляцію</button>
+  <button id="stop" class="secondary hidden">Зупинити</button>
+  <div id="status" class="status"></div>
+  <div class="meter"><div id="level"></div></div>
+  <video id="preview" playsinline muted autoplay></video>
+  <button id="forget" class="secondary">Забути сполучення</button>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } },
+                del: (k) => { try { localStorage.removeItem(k); } catch (e) { /* private mode */ } } };
+let token = store.get("iotguard_token"), ws = null, media = null, audioCtx = null, timer = null, wakeLock = null;
+let sent = 0, lastReport = performance.now();
+
+function show() {
+  $("pair").classList.toggle("hidden", !!token);
+  $("stream").classList.toggle("hidden", !token);
+  if (token) loadLocations();
+}
+function status(text, cls) { const s = $("status"); s.textContent = text; s.className = "status " + (cls || ""); }
+
+$("pair-btn").onclick = async () => {
+  $("pair-status").textContent = "…";
+  const r = await fetch("/api/pair", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: $("code").value.trim(), name: $("name").value.trim() || "phone", kind: "browser" }) });
+  if (!r.ok) { $("pair-status").textContent = "Невірний або прострочений код"; $("pair-status").className = "status bad"; return; }
+  const j = await r.json(); token = j.token; store.set("iotguard_token", token);
+  store.set("iotguard_name", $("name").value.trim() || "phone"); show();
+};
+$("forget").onclick = () => { stop(); store.del("iotguard_token"); token = null; show(); };
+
+async function loadLocations(selected) {
+  const r = await fetch("/api/node/locations?token=" + encodeURIComponent(token));
+  if (r.status === 401) { store.del("iotguard_token"); token = null; show(); return; }
+  const j = await r.json(), sel = $("location"); sel.replaceChildren();
+  for (const l of j.locations) { const o = document.createElement("option"); o.value = l.location_id; o.textContent = l.name; sel.append(o); }
+  sel.value = selected || store.get("iotguard_location") || "unassigned";
+}
+$("new-loc").onclick = async () => {
+  const name = prompt("Назва локації (напр. Кімната B)"); if (!name) return;
+  const r = await fetch("/api/node/locations", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, name }) });
+  if (r.ok) { const l = await r.json(); await loadLocations(l.location_id); $("location").onchange(); }
+};
+$("location").onchange = () => {
+  store.set("iotguard_location", $("location").value);
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ location_id: $("location").value }));
+};
+
+function packet(type, payload) {        // 1 byte type + payload
+  const out = new Uint8Array(1 + payload.byteLength); out[0] = type; out.set(new Uint8Array(payload), 1); return out.buffer;
+}
+
+async function start() {
+  const camera = $("use-camera").checked, mic = $("use-mic").checked;
+  try {
+    media = await navigator.mediaDevices.getUserMedia({
+      video: camera ? { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } } : false,
+      audio: mic ? { channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true } : false });
+  } catch (e) { status("Немає доступу до камери / мікрофона: " + e.message, "bad"); return; }
+  $("preview").srcObject = media;
+  ws = new WebSocket(`wss://${location.host}/node/ws?token=${encodeURIComponent(token)}`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => ws.send(JSON.stringify({ name: store.get("iotguard_name"), location_id: $("location").value,
+                                             camera, mic, width: 640, height: 480 }));
+  ws.onmessage = (m) => { const j = JSON.parse(m.data); if (j.type === "ready") { status("Транслюю на хаб", "ok"); begin(camera, mic); } };
+  ws.onclose = () => { status("З'єднання втрачено — повторюю…", "bad"); cleanup(); if (token && media) setTimeout(start, 3000); };
+  $("start").classList.add("hidden"); $("stop").classList.remove("hidden");
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* not supported: keep the screen on */ }
+}
+
+function begin(camera, mic) {
+  if (camera) {
+    const video = $("preview"), canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 480;
+    const ctx = canvas.getContext("2d");
+    timer = setInterval(() => {
+      if (!ws || ws.readyState !== 1 || ws.bufferedAmount > 500000 || !video.videoWidth) return;   // drop when slow
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(async (blob) => { if (blob && ws && ws.readyState === 1) { ws.send(packet(1, await blob.arrayBuffer())); sent++; } },
+                    "image/jpeg", 0.7);
+      const now = performance.now();
+      if (now - lastReport > 2000) { status(`Транслюю: ${(sent * 1000 / (now - lastReport)).toFixed(1)} FPS`, "ok"); sent = 0; lastReport = now; }
+    }, 1000 / Number($("fps").value));
+  }
+  if (mic) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(media), node = audioCtx.createScriptProcessor(4096, 1, 1);
+    const ratio = audioCtx.sampleRate / 16000;
+    node.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0), out = new Int16Array(Math.floor(input.length / ratio));
+      let peak = 0;
+      for (let i = 0; i < out.length; i++) {            // average-downsample to 16 kHz, then int16
+        let sum = 0, n = 0; for (let j = Math.floor(i * ratio); j < Math.floor((i + 1) * ratio); j++) { sum += input[j]; n++; }
+        const v = Math.max(-1, Math.min(1, sum / Math.max(1, n))); out[i] = v * 32767; peak = Math.max(peak, Math.abs(v));
+      }
+      $("level").style.width = Math.min(100, peak * 300) + "%";
+      if (ws && ws.readyState === 1) ws.send(packet(2, out.buffer));
+    };
+    source.connect(node); node.connect(audioCtx.destination);
+  }
+}
+
+function cleanup() {
+  if (timer) clearInterval(timer); timer = null;
+  if (audioCtx) audioCtx.close(); audioCtx = null;
+}
+function stop() {
+  const socket = ws; ws = null; cleanup();
+  if (socket) { socket.onclose = null; socket.close(); }
+  if (media) media.getTracks().forEach((t) => t.stop()); media = null;
+  if (wakeLock) wakeLock.release(); wakeLock = null;
+  $("start").classList.remove("hidden"); $("stop").classList.add("hidden"); status("Зупинено");
+}
+$("start").onclick = start; $("stop").onclick = stop;
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && media && !wakeLock) { try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* ignore */ } }
+});
+show();
+</script>
+</body>
+</html>
