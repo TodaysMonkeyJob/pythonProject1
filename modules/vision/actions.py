@@ -367,25 +367,51 @@ class ActionRecognizer(SharedFrameConsumer):
                  frame_buffer: Optional[SharedFrameBuffer] = None):
         self.cfg = config.get("actions", {})
         super().__init__(event_queue, control_queue, config, self.cfg.get("action_fps", 5), frame_buffer)
-        self.engine = ActionEngine(ActionConfig.from_dict(self.cfg))
+        self.engine = ActionEngine(ActionConfig.from_dict(self.cfg))   # the first camera's (single camera: the only)
+        self.engines: Dict[str, ActionEngine] = {}                     # device_id → per-camera tracks + gas evidence
         self.pose_estimator = pose_estimator
 
+    def engine_for(self, device_id: str) -> ActionEngine:
+        """Each camera has its own tracks (track ids are per camera); one pose model serves all of them."""
+        if device_id not in self.engines:
+            self.engines[device_id] = self.engine if not self.engines else ActionEngine(self.engine.cfg)
+        return self.engines[device_id]
+
+    def on_camera_removed(self, device_id: str) -> None:
+        self.engines.pop(device_id, None)
+
     def setup(self) -> None:
+        super().setup()
         if self.pose_estimator is None:
             self.pose_estimator = PoseEstimator(self.cfg["pose_model"], self.cfg.get("imgsz", 320),
                                                 self.cfg.get("pose_conf", 0.4), self.cfg.get("keypoint_conf", 0.4))
             self.pose_estimator.load()
+            from modules.vision.yolo import limit_threads
+
+            limit_threads(self.cfg.get("threads", 2))  # after loading: importing ultralytics resets torch's threads
 
     def on_event(self, event: Event, now: float) -> None:
-        """Forwarded bus events update gas evidence and drop disappeared tracks."""
-        self.engine.on_event(event, now)
+        """
+        Forwarded bus events: ``object_detected`` / ``disappeared`` reach the engine of that camera; gas readings the
+        engines of cameras in the same location (or all, while locations are unassigned).
+        """
+        if event.type == "object_detected":
+            self.engine_for(event.device_id).on_event(event, now)
+            return
+        engines = self.engines or {"": self.engine}
+        for device_id, engine in engines.items():
+            slot = self.scheduler.slots.get(device_id)
+            location = slot.location_id if slot else event.location_id
+            if "unassigned" in (location, event.location_id) or location == event.location_id:
+                engine.on_event(event, now)
 
     def process(self, frame_id: int, timestamp: float, frame: np.ndarray, meta: Dict[str, Any]) -> None:
         """Runs pose for one shared frame and publishes the resulting events."""
         persons = meta.get("persons", [])
         poses = self.pose_estimator.estimate(frame) if persons else []
         frame_size = (frame.shape[1], frame.shape[0])
-        for payload, severity, confidence in self.engine.update(timestamp, persons, poses, frame_size):
+        engine = self.engine_for(self.current.device_id) if self.current else self.engine
+        for payload, severity, confidence in engine.update(timestamp, persons, poses, frame_size):
             self.emit("action", payload, severity=severity, confidence=confidence)
 
 

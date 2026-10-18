@@ -20,7 +20,11 @@
   section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
   #camera { grid-column: span 7; } #status { grid-column: span 5; } #gpt { grid-column: span 5; }
   #gas { grid-column: span 7; } #speech { grid-column: span 4; } #log { grid-column: span 8; }
-  #people { grid-column: span 12; }
+  #people { grid-column: span 12; } #devices { grid-column: span 12; }
+  .devrow { display: grid; grid-template-columns: 18px minmax(140px, 1.4fr) 90px 90px minmax(150px, 1fr) 70px 110px;
+            gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  @media (max-width: 900px) { .devrow { grid-template-columns: 18px 1fr 1fr; } }
+  .devrow.offline { opacity: .55; } #camera h2 select { margin-left: 8px; text-transform: none; }
   .cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
   .card { background: #12151b; border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex;
           flex-direction: column; gap: 4px; min-width: 0; }
@@ -64,7 +68,8 @@
 <header><span id="ws-dot" class="dot" title="WebSocket"></span><h1>IoT Guard</h1>
   <span id="mic" class="muted"></span><span id="clock" class="muted" style="margin-left:auto"></span></header>
 <main>
-  <section id="camera"><h2>Камера</h2><img src="/video" alt="camera stream"></section>
+  <section id="camera"><h2>Камера <select id="cam-select" title="камера"></select></h2>
+    <img id="video" src="/video" alt="camera stream"></section>
   <section id="status"><h2>Стан системи</h2><div class="kv" id="status-kv"></div>
     <table><tbody id="modules"></tbody></table></section>
   <section id="gpt"><h2>Рішення GPT</h2><div class="list" id="decisions"><div class="muted">ще немає</div></div></section>
@@ -79,6 +84,10 @@
         <option>critical</option></select>
     </div>
     <div class="list" id="events"></div></section>
+  <section id="devices"><h2>Пристрої <span class="muted">(знайдені автоматично; оберіть локацію, вимкніть зайве)</span></h2>
+    <div class="filters"><button id="pair-phone">Підключити телефон</button><button id="add-rtsp">IP-камера (RTSP)</button>
+      <button id="onvif">Пошук ONVIF</button></div>
+    <div id="device-list"><div class="muted">немає даних</div></div></section>
   <section id="people"><h2>Люди <span class="muted">(клікніть ім'я, щоб перейменувати — зміниться всюди)</span></h2>
     <div class="cards" id="cards"><div class="muted">реєстр порожній</div></div></section>
 </main>
@@ -123,6 +132,8 @@ function describe(ev) {
     case "identity_renamed": return [nameSpan(p.person_id, p.display_name), ` (було ${p.previous})`];
     case "identity_merged": case "identity_linked":
       return [`${p.source_name || ""} → `, nameSpan(p.person_id, p.display_name), p.modality ? ` (${p.modality})` : ""];
+    case "device_online": case "device_offline": case "device_updated":
+      return `${KIND[p.kind] || p.kind} ${p.name} · ${p.location_id}${p.enabled === false ? " (вимкнено)" : ""}`;
     case "identity_created": case "identity_deleted": return `${p.display_name}${p.modality ? " (" + p.modality + ")" : ""}`;
     default: return JSON.stringify(p).slice(0, 160);
   }
@@ -214,6 +225,7 @@ function handle(ev) {
   else if (ev.type === "llm_decision") addDecision(ev);
   else if (ev.type === "gas_reading") addGas(ev);
   else if (ev.type === "mic_state") $("mic").textContent = "мікрофон: " + ev.payload.state;
+  else if (ev.type.startsWith("device_")) loadDevices();
   else if (ev.type.startsWith("identity_")) {
     const p = ev.payload;
     if (ev.type === "identity_renamed" && persons[p.person_id]) { persons[p.person_id].display_name = p.display_name; renderNames(); }
@@ -311,6 +323,73 @@ async function refreshStatus() {
 }
 refreshStatus(); setInterval(refreshStatus, 2000);
 loadPersons(); setInterval(loadPersons, 30000);   // CLI edits are not on the bus
+
+// --- devices (F11): every camera / mic / sensor, its location and whether it runs
+let deviceData = { devices: [], locations: [] }, chosenCamera = null;
+const KIND = { camera: "камера", mic: "мікрофон", gas: "газ" };
+async function loadDevices() {
+  try { const r = await fetch("/api/devices"); if (!r.ok) return; deviceData = await r.json(); renderDevices(); }
+  catch (e) { /* server restarting */ }
+}
+function renderDevices() {
+  const box = $("device-list");
+  if (box.contains(document.activeElement) && document.activeElement.tagName === "SELECT") return;
+  box.replaceChildren();
+  if (!deviceData.devices.length) { box.append(el("div", "muted", "пристроїв ще немає (network.discovery: true)")); }
+  for (const d of deviceData.devices) {
+    const row = el("div", "devrow" + (d.status === "online" ? "" : " offline"));
+    const dot = el("span", "dot" + (d.running ? " on" : "")); dot.title = d.running ? "працює" : d.status;
+    const name = el("span", "", d.name); name.title = d.device_id;
+    const loc = el("select");
+    for (const l of deviceData.locations) { const o = el("option", "", l.name); o.value = l.location_id; loc.append(o); }
+    const add = el("option", "", "+ нова локація…"); add.value = "__new"; loc.append(add);
+    loc.value = d.location_id;
+    loc.onchange = async () => {
+      let id = loc.value;
+      if (id === "__new") { const n = prompt("Назва локації (напр. Кімната B)"); if (!n) { loc.value = d.location_id; return; }
+        const created = await api("POST", "/api/locations", { name: n }); if (!created) return; id = created.location_id; }
+      if (await api("PATCH", "/api/devices/" + encodeURIComponent(d.device_id), { location_id: id })) loadDevices();
+    };
+    const on = el("input"); on.type = "checkbox"; on.checked = d.enabled; on.title = "увімкнено";
+    on.onchange = async () => { if (await api("PATCH", "/api/devices/" + encodeURIComponent(d.device_id), { enabled: on.checked })) loadDevices(); };
+    const state = d.status !== "online" ? d.status : d.kind === "camera" ? (d.fps ? d.fps + " FPS" : "старт…")
+                : d.kind === "mic" ? (d.mic_state || "старт…") : "online";
+    const label = el("label", "muted"); label.append(on, document.createTextNode(" увімк."));
+    row.append(dot, name, el("span", "muted", KIND[d.kind] || d.kind), el("span", "muted", d.transport), loc, label,
+               el("span", "muted", state));
+    box.append(row);
+  }
+  const select = $("cam-select"), cams = deviceData.devices.filter((d) => d.kind === "camera" && d.status === "online");
+  select.style.display = cams.length > 1 ? "" : "none";
+  const current = select.value; select.replaceChildren();
+  cams.forEach((c) => { const o = el("option", "", `${c.name} · ${c.location_id}`); o.value = c.device_id; select.append(o); });
+  if (cams.some((c) => c.device_id === current)) select.value = current;
+}
+$("pair-phone").onclick = async () => {
+  const j = await api("POST", "/api/pairing-code"); if (!j) return;
+  $("dlg-title").textContent = "Підключити телефон або ноутбук"; const body = $("dlg-body"); body.replaceChildren();
+  const code = el("div", "", j.code); code.style.cssText = "font-size:40px;font-weight:700;letter-spacing:.2em";
+  body.append(el("p", "", "1. На телефоні в тій самій Wi-Fi мережі відкрийте:"), el("pre", "", deviceData.node_url || "https://<ip-хаба>:8443/node"),
+              el("p", "muted", "Браузер попередить про самопідписаний сертифікат — це сертифікат вашого хаба, підтвердіть."),
+              el("p", "", "2. Введіть код (дійсний 10 хв):"), code, el("p", "", "3. Оберіть локацію й натисніть «Почати трансляцію»."));
+  $("dlg").showModal();
+};
+$("add-rtsp").onclick = async () => {
+  const url = prompt("RTSP-адреса камери, напр. rtsp://user:pass@192.168.0.50:554/stream1"); if (!url) return;
+  const name = prompt("Назва камери", "IP камера") || "IP камера";
+  if (await api("POST", "/api/devices/rtsp", { name, url })) loadDevices();
+};
+$("onvif").onclick = async () => {
+  $("dlg-title").textContent = "Пошук IP-камер (ONVIF)"; const body = $("dlg-body"); body.replaceChildren(el("p", "muted", "шукаю 3 с…"));
+  $("dlg").showModal();
+  const j = await api("POST", "/api/devices/onvif-scan"); body.replaceChildren(); if (!j) return;
+  if (!j.found.length) body.append(el("p", "", "Нічого не знайдено. Камера має підтримувати ONVIF і бути в тій самій мережі."));
+  for (const f of j.found) body.append(el("p", "", `${f.name || "камера"} ${f.hardware || ""} — ${f.host} (${f.address})`));
+  if (j.found.length) body.append(el("p", "muted", "Додайте камеру кнопкою «IP-камера (RTSP)» з її RTSP-адресою (див. інструкцію камери)."));
+};
+$("cam-select").onchange = () => { chosenCamera = $("cam-select").value;
+  $("video").src = "/video?device=" + encodeURIComponent(chosenCamera); };
+loadDevices(); setInterval(loadDevices, 5000);
 setInterval(() => $("clock").textContent = new Date().toLocaleTimeString("uk-UA", { hour12: false }), 1000);
 </script>
 </body>

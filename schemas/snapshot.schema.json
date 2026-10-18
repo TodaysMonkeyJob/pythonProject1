@@ -34,7 +34,8 @@
           "actions": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 32}},
           "in_frame_sec": {"type": "integer", "minimum": 0},
           "present": {"type": "boolean"},
-          "person_id": {"type": "string", "maxLength": 36, "description": "Identity registry id (F9)"}
+          "person_id": {"type": "string", "maxLength": 36, "description": "Identity registry id (F9)"},
+          "location_id": {"type": "string", "maxLength": 64, "description": "Where (F11)"}
         }
       }
     },

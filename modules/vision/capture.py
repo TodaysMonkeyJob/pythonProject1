@@ -29,7 +29,8 @@ class FrameSource:
 
 class OpenCVSource(FrameSource):
     """
-    USB camera (int index) or video file (path) through cv2.VideoCapture.
+    USB camera (int index), video file (path) or network stream (rtsp:// / http:// URL, F11) through
+    cv2.VideoCapture (OpenCV's bundled FFmpeg — nothing to install).
     """
 
     def __init__(self, device: Union[int, str] = 0, width: int = 640, height: int = 480, fps: float = 15,
@@ -43,7 +44,8 @@ class OpenCVSource(FrameSource):
         :param loop: Video file: rewind at the end
         """
         self.device = int(device) if isinstance(device, str) and device.isdigit() else device
-        self.is_file = isinstance(self.device, str)
+        self.is_stream = isinstance(self.device, str) and "://" in self.device
+        self.is_file = isinstance(self.device, str) and not self.is_stream
         self.width, self.height, self.fps = width, height, fps
         self.realtime, self.loop = realtime, loop
         self.cap = None
@@ -53,7 +55,9 @@ class OpenCVSource(FrameSource):
         self.cap = cv2.VideoCapture(self.device)
         if not self.cap.isOpened():
             raise RuntimeError(f"Cannot open video source {self.device!r}")
-        if not self.is_file:
+        if self.is_stream:
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # latest frame, not a growing backlog
+        elif not self.is_file:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self.cap.set(cv2.CAP_PROP_FPS, self.fps)
@@ -110,6 +114,41 @@ class Picamera2Source(FrameSource):
             self.camera = None
 
 
+class IngestSource(FrameSource):
+    """
+    Frames pushed by a remote node (a phone's browser, F11): the dashboard decodes them into a shared memory buffer,
+    this source reads each new one. ``read()`` waits up to ``timeout_sec`` for the next frame.
+    """
+
+    def __init__(self, buffer_name: str, width: int = 640, height: int = 480, timeout_sec: float = 1.0):
+        self.buffer_name, self.width, self.height, self.timeout_sec = buffer_name, width, height, timeout_sec
+        self.buffer = None
+        self.last_id = 0
+
+    def open(self) -> None:
+        from modules.vision.shared_frame import SharedFrameBuffer
+
+        try:
+            self.buffer = SharedFrameBuffer.attach(self.buffer_name, self.width, self.height)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Remote node not streaming yet ({self.buffer_name})") from e
+
+    def read(self) -> Optional[np.ndarray]:
+        deadline = time.monotonic() + self.timeout_sec
+        while time.monotonic() < deadline:
+            frame = self.buffer.read_raw()
+            if frame is not None and frame[0] != self.last_id:
+                self.last_id = frame[0]
+                return frame[2]
+            time.sleep(0.01)
+        return None
+
+    def close(self) -> None:
+        if self.buffer is not None:
+            self.buffer.close()
+            self.buffer = None
+
+
 def picamera2_available() -> bool:
     try:
         import picamera2  # noqa: F401
@@ -127,6 +166,8 @@ def source_factory(vision_config: Dict[str, Any]) -> Callable[[], FrameSource]:
     width, height = vision_config.get("resolution", [640, 480])
     fps = vision_config.get("fps", 15)
     device = vision_config.get("device", 0)
+    if camera == "ingest":  # frames from a remote node (browser phone)
+        return lambda: IngestSource(str(device), width, height)
     use_picamera = camera == "picamera2" or (camera == "auto" and isinstance(device, int) and picamera2_available())
     if use_picamera:
         return lambda: Picamera2Source(width, height, fps)

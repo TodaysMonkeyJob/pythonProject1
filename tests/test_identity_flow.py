@@ -152,11 +152,16 @@ def test_overlay_follows_person_identified_events():
 
     module = VisionDetector(queue.Queue(), queue.Queue(), {"vision": {}}, frame_source=object(),
                             object_detector=object())
-    module.handle_control(make_event("camera", "person_identified", {"track_id": 5, "identity": "Oleh"}).to_json())
+    mine = {"device_id": module.device_id}
+    module.handle_control(make_event("camera", "person_identified", {"track_id": 5, "identity": "Oleh"},
+                                     **mine).to_json())
     assert module.person_names == {5: "Oleh"}
     module.handle_control(make_event("camera", "person_identified",
-                                     {"track_id": 5, "identity": "Petro", "renamed_from": "Oleh"}).to_json())
+                                     {"track_id": 5, "identity": "Petro", "renamed_from": "Oleh"}, **mine).to_json())
     assert module.person_names == {5: "Petro"}
+    module.handle_control(make_event("camera", "person_identified", {"track_id": 5, "identity": "Anna"},
+                                     device_id="camera-other").to_json())
+    assert module.person_names == {5: "Petro"}                               # track 5 of another camera
     frame = np.zeros((120, 160, 3), np.uint8)
     track = Track(track_id=5, cls="person", bbox=[10, 30, 100, 110], confidence=0.9, first_seen=0, last_seen=0)
     motion = MotionResult(False)

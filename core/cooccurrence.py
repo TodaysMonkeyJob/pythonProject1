@@ -29,7 +29,9 @@ class PresenceTracker:
 
     def on_event(self, event: Event, now: Optional[float] = None) -> None:
         p = event.payload
-        location = p.get("location_id") or self.location_id
+        location = p.get("location_id") or event.location_id
+        if location in ("unassigned", "unknown"):  # a camera without a location counts for this microphone's place
+            location = self.location_id
         tracks = self.tracks[location]
         if event.type == "object_detected" and p.get("class") == "person":
             if p.get("state") == "disappeared":

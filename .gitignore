@@ -23,6 +23,9 @@ models/
 # Face photos and embeddings (biometric data, never commit)
 data/faces/
 data/identity.db*
+data/devices.db*
+data/tls/
+data/node_agent/
 *.pt
 *_ncnn_model/
 

@@ -57,6 +57,7 @@ def snapshot_digest(snapshot: Dict[str, Any], incident_id: Optional[str] = None,
     lines = [header]
 
     people = []
+    several_places = len({p.get("location_id") for p in snapshot["people"]}) > 1
     for p in snapshot["people"]:
         identity = "?" if p["identity"] in UNIDENTIFIED else p["identity"]
         part = f"#{p['track_id']} {identity}"
@@ -65,6 +66,8 @@ def snapshot_digest(snapshot: Dict[str, Any], incident_id: Optional[str] = None,
         part += f" {p['in_frame_sec']}s"
         if not p.get("present", True):
             part += " left"
+        if several_places and p.get("location_id"):
+            part += f" @{p['location_id']}"
         people.append(part)
     if people:
         lines.append("people: " + "; ".join(people))

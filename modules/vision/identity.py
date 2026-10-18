@@ -434,13 +434,26 @@ class IdentityRecognizer(SharedFrameConsumer):
                  frame_buffer: Optional[SharedFrameBuffer] = None):
         self.cfg = config.get("identity", {})
         super().__init__(event_queue, control_queue, config, self.cfg.get("identity_fps", 2), frame_buffer)
-        self.engine = engine
+        self.engine = engine                        # the first camera's engine (single camera: the only one)
+        self.engines: Dict[str, IdentityEngine] = {}  # device_id → engine (tracks are per camera, registry shared)
         self.sync_sec = float(self.cfg.get("sync_sec", 5.0))
         self.retention_days = float(self.cfg.get("unknown_retention_days", 30))
         self._next_sync = 0.0
         self._next_purge = 0.0
 
+    def engine_for(self, device_id: str) -> IdentityEngine:
+        if device_id not in self.engines:
+            self.engines[device_id] = self.engine if not self.engines else \
+                IdentityEngine(self.engine.faces, self.engine.registry, self.engine.cfg)
+        return self.engines[device_id]
+
+    def on_camera_removed(self, device_id: str) -> None:
+        engine = self.engines.pop(device_id, None)
+        if engine is self.engine and self.engines:  # keep a live engine as the template
+            self.engine = next(iter(self.engines.values()))
+
     def setup(self) -> None:
+        super().setup()
         if self.engine is None:
             cfg = IdentityConfig.from_dict(self.cfg)
             faces = FaceEngine(self.cfg["detector_model"], self.cfg["recognizer_model"], cfg.detection_score)
@@ -463,12 +476,19 @@ class IdentityRecognizer(SharedFrameConsumer):
         """Applies registry changes (and the unknown-people retention) to live tracks and publishes the events."""
         if purge and self.retention_days > 0:
             force = bool(self.engine.registry.purge_unknowns(self.retention_days)) or force
-        for payload, severity, confidence in self.engine.sync(force):
-            self.emit("person_identified", payload, severity=severity, confidence=confidence)
+        if not (self.engine.registry.poll() or force):
+            return
+        for device_id, engine in (self.engines or {None: self.engine}).items():
+            slot = self.scheduler.slots.get(device_id) if device_id else None
+            for payload, severity, confidence in engine.sync(force=True):
+                self.emit("person_identified", payload, severity=severity, confidence=confidence,
+                          device_id=device_id, location_id=slot.location_id if slot else None)
 
     def on_event(self, event: Event, now: float) -> None:
         if event.type == "object_detected" and event.payload.get("state") == "disappeared":
-            self.engine.drop(event.payload.get("track_id"))
+            engine = self.engines.get(event.device_id) or (self.engine if not self.engines else None)
+            if engine is not None:
+                engine.drop(event.payload.get("track_id"))
         elif event.type.startswith("identity_"):
             self.sync(force=True)
 
@@ -476,7 +496,8 @@ class IdentityRecognizer(SharedFrameConsumer):
         persons = meta.get("persons", [])
         if not persons:
             return
-        for payload, severity, confidence in self.engine.update(timestamp, frame, persons):
+        engine = self.engine_for(self.current.device_id) if self.current else self.engine
+        for payload, severity, confidence in engine.update(timestamp, frame, persons):
             self.emit("person_identified", payload, severity=severity, confidence=confidence)
 
     def teardown(self) -> None:

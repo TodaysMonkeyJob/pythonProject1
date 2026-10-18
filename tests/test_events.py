@@ -8,7 +8,8 @@ from pydantic import ValidationError
 from core.bus import create_queue, publish, receive
 from core.events import EVENT_TYPES, Event, make_event, utc_timestamp
 
-SCHEMA_KEYS = {"event_id", "timestamp", "source", "type", "severity", "payload", "confidence"}
+SCHEMA_KEYS = {"schema_version", "event_id", "timestamp", "source", "type", "severity", "payload", "confidence",
+               "received_at", "device_id", "node_id", "location_id"}
 
 
 def test_make_event_matches_schema():
@@ -75,3 +76,33 @@ def test_bus_round_trip():
     publish(q, event)
     assert receive(q, timeout=2) == event
     assert receive(q, timeout=0.05) is None
+
+
+def test_v2_fields_from_context_and_overrides():
+    from core import events
+
+    saved = dict(events._CONTEXT)
+    try:
+        events._CONTEXT.clear()
+        event = make_event("system", "heartbeat")
+        assert event.schema_version == 2 and event.location_id == "unassigned"
+        assert event.device_id == f"{event.node_id}:system"
+        events.set_context(node_id="hub", device_id="hub:gas", location_id="kitchen")
+        event = make_event("gas", "gas_reading")
+        assert (event.node_id, event.device_id, event.location_id) == ("hub", "hub:gas", "kitchen")
+        override = make_event("camera", "motion", device_id="cam-1", location_id="room_b")
+        assert (override.node_id, override.device_id, override.location_id) == ("hub", "cam-1", "room_b")
+    finally:
+        events._CONTEXT.clear()
+        events._CONTEXT.update(saved)
+
+
+def test_v2_fields_are_required_but_v1_logs_are_readable():
+    data = json.loads(make_event("gas", "alert").to_json())
+    for key in ("device_id", "node_id", "location_id"):
+        with pytest.raises(ValidationError):
+            Event.from_json(json.dumps({**{k: v for k, v in data.items() if k != key}}))
+    v1 = {k: v for k, v in data.items() if k not in ("schema_version", "device_id", "node_id", "location_id")}
+    old = Event.from_json(json.dumps(v1))
+    assert (old.schema_version, old.device_id, old.node_id, old.location_id) == (1, "unknown", "unknown",
+                                                                                 "unassigned")
