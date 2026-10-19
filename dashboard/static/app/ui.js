@@ -27,7 +27,7 @@ export const $ = (selector, root = document) => root.querySelector(selector);
 export function clear(el, ...children) { el.replaceChildren(); append(el, children); return el; }
 
 export const STATE_LABEL = { safe: "безпечно", attention: "увага", danger: "небезпека", offline: "офлайн" };
-export const STATE_RANK = { danger: 0, attention: 1, safe: 2, offline: 3 };
+export const STATE_RANK = { danger: 0, attention: 1, offline: 2, safe: 3 };     // F21: severity order of the cards
 
 // Ukrainian plural: 1 дублікат, 2–4 дублікати, 5+ / 11–14 дублікатів
 export function plural(n, one, few, many) {
@@ -76,4 +76,46 @@ export function downloadCsv(name, rows) {
   const url = URL.createObjectURL(new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" }));
   h("a", { href: url, download: name }).click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// F21: a newest-first log that never jumps. Live items are prepended; when the user has scrolled down inside the
+// list (> 40 px) the visible rows stay where they are (scrollTop grows by the inserted height) and a "N нових ↑" pill
+// appears — clicking it scrolls THIS list back to its top. CSS sets overflow-anchor: none so the browser's own scroll
+// anchoring doesn't adjust twice. The page itself is never scrolled.
+export class LiveList {
+  constructor({ cls = "", max = 400, empty = "нічого", label = "журнал", onScroll = null } = {}) {
+    this.max = max;
+    this.pending = 0;
+    this.emptyText = empty;
+    this.list = h("div", { class: `live-list ${cls}`, role: "log", tabindex: "0", "aria-label": label });
+    this.pill = h("button", { class: "new-pill", hidden: true, "aria-label": "показати нові записи",
+                              onclick: () => this.top() });
+    this.el = h("div", { class: "live" }, this.pill, this.list);
+    this.list.addEventListener("scroll", () => {
+      if (this.list.scrollTop <= 40) this.clearPill();
+      if (onScroll) onScroll(this.list.scrollTop);
+    });
+  }
+
+  set(nodes) {
+    this.list.replaceChildren(...(nodes.length ? nodes : [h("div", { class: "muted empty" }, this.emptyText)]));
+    this.clearPill();
+  }
+
+  prepend(nodes) {
+    if (!nodes.length) return;
+    this.list.querySelector(":scope > .empty")?.remove();
+    const scrolled = this.list.scrollTop > 40, before = this.list.scrollHeight;
+    this.list.prepend(...nodes);
+    while (this.list.childElementCount > this.max) this.list.lastElementChild.remove();
+    if (scrolled) {
+      this.list.scrollTop += this.list.scrollHeight - before;
+      this.pending += nodes.length;
+      this.pill.textContent = `${this.pending} нових ↑`;
+      this.pill.hidden = false;
+    }
+  }
+
+  top() { this.list.scrollTop = 0; this.clearPill(); }
+  clearPill() { this.pending = 0; this.pill.hidden = true; }
 }

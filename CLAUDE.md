@@ -168,7 +168,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   The aggregator keeps one scene per location (immediate snapshot of the critical location only, location name +
   rules in the digest, `global` site snapshot every `global_snapshot_min`); the LLM worker throttles per location
   and `llm_decision` carries `location_id`.
-- `dashboard/static/` — F13 (TOD-24) control room, plain ES modules (no build step, no CDN, nothing vendored):
+- `dashboard/static/` — F13 (TOD-24), single-screen redesign F21 (TOD-32: top-bar territory tabs + ◀ ▶ / ← → / Home / 1–9, Overview = cameras + cards + newest-first log, territory = camera + tabbed panel Події · Розмова · Газ · Рішення GPT, `ui.LiveList` keeps the scroll position; no page scroll, no scroll-snap) control room, plain ES modules (no build step, no CDN, nothing vendored):
   `app/main.js` (hash router `#/overview` `#/loc/<id>[/details]` `#/people` `#/devices` `#/locations`, carousel ← →,
   swipe, dots, ↓/↑ summary ⇄ details), `store.js` (REST + /ws state, names via person_id), `video.js` (one /ws/video
   socket, subscribes to visible tiles only), `charts.js` (canvas), `views/` (overview, grid, location, admin),

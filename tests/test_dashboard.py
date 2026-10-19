@@ -299,3 +299,19 @@ def test_control_room_app_is_served_without_cdn(tmp_path):
         assert not re.search(r"""(from|src=|fetch\(|import\()\s*["'`]https?://""", text)    # nothing from the internet
     assert http.get("/static/../server.py", auth=AUTH).status_code == 404               # no path traversal
     assert http.get("/static/%2e%2e/server.py", auth=AUTH).status_code == 404
+
+
+def test_single_screen_layout_rules(tmp_path):
+    """F21: no scroll-snap / stacked 100vh sections / page scrollTo; tabs, arrows and the hint are in the shell."""
+    http, _ = client(tmp_path)
+    page = http.get("/", auth=AUTH).text
+    assert 'id="tabs"' in page and 'role="tablist"' in page and 'aria-label="попередня територія (←)"' in page
+    assert "← → на клавіатурі" in page
+    css = http.get("/static/app/app.css", auth=AUTH).text
+    assert "scroll-snap" not in css and "100vh" not in css
+    assert "height: 100dvh" in css and "overflow-anchor: none" in css
+    for module in ("main.js", "views/location.js", "views/overview.js", "views/events.js", "ui.js"):
+        text = http.get(f"/static/app/{module}", auth=AUTH).text
+        assert "scrollIntoView" not in text and "window.scrollTo" not in text, module
+    location = http.get("/static/app/views/location.js", auth=AUTH).text
+    assert 'PANEL_TABS = ["events", "talk", "gas", "gpt"]' in location and "corridorBand" in location

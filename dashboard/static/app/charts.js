@@ -64,3 +64,29 @@ export function timeline(canvas, segments, from, to) {
     ctx.fillRect(x(Math.max(s.from, from)), 0, Math.max(1, x(Math.min(s.to, to)) - x(Math.max(s.from, from))), height);
   }
 }
+
+// F21 gas tab: 10-minute bar chart (one bar per 30 s, the bucket's max), coloured against the threshold
+export function bars(canvas, points, { threshold = null, minutes = 10, buckets = 20 } = {}) {
+  const { ctx, width, height } = prepare(canvas);
+  ctx.clearRect(0, 0, width, height);
+  const to = Date.now(), from = to - minutes * 60e3, step = (to - from) / buckets;
+  const values = Array.from({ length: buckets }, (_, i) => {
+    const inside = points.filter((p) => p.t >= from + i * step && p.t < from + (i + 1) * step);
+    return inside.length ? Math.max(...inside.map((p) => p.v)) : null;
+  });
+  const max = Math.max(threshold ?? 0, ...values.filter((v) => v !== null)) * 1.15 || 1;
+  const w = width / buckets;
+  values.forEach((v, i) => {
+    if (v === null) return;
+    const level = threshold === null ? "--safe" : v >= threshold ? "--danger" : v >= 0.6 * threshold ? "--attention" : "--safe";
+    ctx.fillStyle = css(level);
+    const barHeight = Math.max(1, (v / max) * (height - 14));
+    ctx.fillRect(i * w + 1, height - barHeight, w - 2, barHeight);
+  });
+  if (threshold !== null) {
+    const y = height - (threshold / max) * (height - 14);
+    ctx.strokeStyle = css("--danger"); ctx.setLineDash([4, 3]); ctx.beginPath();
+    ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = css("--muted"); ctx.font = "11px sans-serif"; ctx.fillText(`поріг ${threshold}%`, 4, Math.max(11, y - 3));
+  }
+}
