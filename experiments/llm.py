@@ -121,10 +121,32 @@ class AzureAnalyst:
         self.temperature = self.clients["v2"].temperature
 
     def analyze(self, payload: str, prompt_version: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        decision, usage = self.clients[prompt_version].analyze(payload)
-        return decision.model_dump(), {"prompt_tokens": usage.prompt_tokens,
-                                       "completion_tokens": usage.completion_tokens, "latency_ms": usage.latency_ms,
-                                       "cost_usd": usage.cost_usd}
+        """Rate limits / network errors are retried (the run must not die on a 429); an answer that is still not
+        valid JSON after GPTClient's clarification retry is recorded as ``invalid`` (counted in the report)."""
+        from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
+
+        from modules.llm.gpt_client import InvalidResponse
+
+        for attempt in range(8):
+            try:
+                decision, usage = self.clients[prompt_version].analyze(payload)
+                return decision.model_dump(), {"prompt_tokens": usage.prompt_tokens,
+                                               "completion_tokens": usage.completion_tokens,
+                                               "latency_ms": usage.latency_ms, "cost_usd": usage.cost_usd,
+                                               "requests": usage.requests}
+            except InvalidResponse as e:
+                return ({"risk_level": "medium", "summary": "Невалідна відповідь GPT.", "recommended_action": "log",
+                         "reasons": [str(e)[:200]], "follow_up": None}, {"invalid": True, "latency_ms": 0})
+            except (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError) as e:
+                wait = 10.0 * (attempt + 1)
+                retry_after = getattr(getattr(e, "response", None), "headers", {}) or {}
+                try:
+                    wait = max(wait, float(retry_after.get("retry-after", 0)))
+                except (TypeError, ValueError):
+                    pass
+                print(f"  {type(e).__name__}: waiting {wait:.0f} s", flush=True)
+                time.sleep(min(wait, 90))
+        raise RuntimeError("Azure kept failing after 8 attempts")
 
 
 class CachedLLM:
@@ -134,7 +156,7 @@ class CachedLLM:
         self.backend = SimAnalyst() if backend == "sim" else AzureAnalyst(config or {})
         self.cache = Cache(cache_path)
         self.prompts = {"v1": load_prompt(*PROMPT_V1), "v2": load_prompt(*PROMPT_V2)}
-        self.calls = self.hits = 0
+        self.calls = self.hits = self.invalid = 0
 
     def analyze(self, payload: str, prompt_version: str) -> Tuple[LLMDecision, Dict[str, Any]]:
         key = hashlib.sha256(json.dumps([self.backend_name, self.backend.model, self.backend.temperature,
@@ -147,6 +169,7 @@ class CachedLLM:
             cached = {"decision": decision, "usage": usage}
             self.cache.put(key, cached)
         self.hits += hit
+        self.invalid += bool(cached["usage"].get("invalid"))
         return LLMDecision(**cached["decision"]), {**cached["usage"], "cache_hit": hit}
 
     def close(self) -> None:
