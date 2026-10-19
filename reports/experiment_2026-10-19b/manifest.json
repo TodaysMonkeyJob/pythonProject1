@@ -1,0 +1,145 @@
+{
+ "dataset": {
+  "name": "scripted-42",
+  "path": "data/eval/scripted",
+  "hash": "f6d67b63603b83466fe4703ff321927d604bc23be740e2f226106e73689b5414",
+  "synthetic": true,
+  "scenarios": 120
+ },
+ "seed": 42,
+ "split": {
+  "calibration": 36,
+  "evaluation": 84,
+  "calibration_share": 0.3
+ },
+ "kappa": {
+  "annotators": [
+   "annotator_a",
+   "annotator_b"
+  ],
+  "n": 120,
+  "kappa": 0.9647
+ },
+ "llm": {
+  "backend": "azure",
+  "model": "gpt-4.1-mini",
+  "temperature": 0.2,
+  "calls": 963,
+  "cache_hits": 486,
+  "invalid_json": 0
+ },
+ "calibration": {
+  "fitted": true,
+  "n": 21,
+  "fit": {
+   "loss": 0.00216,
+   "brier": 0.00112,
+   "ece": 0.00421
+  },
+  "params": {
+   "low": [
+    0.02089782834971312,
+    0.044448829590407475,
+    0.15576315536799684,
+    0.1793141566086912
+   ],
+   "medium": [
+    0.2564866852791153,
+    0.2764867292101734,
+    0.28004080816495786,
+    0.300040852096016
+   ],
+   "high": [
+    0.5215801724001768,
+    0.541580172919415,
+    0.8333227310711484,
+    0.8533227315903865
+   ],
+   "critical": [
+    0.8265025575836827,
+    0.9202829215824966,
+    0.9202829215824966,
+    1.0
+   ]
+  }
+ },
+ "configs": {
+  "rules_only": {
+   "llm": false,
+   "pattern_filter": false,
+   "trust": false,
+   "envelope": false,
+   "view": false,
+   "gating": false
+  },
+  "llm_only": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": false,
+   "envelope": false,
+   "view": false,
+   "gating": false
+  },
+  "llm_pattern": {
+   "llm": true,
+   "pattern_filter": true,
+   "trust": false,
+   "envelope": false,
+   "view": false,
+   "gating": false
+  },
+  "proposed": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "gating": true
+  },
+  "proposed_no_A": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": false,
+   "view": true,
+   "gating": true
+  },
+  "proposed_no_B": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": false,
+   "envelope": true,
+   "view": true,
+   "gating": true
+  },
+  "proposed_no_C": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": false,
+   "gating": true
+  },
+  "proposed_no_E": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "gating": false
+  }
+ },
+ "min_interval_sec": 300.0,
+ "git": {
+  "commit": "38de3eff0b346267b2eb074e2ebf1cd537bb1449",
+  "branch": "fix/llm-backlog",
+  "dirty": true
+ },
+ "hashes": {
+  "config/fuzzy.yaml": "61c1dc9b87c849e7",
+  "config.yaml": "3f311c99df022894",
+  "prompts/security_analyst.md": "3a6eeb5de492abd3",
+  "experiments/prompts/security_analyst_v1.md": "d3c29298c7898538"
+ },
+ "written_at": "2026-10-19T23:05:42"
+}

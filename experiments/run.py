@@ -97,7 +97,7 @@ def main(argv=None) -> int:
                                              "calibration_share": args.calibration_share},
                 "kappa": annotator_kappa(dataset.labelled()),
                 "llm": {"backend": args.llm, "model": llm.backend.model, "temperature": llm.backend.temperature,
-                        "calls": llm.calls, "cache_hits": llm.hits},
+                        "calls": llm.calls, "cache_hits": llm.hits, "invalid_json": llm.invalid},
                 "calibration": calibration_info, "configs": {c.name: c.flags() for c in configs},
                 "min_interval_sec": args.min_interval}
     write(out, summaries, results, tests, manifest)
