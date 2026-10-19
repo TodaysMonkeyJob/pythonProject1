@@ -241,7 +241,8 @@ def test_worker_sends_the_floor_and_uses_the_distribution(tmp_path):
     gpt = FakeGPT({**BASE, "risk_level": "low", "risk_distribution": {"low": 0.7, "medium": 0.3}})
     box = Outbox(str(tmp_path / "outbox.db"))
     envelope = RiskEnvelope.from_config(FUZZY, None)
-    worker = LLMWorker(queue.Queue(), queue.Queue(), {"llm": {"poll_sec": 0}}, gpt=gpt, outbox=box,
+    config = {"llm": {"poll_sec": 0, "max_snapshot_age_min": 0}}
+    worker = LLMWorker(queue.Queue(), queue.Queue(), config, gpt=gpt, outbox=box,
                        envelope=envelope, wall_clock=lambda: T0 + 60)
     for event in [*person(known=False), SMOKE]:
         worker.handle_control(event.to_json())

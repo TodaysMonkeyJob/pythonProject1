@@ -3,6 +3,9 @@
 import { api, loadDevices, loadDuplicates, loadLocations, loadPersons, store } from "../store.js";
 import { dialog, h, hms } from "../ui.js";
 
+const LLM_STATUS = { ok: "працює", auth_error: "ключ не прийнято", not_found: "немає деплойменту",
+                     rate_limited: "ліміт запитів", unreachable: "недоступний", disabled: "вимкнено (немає ключів)",
+                     starting: "запуск" };
 const KIND = { camera: "камера", mic: "мікрофон", gas: "газ" };
 const guard = (fn) => async (...args) => { try { await fn(...args); } catch (e) { alert(e.message); } };
 
@@ -114,7 +117,9 @@ export function renderDevices(root) {
   const modules = h("div", { class: "health" }, Object.entries(st.modules || {}).map(([name, m]) =>
     h("div", { class: "row" }, h("span", { class: `dot ${m.alive ? "on" : ""}` }), h("b", {}, name),
       h("span", { class: "muted" }, m.alive ? `${m.age_sec} с тому` : `немає heartbeat ${m.age_sec} с`),
-      h("span", {}, m.frame_fps ? `${m.frame_fps} FPS` : m.mic_state || ""))));
+      h("span", { class: m.llm_status && m.llm_status !== "ok" ? "warn" : "" }, m.frame_fps ? `${m.frame_fps} FPS`
+        : m.llm_status ? `GPT: ${LLM_STATUS[m.llm_status] || m.llm_status}${m.llm_error ? ` (${m.llm_error})` : ""} · у черзі ${m.pending ?? 0}`
+        : m.mic_state || ""))));
   root.replaceChildren(h("div", { class: "admin" }, h("h1", {}, "Пристрої"),
     h("div", { class: "filters" },
       h("button", { onclick: guard(pairPhone) }, "Підключити телефон"),

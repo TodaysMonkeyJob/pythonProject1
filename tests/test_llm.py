@@ -132,7 +132,8 @@ class Clock:
 def make_worker(tmp_path, gpt, min_interval=300):
     box = Outbox(str(tmp_path / "outbox.db"))
     clock = Clock()
-    config = {"llm": {"min_llm_interval_sec": min_interval, "poll_sec": 0, "max_backoff_sec": 300}}
+    config = {"llm": {"min_llm_interval_sec": min_interval, "poll_sec": 0, "max_backoff_sec": 300,
+                      "max_snapshot_age_min": 0}}
     worker = LLMWorker(queue.Queue(), queue.Queue(), config, gpt=gpt, outbox=box, clock=clock)
     return worker, box, clock
 
@@ -200,7 +201,10 @@ def test_offline_keeps_rows_pending_and_backs_off(tmp_path):
     assert worker._blocked_until == clock.now + 4                         # 2 → 4 s
     clock.now += 4
     worker.step()                                                         # network back
-    assert box.counts() == {"sent": 1} and decisions(worker)[0].type == "llm_decision"
+    events = decisions(worker)
+    assert box.counts() == {"sent": 1} and [e.type for e in events if e.type == "llm_decision"] == ["llm_decision"]
+    statuses = [e.payload["status"] for e in events if e.type == "llm_status"]
+    assert statuses == ["unreachable", "ok"]                              # the outage and the recovery are visible
 
 
 @pytest.mark.parametrize("error", [
@@ -233,7 +237,7 @@ def test_invalid_decision_marks_failed_and_continues(tmp_path):
 def test_no_credentials_module_idles_without_crashing(tmp_path, monkeypatch):
     for name in ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"):
         monkeypatch.delenv(name, raising=False)
-    config = {"llm": {}, "aggregator": {"outbox_path": str(tmp_path / "outbox.db")},
+    config = {"llm": {"max_snapshot_age_min": 0}, "aggregator": {"outbox_path": str(tmp_path / "outbox.db")},
               "logging": {"dir": str(tmp_path / "logs")}}
     worker = LLMWorker(queue.Queue(), queue.Queue(), config)
     worker.setup()
@@ -251,3 +255,40 @@ def test_aggregator_ignores_llm_decisions_as_triggers(tmp_path):
     aggregator, _ = make(tmp_path)
     decision = make_event("llm", "llm_decision", {**GOOD, "risk_level": "critical"}, severity="critical")
     assert aggregator.on_event(decision) is None
+
+
+# --- backlog safety + visible availability -------------------------------------------------------------------------
+
+def test_stale_snapshots_are_skipped_after_an_outage(tmp_path):
+    gpt = FakeGPT()
+    box = Outbox(str(tmp_path / "outbox.db"))
+    worker = LLMWorker(queue.Queue(), queue.Queue(), {"llm": {"poll_sec": 0, "max_snapshot_age_min": 30}}, gpt=gpt,
+                       outbox=box, clock=Clock(), wall_clock=lambda: 100_000.0)
+    add(box, 1, "critical_event", created=100_000.0 - 3 * 3600)           # three hours old: nobody needs it now
+    add(box, 2, "critical_event", created=100_000.0 - 60)
+    worker.step()
+    assert gpt.digests == ["digest 2"] and box.counts() == {"failed": 1, "sent": 1}
+    (row,) = box.db.execute("SELECT last_error FROM outbox WHERE status = 'failed'").fetchall()
+    assert row[0].startswith("skipped: stale")
+
+
+def test_backlog_is_sent_in_small_steps(tmp_path):
+    gpt = FakeGPT()
+    worker, box, clock = make_worker(tmp_path, gpt)
+    for n in range(12):
+        add(box, n + 1, "critical_event")
+    worker.step()
+    assert len(gpt.digests) == 5 and box.counts() == {"pending": 7, "sent": 5}       # llm.max_rows_per_step
+
+
+def test_auth_error_is_published_without_the_key(tmp_path):
+    rejected = openai.AuthenticationError("Access denied due to invalid subscription key",
+                                          response=httpx.Response(401, request=REQUEST), body=None)
+    worker, box, clock = make_worker(tmp_path, FakeGPT(rejected))
+    add(box, 1, "critical_event")
+    worker.step()
+    (status,) = [e for e in decisions(worker) if e.type == "llm_status"]
+    assert status.payload["status"] == "auth_error" and status.payload["http_status"] == 401
+    assert status.severity == "warning" and box.counts() == {"pending": 1}
+    assert worker.heartbeat_payload() == {"llm_status": "auth_error", "pending": 1, "llm_error": 401}
+    assert "api_key" not in json.dumps(status.payload)

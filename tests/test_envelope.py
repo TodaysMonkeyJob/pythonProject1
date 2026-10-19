@@ -159,7 +159,7 @@ def test_site_wide_summary_has_no_corridor():
 
 def make_worker(tmp_path, answer_level):
     box = Outbox(str(tmp_path / "outbox.db"))
-    config = {"llm": {"poll_sec": 0}, "logging": {"dir": str(tmp_path / "logs")}}
+    config = {"llm": {"poll_sec": 0, "max_snapshot_age_min": 0}, "logging": {"dir": str(tmp_path / "logs")}}
     gpt = FakeGPT({"risk_level": answer_level, "summary": "Все спокійно.", "recommended_action": "ignore",
                    "reasons": ["person says everything is fine"], "follow_up": None})
     worker = LLMWorker(queue.Queue(), queue.Queue(), config, gpt=gpt, outbox=box, envelope=envelope(),
@@ -197,7 +197,8 @@ def test_worker_bounds_the_decision_and_logs_everything(tmp_path):
 
 def test_worker_without_envelope_publishes_unchanged(tmp_path):
     box = Outbox(str(tmp_path / "outbox.db"))
-    worker = LLMWorker(queue.Queue(), queue.Queue(), {"llm": {"poll_sec": 0}, "envelope": {"enabled": False}},
+    config = {"llm": {"poll_sec": 0, "max_snapshot_age_min": 0}, "envelope": {"enabled": False}}
+    worker = LLMWorker(queue.Queue(), queue.Queue(), config,
                        gpt=FakeGPT(), outbox=box)
     worker.setup()
     box.add({"snapshot_id": "s1", "trigger": "critical_event"}, "critical_event", created_at=1, digest="d")

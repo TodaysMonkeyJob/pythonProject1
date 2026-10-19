@@ -11,6 +11,11 @@ LLM worker (F6): sends snapshot digests from the SQLite outbox to GPT and publis
   trust-scored events) projects the LLM's risk: ``r_final = max(r_LLM, (1 − c) · r_floor)``. The decision carries
   risk_llm / risk_floor / risk_ceil / confirmation / risk_final / risk_level_final / envelope_applied /
   envelope_reason; a raised level also publishes ``deescalation_rejected``. Every decision → ``envelope.jsonl``.
+* Backlog safety: snapshots older than ``llm.max_snapshot_age_min`` (30) are skipped as stale (after an outage GPT
+  would otherwise answer days-old alarms); at most ``llm.max_rows_per_step`` (5) GPT requests per loop pass with a
+  heartbeat before each one (a long backlog used to starve the heartbeat → watchdog restarts).
+* GPT availability is visible: every change publishes ``llm_status`` (ok / auth_error / rate_limited / unreachable /
+  disabled, HTTP status, retry time — never the key) and the heartbeat carries ``llm_status`` + ``pending``.
 * F19 (TOD-30): with ``llm.gating`` a fuzzy controller (``modules.llm.gating.LLMGate``) decides per location snapshot
   whether GPT is needed (novelty, corridor uncertainty, untrusted claims, time since the last call, severity). Not
   needed → ``llm_decision`` with ``source: fuzzy_only``, risk = r_floor and a Ukrainian summary of the fired rules
@@ -54,6 +59,11 @@ class LLMWorker(BaseModule):
         self.poll_sec = float(llm.get("poll_sec", 1.0))
         self.max_backoff = float(llm.get("max_backoff_sec", 300))
         self.max_attempts = int(llm.get("max_attempts", 3))
+        self.max_age_sec = float(llm.get("max_snapshot_age_min", 30)) * 60
+        self.max_rows_per_step = int(llm.get("max_rows_per_step", 5))
+        self.status = "starting"
+        self._status_detail: Dict[str, Any] = {}
+        self._pending = 0
         self.gpt = gpt
         self.outbox = outbox
         self.clock = clock
@@ -101,8 +111,10 @@ class LLMWorker(BaseModule):
 
             try:
                 self.gpt = GPTClient(self.config)
+                self.set_status("ok")
             except (MissingCredentials, OSError) as e:
                 self.unavailable = str(e)
+                self.set_status("disabled", error=type(e).__name__, message=str(e)[:200])
                 logger.error(f"GPT analysis disabled: {e}; snapshots stay pending in the outbox")
 
     def teardown(self) -> None:
@@ -127,11 +139,46 @@ class LLMWorker(BaseModule):
             time.sleep(0.1)
             return
         self._next_poll = now + self.poll_sec
-        for row in self.select(self.outbox.pending(limit=50, max_attempts=self.max_attempts), now):
+        rows = self.outbox.pending(limit=200, max_attempts=self.max_attempts)
+        self._pending = len(rows)
+        for i, row in enumerate(self.select(self.drop_stale(rows), now)[:self.max_rows_per_step]):
             if self.gpt is None:
                 break            # no keys: fuzzy-only decisions still flow, rows that need GPT stay pending
+            if i:
+                self.heartbeat() # between requests: a backlog must not starve the watchdog (run() beats before step)
             if not self.send(row):
                 break
+
+    def drop_stale(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Skips snapshots older than max_snapshot_age_min: an answer about a scene that long gone helps nobody."""
+        if self.max_age_sec <= 0:
+            return rows
+        cutoff, fresh = self.wall_clock() - self.max_age_sec, []
+        for row in rows:
+            if row["created_at"] < cutoff:
+                self.outbox.mark_skipped(row["id"], f"stale: older than {self.max_age_sec / 60:g} min")
+                self._gated.pop(row["id"], None)
+            else:
+                fresh.append(row)
+        if len(fresh) < len(rows):
+            logger.warning(f"Skipped {len(rows) - len(fresh)} stale snapshot(s) older than "
+                           f"{self.max_age_sec / 60:g} min")
+        return fresh
+
+    def heartbeat_payload(self) -> Dict[str, Any]:
+        return {"llm_status": self.status, "pending": self._pending,
+                **({"llm_error": self._status_detail.get("http_status") or self._status_detail.get("error")}
+                   if self.status != "ok" else {})}
+
+    def set_status(self, status: str, **detail) -> None:
+        """Publishes ``llm_status`` when GPT availability changes (the key itself is never included)."""
+        if status == self.status and detail.get("http_status") == self._status_detail.get("http_status"):
+            return
+        previous, self.status, self._status_detail = self.status, status, detail
+        if previous == "starting" and status == "ok":
+            return                       # nothing to report: only problems and recoveries are published
+        self.emit("llm_status", {"status": status, "previous": previous, **detail},
+                  severity="info" if status == "ok" else "warning")
 
     def select(self, rows: List[Dict[str, Any]], now: float) -> List[Dict[str, Any]]:
         """
@@ -255,21 +302,29 @@ class LLMWorker(BaseModule):
             return True
         except (AuthenticationError, PermissionDeniedError, NotFoundError) as e:
             self._blocked_until = self.clock() + self.max_backoff
+            self.set_status("auth_error" if not isinstance(e, NotFoundError) else "not_found", error=type(e).__name__,
+                            http_status=getattr(e, "status_code", None), retry_in_sec=round(self.max_backoff),
+                            message=str(e)[:200])
             logger.error(f"GPT request rejected ({type(e).__name__}: {e}); check .env keys and llm.gpt_deployment. "
                          f"Retrying in {self.max_backoff:.0f} s, snapshots stay pending")
             return False
         except (APIConnectionError, APITimeoutError, RateLimitError) as e:
             self._pause(e)
+            self.set_status("rate_limited" if isinstance(e, RateLimitError) else "unreachable", error=type(e).__name__,
+                            http_status=getattr(e, "status_code", None), retry_in_sec=round(self._backoff))
             return False
         except APIStatusError as e:
             if e.status_code >= 500:
                 self._pause(e)
+                self.set_status("unreachable", error=type(e).__name__, http_status=e.status_code,
+                                retry_in_sec=round(self._backoff))
                 return False
             logger.error(f"Snapshot {row['id']} rejected by GPT ({e.status_code}): {e}")
             self.outbox.mark_failed(row["id"], f"{e.status_code}: {e}")
             return True
 
         self._backoff = 0.0
+        self.set_status("ok")
         self._gated.pop(row["id"], None)
         self._last_llm_wall[row["payload"].get("location_id") or ""] = self.wall_clock()
         if row["trigger"] != "critical_event":
