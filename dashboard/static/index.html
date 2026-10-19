@@ -7,24 +7,28 @@
 <link rel="stylesheet" href="/static/app/app.css">
 </head>
 <body>
-<header id="topbar">
-  <span id="ws-dot" class="dot" title="з'єднання з хабом"></span>
-  <b class="brand">IoT Guard</b>
-  <span id="site" class="site" title="загальний стан"></span>
-  <span id="clock" class="muted"></span>
-  <span id="cams-online" class="muted"></span>
-  <a id="dups" class="dups" href="#/people" hidden title="можливі дублікати людей — перевірте на сторінці «Люди»"></a>
-  <nav id="nav">
-    <a href="#/overview">Огляд</a><a href="#/people">Люди</a><a href="#/devices">Пристрої</a><a href="#/locations">Локації</a>
-  </nav>
-  <button id="bell" title="сповіщення">🔔<span id="bell-count" hidden></span></button>
-  <button id="theme" title="світла / темна тема">◐</button>
-</header>
-<main id="view" class="view"></main>
-<nav id="dots" class="dots" aria-label="сторінки"></nav>
-<dialog id="notes" class="notes"><div class="row"><b>Сповіщення</b>
-  <form method="dialog"><button>✕</button></form></div><div id="note-list"></div></dialog>
-<div id="toasts"></div>
+<div id="app">
+  <header id="topbar">
+    <span id="ws-dot" class="dot" role="img" aria-label="з'єднання з хабом"></span>
+    <b class="brand">IoT Guard</b>
+    <button id="prev" class="arrow" aria-label="попередня територія (←)">◀</button>
+    <nav id="tabs" class="tabs" role="tablist" aria-label="території"></nav>
+    <button id="next" class="arrow" aria-label="наступна територія (→)">▶</button>
+    <span id="site" class="site-chip" aria-live="polite"></span>
+    <a id="dups" class="dups" href="#/people" hidden></a>
+    <nav id="nav" class="admin-nav" aria-label="налаштування">
+      <a href="#/people">Люди</a><a href="#/devices">Пристрої</a><a href="#/locations">Локації</a>
+    </nav>
+    <span id="clock" class="muted mono"></span>
+    <button id="bell" aria-label="сповіщення">🔔<span id="bell-count" hidden></span></button>
+    <button id="theme" aria-label="світла / темна тема">◐</button>
+  </header>
+  <main id="view" class="view"></main>
+  <footer id="hint" class="hint">← → на клавіатурі або стрілки поруч із вкладками — перемикання територій · Home — Огляд · 1–9 — територія за номером</footer>
+</div>
+<dialog id="notes" class="notes" aria-label="сповіщення"><div class="row"><b>Сповіщення</b>
+  <form method="dialog"><button aria-label="закрити">✕</button></form></div><div id="note-list"></div></dialog>
+<div id="toasts" aria-live="polite"></div>
 <dialog id="dlg"><h3 id="dlg-title"></h3><div id="dlg-body"></div><form method="dialog"><button>Закрити</button></form></dialog>
 <script type="module" src="/static/app/main.js"></script>
 <!-- Live data: /ws (events, location summaries), /ws/video (camera frames), /api/* — no CDN, works offline -->

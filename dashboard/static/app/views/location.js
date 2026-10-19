@@ -1,12 +1,24 @@
-// Location page: a one-viewport summary (cameras, people, transcripts, gas, GPT) and the details below it
-// (transcript log, event table, GPT history, gas chart, state timeline, device health). CSS scroll-snap between them.
-import { lineChart, sparkline, timeline } from "../charts.js";
+// Territory view (F21): left — header (name, state badge, reason, Підтвердити), the main camera filling the height,
+// the other cameras as thumbnails, "people now" chips; right — ONE panel with tabs Події · Розмова · Газ · Рішення
+// GPT, each scrolling inside the panel. Nothing scrolls the page. The skeleton is mounted once per territory; live
+// events prepend to the lists (LiveList keeps the user's position), summaries update the left side in place.
+// Switching territory opens "Події"; #/loc/<id>/<tab> opens a tab; scroll positions are remembered per territory.
+import { bars } from "../charts.js";
 import { ackLocation, api, cameras, history, locationOf, personName, renamePerson, store } from "../store.js";
-import { STATE_LABEL, dialog, downloadCsv, h, hms, json, personColour, since } from "../ui.js";
-import { cameraGrid } from "./grid.js";
+import { LiveList, STATE_LABEL, dialog, h, hms, json, personColour, since } from "../ui.js";
+import { describe, eventRow } from "./events.js";
+import { tile } from "./grid.js";
 
+export const PANEL_TABS = ["events", "talk", "gas", "gpt"];
+const TAB_LABEL = { events: "Події", talk: "Розмова", gas: "Газ", gpt: "Рішення GPT" };
 const ARROW = { rising: "↗", falling: "↘", stable: "→" };
-let current = null;         // {id, focus, data: {speech, gas, events, llm, states, restarts}, filters}
+const LEVEL_LABEL = { low: "низький", medium: "середній", high: "високий", critical: "критичний" };
+const QUIET = new Set(["gas_reading", "motion", "heartbeat", "location_summary", "mic_state"]);  // not in "Події"
+const memory = new Map();       // territory → {scroll: {events, talk, gpt}, cam}
+let current = null;
+
+const fmt2 = (v) => (v === null || v === undefined ? "—" : Number(v).toFixed(2));
+const remember = (id) => { if (!memory.has(id)) memory.set(id, { scroll: {}, cam: null }); return memory.get(id); };
 
 function speakerName(ev) {
   const p = ev.payload;
@@ -14,93 +26,25 @@ function speakerName(ev) {
   return p.person_id ? personName(p.person_id, p.speaker_name || p.speaker) : (p.speaker_name || p.speaker || "?");
 }
 
-export async function loadLocationData(id) {
+async function loadData(id) {
   const day = new Date(Date.now() - 24 * 3600e3).toISOString();
-  const hour = new Date(Date.now() - 3600e3).toISOString();
-  const [speech, gas, events, llm, states, alerts] = await Promise.all([
-    history({ location_id: id, types: "speech", since: day, limit: 2000 }),
-    history({ location_id: id, types: "gas_reading", since: hour, limit: 4000 }),
-    history({ location_id: id, since: new Date(Date.now() - 6 * 3600e3).toISOString(), limit: 3000 }),
-    history({ location_id: id, types: "llm_decision", since: day, limit: 200 }),
-    history({ location_id: id, types: "location_state_changed", since: day, limit: 500 }),
-    history({ types: "alert", since: day, limit: 1000 })]);
-  return { speech: speech.reverse(), gas: gas.reverse(), events: events.reverse(), llm, states: states.reverse(),
-           restarts: alerts.filter((e) => e.payload.reason === "module_restarted") };
+  const [speech, gas, events, llm] = await Promise.all([
+    history({ location_id: id, types: "speech", since: day, limit: 500 }),
+    history({ location_id: id, types: "gas_reading", since: new Date(Date.now() - 900e3).toISOString(), limit: 1000 }),
+    history({ location_id: id, since: new Date(Date.now() - 6 * 3600e3).toISOString(), limit: 1500 }),
+    history({ location_id: id, types: "llm_decision", since: day, limit: 100 })]);
+  return { speech, gas: gas.reverse(), events: events.filter((e) => !QUIET.has(e.type)), llm };   // lists: newest first
 }
 
-// live events of this location are appended while the page is open
-export function onLocationEvent(ev) {
-  if (!current || ev.location_id !== current.id || !current.data) return false;
-  const d = current.data;
-  if (ev.type === "speech") d.speech.push(ev);
-  if (ev.type === "gas_reading") d.gas.push(ev);
-  if (ev.type === "llm_decision") d.llm.unshift(ev);
-  if (ev.type === "location_state_changed") d.states.push(ev);
-  d.events.push(ev);
-  return ["speech", "gas_reading", "llm_decision", "location_state_changed"].includes(ev.type);
-}
-
-export function renderLocation(root, { id, details, focus, go, neighbours }) {
-  if (!current || current.id !== id) {
-    current = { id, focus: focus || null, data: null, filters: { speaker: "", range: 24, search: "", source: "", type: "",
-                                                                 severity: "", device: "" } };
-    loadLocationData(id).then((data) => { if (current && current.id === id) { current.data = data; renderLocation(root, { id, go, neighbours }); } })
-      .catch(() => {});
-  } else if (focus !== undefined && focus !== null) current.focus = focus;
-  const location = locationOf(id) || { location_id: id, name: id, icon: "" };
-  const s = store.summaries[id] || { state: "safe", reason: "", people: [], people_count: 0, devices: { online: 0, total: 0 } };
-  const existing = root.querySelector(".loc-page");
-  if (existing && existing.dataset.loc === id) {
-    // live update: only the summary; the details keep their filters and scroll position
-    existing.querySelector(".summary").replaceWith(summarySection(location, s, go, neighbours));
-    if (current.data && existing.querySelector(".details").dataset.loaded !== "1")
-      existing.querySelector(".details").replaceWith(detailsSection(location));
-    if (details) existing.querySelector(".details").scrollIntoView();
-    drawCharts(existing, location);
-    return;
-  }
-  const page = h("div", { class: "loc-page", dataset: { loc: id } },
-    summarySection(location, s, go, neighbours), detailsSection(location));
-  root.replaceChildren(page);
-  if (details) requestAnimationFrame(() => page.querySelector(".details").scrollIntoView());
-  drawCharts(page, location);
-}
-
-function summarySection(location, s, go, neighbours) {
-  const cams = cameras().filter((d) => d.location_id === location.location_id);
-  const grid = cameraGrid(cams, { focus: current.focus, onTile: (d) => {
-    current.focus = current.focus === d.device_id ? null : d.device_id; go(null); } });
-  return h("section", { class: "summary" },
-    h("header", { class: `loc-head st-${s.state}` },
-      h("button", { class: "nav", title: "←", onclick: () => go(neighbours.prev) }, "◀"),
-      h("span", { class: "title" }, `${location.icon || ""} ${location.name}`.trim()),
-      h("span", { class: `badge st-${s.state}` }, `● ${STATE_LABEL[s.state] || s.state}`),
-      h("span", { class: "reason" }, s.reason ? `— ${s.reason}` : ""),
-      s.active_alerts ? h("button", { class: "ack", onclick: () => ackLocation(location.location_id) }, `Підтвердити (${s.active_alerts})`) : null,
-      h("button", { class: "nav", title: "→", onclick: () => go(neighbours.next) }, "▶")),
-    h("div", { class: "loc-body" },
-      h("section", { class: "panel cams" }, grid),
-      h("aside", { class: "panel side" },
-        h("h2", {}, `Люди зараз (${s.people_count})`), peopleNow(s),
-        h("h2", {}, "Останні фрази"), lastSpeech(),
-        h("h2", {}, "Газ"), gasNow(s),
-        h("h2", {}, "GPT"), s.last_llm ? llmPanel(s.last_llm) : h("div", { class: "muted" }, "ще немає оцінки"))),
-    h("button", { class: "to-details", onclick: (e) => e.target.closest(".loc-page").querySelector(".details").scrollIntoView({ behavior: "smooth" }) },
-      "▼ Деталі"));
-}
-
-// --- F17: the fuzzy risk corridor around the LLM decision ----------------------------------------------------------
-const fmt2 = (v) => (v === null || v === undefined ? "—" : Number(v).toFixed(2));
-const LEVEL_LABEL = { low: "низький", medium: "середній", high: "високий", critical: "критичний" };
-
+// --- F17 corridor, F19 source, F16 trust (also used by other views) ------------------------------------------------
 export function corridorBand(d) {
   if (d.risk_floor === undefined || d.risk_final === undefined) return null;
   const pct = (v) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
-  return h("div", { class: "corridor", title: `коридор ${d.risk_floor}–${d.risk_ceil}, GPT ${d.risk_llm}, підсумок ${d.risk_final}` },
+  return h("div", { class: "corridor", role: "img",
+                    "aria-label": `коридор ${fmt2(d.risk_floor)}–${fmt2(d.risk_ceil)}, GPT ${fmt2(d.risk_llm)}, підсумок ${fmt2(d.risk_final)}` },
     h("div", { class: "band", style: { left: pct(d.risk_floor), width: pct(Math.max(0.01, d.risk_ceil - d.risk_floor)) } }),
-    d.risk_llm !== null && d.risk_llm !== undefined
-      ? h("div", { class: "mark llm", style: { left: pct(d.risk_llm) }, title: `GPT ${d.risk_llm}` }) : null,
-    h("div", { class: "mark final", style: { left: pct(d.risk_final) }, title: `підсумок ${d.risk_final}` }));
+    d.risk_llm !== null && d.risk_llm !== undefined ? h("div", { class: "mark llm", style: { left: pct(d.risk_llm) } }) : null,
+    h("div", { class: "mark final", style: { left: pct(d.risk_final) } }));
 }
 
 function envelopeReasons(d) {
@@ -110,204 +54,185 @@ function envelopeReasons(d) {
   return items.length ? h("ul", { class: "env-reasons" }, items.map((x) => h("li", {}, x))) : null;
 }
 
-// F19: who decided — GPT, or the fuzzy rules alone (the LLM call was not needed)
 export function sourceBadge(p) {
   const fuzzy = p.source === "fuzzy_only";
-  return h("span", { class: `src ${fuzzy ? "fuzzy" : "llm"}`, title: fuzzy ? "рішення без GPT: нечіткі правила (виклик не потрібен)" : "оцінка GPT" },
+  return h("span", { class: `src ${fuzzy ? "fuzzy" : "llm"}`, title: fuzzy ? "рішення без GPT: нечіткі правила" : "оцінка GPT" },
     fuzzy ? "без GPT" : "LLM");
 }
 
-function llmPanel(llm) {
-  const final = llm.risk_level_final || llm.risk_level;
-  return h("div", { class: "llm-panel" },
-    h("div", {}, sourceBadge(llm), " ", h("b", { class: `lvl ${final}` }, LEVEL_LABEL[final] || final),
-      final !== llm.risk_level && llm.source !== "fuzzy_only" ? h("span", { class: "muted" }, ` (GPT: ${LEVEL_LABEL[llm.risk_level] || llm.risk_level})`) : null,
-      ` — ${llm.summary} `, h("span", { class: "muted" }, `(${hms(llm.ts)})`)),
-    corridorBand(llm),
-    llm.risk_floor !== undefined ? h("div", { class: "muted small" },
-      llm.source === "fuzzy_only"
-        ? `коридор ${fmt2(llm.risk_floor)}–${fmt2(llm.risk_ceil)} · без GPT: ризик = floor ${fmt2(llm.risk_final)}`
-        : `коридор ${fmt2(llm.risk_floor)}–${fmt2(llm.risk_ceil)} · GPT ${fmt2(llm.risk_llm)} → ${fmt2(llm.risk_final)} · підтвердження c = ${fmt2(llm.confirmation)}`,
-      llm.over_reaction ? " · GPT, можливо, перебільшує" : "") : null,
-    llm.envelope_applied ? h("details", { class: "rejected" },
-      h("summary", {}, h("span", { class: "badge-rejected" }, "зниження відхилено")), envelopeReasons(llm)) : null);
+function decisionCard(p, ts) {
+  const final = p.risk_level_final || p.risk_level;
+  return h("div", { class: `decision ${final}` },
+    h("div", { class: "row" }, sourceBadge(p), h("b", { class: `lvl ${final}` }, (LEVEL_LABEL[final] || final || "").toUpperCase()),
+      final !== p.risk_level && p.source !== "fuzzy_only" ? h("span", { class: "muted" }, `GPT: ${LEVEL_LABEL[p.risk_level] || p.risk_level}`) : null,
+      h("span", { class: "muted mono" }, hms(ts))),
+    h("div", {}, p.summary),
+    corridorBand(p),
+    p.risk_floor !== undefined ? h("div", { class: "muted small" },
+      p.source === "fuzzy_only" ? `коридор ${fmt2(p.risk_floor)}–${fmt2(p.risk_ceil)} · ризик = floor ${fmt2(p.risk_final)}`
+        : `коридор ${fmt2(p.risk_floor)}–${fmt2(p.risk_ceil)} · GPT ${fmt2(p.risk_llm)} → ${fmt2(p.risk_final)} · c = ${fmt2(p.confirmation)}`,
+      p.over_reaction ? " · GPT, можливо, перебільшує" : "") : null,
+    p.envelope_applied ? h("details", { class: "rejected" },
+      h("summary", {}, h("span", { class: "badge-rejected" }, "зниження відхилено")), envelopeReasons(p)) : null,
+    p.snapshot_id ? h("button", { class: "link", onclick: () => snapshotDialog(p.snapshot_id) }, "знімок, надісланий у GPT") : null);
 }
 
-// F16 trust degree beside a transcript line (colour by trust term, reasons on hover)
+async function snapshotDialog(id) {
+  try {
+    const j = await api("GET", `/api/snapshot/${encodeURIComponent(id)}`);
+    const text = j.digest_sent_to_gpt || "—";
+    let pretty = text;
+    try { pretty = text.startsWith("{") ? JSON.stringify(JSON.parse(text), null, 1) : text; } catch (e) { /* text */ }
+    dialog(`Знімок ${id}`, h("p", { class: "muted" }, "Надіслано в GPT:"), h("pre", {}, pretty), json(j.snapshot));
+  } catch (e) { dialog("Знімок", h("p", {}, e.message)); }
+}
+
 export function trustBadge(p) {
   if (p.trust === undefined || p.trust === null) return null;
   const level = p.trust >= 0.6 ? "high" : p.trust >= 0.3 ? "medium" : "low";
-  const claim = p.claim_type && p.claim_type !== "none" ? { deescalation: " ⚠ заспокоює", instruction_to_system: " ⚠ команда системі",
-                                                           escalation: " ‼" }[p.claim_type] || "" : "";
+  const claim = { deescalation: " ⚠ заспокоює", instruction_to_system: " ⚠ команда системі", escalation: " ‼" }[p.claim_type] || "";
   return h("span", { class: `trust t-${level}`, title: (p.trust_reasons || []).join("\n") }, `τ ${Number(p.trust).toFixed(2)}${claim}`);
 }
 
-function peopleNow(s) {
-  if (!s.people.length) return h("div", { class: "muted" }, "нікого");
-  const deviceName = (id) => (store.devices.find((d) => d.device_id === id) || {}).name || "";
-  return h("div", { class: "people-now" }, s.people.map((p) => {
-    const name = h("span", { class: "pname", style: { color: personColour(p.person_id) } }, personName(p.person_id, p.name));
-    const edit = p.person_id ? h("button", { class: "icon", title: "перейменувати", onclick: () => {
-      const input = h("input", { value: personName(p.person_id, p.name) });
-      input.onkeydown = async (e) => {
-        if (e.key === "Enter" && input.value.trim()) { try { await renamePerson(p.person_id, input.value.trim()); } catch (err) { alert(err.message); } }
-        if (e.key === "Enter" || e.key === "Escape") input.replaceWith(name);
-        e.stopPropagation();
-      };
-      name.replaceWith(input); input.focus(); input.select();
-    } }, "✎") : null;
-    return h("div", { class: "row" }, name, edit, h("span", {}, p.action || "—"),
-             h("span", { class: "muted" }, p.since ? since(p.since) : ""), h("span", { class: "muted" }, deviceName(p.device_id)));
-  }));
+const speechRow = (ev) => h("div", { class: "talk-row" },
+  h("span", { class: "mono muted" }, hms(ev.payload.start || ev.timestamp)),
+  h("b", { style: { color: personColour(ev.payload.person_id) } }, speakerName(ev)),
+  h("span", { class: "talk-text" }, ev.payload.text), trustBadge(ev.payload));
+const gptRow = (ev) => decisionCard(ev.payload, ev.timestamp);
+
+// --- skeleton ---------------------------------------------------------------------------------------------------
+function mount(root, id, tab, go) {
+  const mem = remember(id);
+  const lists = {
+    events: new LiveList({ empty: "подій немає", label: "події території", onScroll: (y) => { mem.scroll.events = y; } }),
+    talk: new LiveList({ empty: "тиша", label: "розмова", onScroll: (y) => { mem.scroll.talk = y; } }),
+    gpt: new LiveList({ empty: "рішень ще немає", label: "рішення GPT", onScroll: (y) => { mem.scroll.gpt = y; } }),
+  };
+  const refs = {
+    head: h("header", { class: "loc-head" }), cam: h("div", { class: "main-cam" }), thumbs: h("div", { class: "thumbs" }),
+    people: h("div", { class: "people-chips", "aria-label": "люди зараз" }),
+    gasNow: h("div", { class: "gas-now" }), gasChart: h("canvas", { class: "gas-bars", dataset: { chart: "bars" } }),
+    gptNow: h("div", { class: "gpt-now" }),
+  };
+  const tabs = h("div", { class: "panel-tabs", role: "tablist", "aria-label": "розділи території" },
+    PANEL_TABS.map((t) => h("a", { role: "tab", href: `#/loc/${encodeURIComponent(id)}/${t}`, dataset: { tab: t },
+                                   id: `tab-${t}`, "aria-controls": `pane-${t}` }, TAB_LABEL[t])));
+  const panes = {
+    events: h("div", { class: "pane", role: "tabpanel", id: "pane-events" }, lists.events.el),
+    talk: h("div", { class: "pane", role: "tabpanel", id: "pane-talk" }, lists.talk.el),
+    gas: h("div", { class: "pane gas-pane", role: "tabpanel", id: "pane-gas" }, refs.gasNow,
+           h("div", { class: "muted small" }, "останні 10 хв"), refs.gasChart),
+    gpt: h("div", { class: "pane gpt-pane", role: "tabpanel", id: "pane-gpt" }, refs.gptNow,
+           h("h2", {}, "Історія"), lists.gpt.el),
+  };
+  const page = h("div", { class: "loc-view", dataset: { view: "loc", loc: id } },
+    h("section", { class: "loc-left" }, refs.head, refs.cam, refs.thumbs, refs.people),
+    h("aside", { class: "panel loc-right" }, tabs, h("div", { class: "panes" }, Object.values(panes))));
+  root.replaceChildren(page);
+  current = { id, root, page, lists, refs, tabs, panes, tab: null, data: null, go };
+  selectTab(tab || "events");
+  loadData(id).then((data) => {
+    if (!current || current.id !== id) return;
+    current.data = data;
+    lists.events.set(data.events.map((ev) => eventRow(ev)));
+    lists.talk.set(data.speech.map(speechRow));
+    lists.gpt.set(data.llm.map(gptRow));
+    for (const [key, list] of Object.entries(lists)) list.list.scrollTop = mem.scroll[key] || 0;   // inside the panel
+    drawGas();
+  }).catch(() => {});
 }
 
-function lastSpeech() {
-  const items = current.data ? current.data.speech.slice(-5).reverse() : [];
-  if (!items.length) return h("div", { class: "muted" }, current.data ? "тиша" : "завантажую…");
-  return h("div", { class: "speech" }, items.map((ev) => h("div", {},
-    h("span", { class: "muted" }, hms(ev.payload.start || ev.timestamp) + " "),
-    h("b", { style: { color: personColour(ev.payload.person_id) } }, speakerName(ev)), `: "${ev.payload.text}" `,
-    trustBadge(ev.payload))));
+function selectTab(tab) {
+  current.tab = tab;
+  current.tabs.querySelectorAll("[role=tab]").forEach((a) => {
+    const on = a.dataset.tab === tab;
+    a.classList.toggle("on", on); a.setAttribute("aria-selected", on ? "true" : "false"); a.tabIndex = on ? 0 : -1;
+  });
+  for (const [name, pane] of Object.entries(current.panes)) pane.hidden = name !== tab;
+  if (tab === "gas") requestAnimationFrame(drawGas);
 }
 
-function gasNow(s) {
-  const g = s.gas;
-  return h("div", { class: "gas-now" },
-    g ? h("span", {}, `${g.main} · ${g.concentration_pct ?? "?"}% · ${ARROW[g.trend] || ""} ${g.trend || ""}`) : h("span", { class: "muted" }, "немає датчика"),
-    h("canvas", { class: "spark", dataset: { chart: "spark" } }));
-}
-
+// --- live parts -------------------------------------------------------------------------------------------------
 function gasThreshold(location, gasName) {
   const rule = ((location.rules || {}).gas_thresholds || {})[gasName];
   return rule ?? (store.status.gas_thresholds || {})[gasName] ?? null;
 }
 
-function drawCharts(page, location) {
-  if (!current.data) return;
-  const points = (since) => current.data.gas.filter((e) => Date.parse(e.timestamp) >= since)
-    .map((e) => ({ t: Date.parse(e.timestamp), v: Number(e.payload.concentration_pct) || 0 }));
-  const gasName = (current.data.gas.at(-1) || { payload: {} }).payload.gas;
-  const spark = page.querySelector('[data-chart="spark"]');
-  if (spark) sparkline(spark, points(Date.now() - 600e3), { threshold: gasThreshold(location, gasName) });
-  const chart = page.querySelector('[data-chart="gas"]');
-  if (chart) lineChart(chart, points(Date.now() - 3600e3), { threshold: gasThreshold(location, gasName), label: gasName ? `${gasName}, %` : "" });
-  const bar = page.querySelector('[data-chart="timeline"]');
-  if (bar) {
-    const to = Date.now(), from = to - 24 * 3600e3, segments = [];
-    let state = current.data.states.length ? current.data.states[0].payload.from : "safe", start = from;
-    for (const ev of current.data.states) { const t = Date.parse(ev.timestamp); segments.push({ from: start, to: t, state }); state = ev.payload.to; start = t; }
-    segments.push({ from: start, to, state });
-    timeline(bar, segments, from, to);
+function drawGas() {
+  if (!current || current.tab !== "gas" || !current.data) return;
+  const location = locationOf(current.id) || {};
+  const last = current.data.gas.at(-1);
+  const name = last ? last.payload.gas : null;
+  const points = current.data.gas.map((e) => ({ t: Date.parse(e.timestamp), v: Number(e.payload.concentration_pct) || 0 }));
+  bars(current.refs.gasChart, points, { threshold: gasThreshold(location, name) });
+}
+
+function update() {
+  const { id, refs, go } = current;
+  const location = locationOf(id) || { location_id: id, name: id, icon: "" };
+  const s = store.summaries[id] || { state: "safe", reason: "", people: [], people_count: 0, active_alerts: 0 };
+  refs.head.className = `loc-head st-${s.state}`;
+  refs.head.replaceChildren(
+    h("span", { class: "title" }, `${location.icon || ""} ${location.name}`.trim()),
+    h("span", { class: `badge st-${s.state}` }, h("span", { class: `dot st-${s.state}`, "aria-hidden": "true" }),
+      ` ${(STATE_LABEL[s.state] || s.state).toUpperCase()}`),
+    h("span", { class: "reason", title: s.reason || "" }, s.reason || ""),
+    h("button", { class: "ack", disabled: !s.active_alerts, "aria-label": "підтвердити тривоги території",
+                  onclick: () => ackLocation(id) }, s.active_alerts ? `Підтвердити (${s.active_alerts})` : "Підтвердити"));
+  const cams = cameras().filter((d) => d.location_id === id);
+  const mem = remember(id);
+  const main = cams.find((d) => d.device_id === mem.cam) || cams[0];
+  refs.cam.replaceChildren(main ? tile(main, "full") : h("div", { class: "grid-empty muted" }, "у цій території немає камер"));
+  refs.thumbs.hidden = cams.length < 2;
+  refs.thumbs.replaceChildren(...cams.filter((d) => d !== main).map((d) => tile(d, "small", () => { mem.cam = d.device_id; go(null); })));
+  refs.people.replaceChildren(...(s.people.length ? s.people.map(personChip) : [h("span", { class: "muted" }, "нікого")]));
+  const g = s.gas;
+  refs.gasNow.replaceChildren(g ? h("div", { class: "gas-big" }, h("b", {}, `${g.concentration_pct ?? "?"} %`), ` ${g.main || ""} `,
+      h("span", { class: `trend ${g.trend || ""}` }, `${ARROW[g.trend] || ""} ${g.trend || ""}`),
+      gasThreshold(location, g.main) !== null ? h("span", { class: "muted" }, ` · поріг ${gasThreshold(location, g.main)} %`) : null)
+    : h("span", { class: "muted" }, "немає газового датчика"));
+  refs.gptNow.replaceChildren(s.last_llm ? decisionCard(s.last_llm, s.last_llm.ts) : h("div", { class: "muted" }, "ще немає оцінки"));
+}
+
+function personChip(p) {
+  const name = personName(p.person_id, p.name);
+  const unknown = !p.person_id || String(name).startsWith("unknown_") || name === "?";
+  const deviceName = (store.devices.find((d) => d.device_id === p.device_id) || {}).name || "";
+  const label = h("span", { class: "pname", style: { color: personColour(p.person_id) } }, name);
+  return h("span", { class: `person-chip${unknown ? " unknown" : ""}`, title: deviceName },
+    label, ` · ${p.action || "—"}`, p.since ? h("span", { class: "muted" }, ` · ${since(p.since)}`) : null,
+    p.person_id ? h("button", { class: "icon", "aria-label": `перейменувати ${name}`, onclick: () => {
+      const input = h("input", { value: name, "aria-label": "нове ім'я" });
+      input.onkeydown = async (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" && input.value.trim()) { try { await renamePerson(p.person_id, input.value.trim()); } catch (err) { alert(err.message); } }
+        if (e.key === "Enter" || e.key === "Escape") input.replaceWith(label);
+      };
+      label.replaceWith(input); input.focus(); input.select();
+    } }, "✎") : null);
+}
+
+export function renderLocation(root, { go, id, tab }) {
+  if (!current || current.id !== id || !root.contains(current.page)) mount(root, id, tab, go);
+  else if (tab && tab !== current.tab) selectTab(tab);
+  current.go = go;
+  update();
+}
+
+export function onLocationEvent(ev) {
+  if (!current || !current.data || ev.location_id !== current.id) return;
+  if (ev.type === "gas_reading") {
+    current.data.gas.push(ev);
+    if (current.data.gas.length > 1500) current.data.gas.splice(0, 500);
+    drawGas();
+    return;
   }
+  if (QUIET.has(ev.type)) return;
+  current.lists.events.prepend([eventRow(ev)]);
+  if (ev.type === "speech") current.lists.talk.prepend([speechRow(ev)]);
+  if (ev.type === "llm_decision") current.lists.gpt.prepend([gptRow(ev)]);
 }
 
-export function redrawCharts(root) {
-  const page = root.querySelector(".loc-page");
-  if (page && current) drawCharts(page, locationOf(current.id) || {});
-}
-
-// --- details --------------------------------------------------------------------------------------------------------
-
-function detailsSection(location) {
-  if (!current.data) return h("section", { class: "details" }, h("div", { class: "muted" }, "завантажую історію…"));
-  return h("section", { class: "details", dataset: { loaded: "1" } },
-    h("div", { class: "filters" }, h("button", { onclick: async (e) => {
-      current.data = await loadLocationData(current.id);
-      e.target.closest(".details").replaceWith(detailsSection(location));
-      drawCharts(document.querySelector(".loc-page"), location);
-    } }, "↻ оновити історію")),
-    h("div", { class: "details-grid" },
-      h("div", { class: "panel wide" }, h("h2", {}, "Транскрипти"), transcriptLog(location)),
-      h("div", { class: "panel wide" }, h("h2", {}, "Події"), eventTable()),
-      h("div", { class: "panel" }, h("h2", {}, "Рішення GPT"), gptHistory()),
-      h("div", { class: "panel" }, h("h2", {}, "Газ, 1 год"), h("canvas", { class: "chart", dataset: { chart: "gas" } })),
-      h("div", { class: "panel" }, h("h2", {}, "Стан, 24 год"), h("canvas", { class: "bar", dataset: { chart: "timeline" } }),
-        h("div", { class: "state-list" }, current.data.states.slice(-8).reverse().map((ev) =>
-          h("div", {}, h("span", { class: "muted" }, hms(ev.timestamp) + " "), `${ev.payload.from} → ${ev.payload.to}: ${ev.payload.reason}`)))),
-      h("div", { class: "panel" }, h("h2", {}, "Пристрої"), deviceHealth(location))));
-}
-
-function transcriptLog(location) {
-  const f = current.filters, speakers = [...new Set(current.data.speech.map(speakerName))].sort();
-  const box = h("div", { class: "scroll-list" });
-  const fill = () => {
-    const from = Date.now() - f.range * 3600e3, q = f.search.toLowerCase();
-    const rows = current.data.speech.filter((ev) => Date.parse(ev.timestamp) >= from && (!f.speaker || speakerName(ev) === f.speaker)
-                                             && (!q || ev.payload.text.toLowerCase().includes(q))).reverse();
-    box.replaceChildren(...(rows.length ? rows.slice(0, 500).map((ev) => h("div", { class: "row" },
-      h("span", { class: "muted" }, hms(ev.payload.start || ev.timestamp)),
-      h("b", { style: { color: personColour(ev.payload.person_id) } }, speakerName(ev)),
-      h("span", {}, ev.payload.text), trustBadge(ev.payload))) : [h("div", { class: "muted" }, "нічого")]));
-    return rows;
-  };
-  const select = (key, options, label) => h("select", { onchange: (e) => { f[key] = e.target.value; fill(); } },
-    options.map(([v, text]) => h("option", { value: v, selected: String(f[key]) === String(v) }, text ?? label)));
-  const search = h("input", { placeholder: "пошук…", value: f.search, oninput: (e) => { f.search = e.target.value; fill(); } });
-  const csv = h("button", { onclick: () => downloadCsv(`transcripts_${location.location_id}.csv`,
-    [["time", "speaker", "person_id", "text"], ...fill().map((ev) => [ev.payload.start || ev.timestamp, speakerName(ev), ev.payload.person_id, ev.payload.text])]) }, "CSV");
-  fill();
-  return h("div", {}, h("div", { class: "filters" }, select("speaker", [["", "усі мовці"], ...speakers.map((n) => [n, n])]),
-    select("range", [[1, "1 год"], [6, "6 год"], [24, "24 год"]]), search, csv), box);
-}
-
-const ROW = 24;
-function eventTable() {
-  const f = current.filters, all = current.data.events;
-  const opts = (key) => [...new Set(all.map((e) => (key === "device" ? e.device_id : e[key])))].sort();
-  const viewport = h("div", { class: "vtable" }), inner = h("div", { class: "vinner" });
-  viewport.append(inner);
-  let rows = [];
-  const draw = () => {
-    const start = Math.max(0, Math.floor(viewport.scrollTop / ROW) - 5), end = Math.min(rows.length, start + Math.ceil((viewport.clientHeight || 360) / ROW) + 10);
-    inner.style.height = `${rows.length * ROW}px`;
-    inner.replaceChildren(...rows.slice(start, end).map((ev, i) => h("div", { class: `vrow sev-${ev.severity}`, style: { top: `${(start + i) * ROW}px` },
-      onclick: () => dialog(`${ev.source} ${ev.type}`, json(ev)) },
-      h("span", {}, hms(ev.timestamp)), h("span", {}, ev.source), h("span", {}, ev.type), h("span", { class: "muted" }, ev.device_id),
-      h("span", {}, JSON.stringify(ev.payload).slice(0, 120)))));
-  };
-  const apply = () => {
-    rows = all.filter((e) => (!f.source || e.source === f.source) && (!f.type || e.type === f.type)
-                         && (!f.severity || e.severity === f.severity) && (!f.device || e.device_id === f.device)).reverse();
-    draw();
-  };
-  viewport.addEventListener("scroll", draw);
-  const select = (key, label) => h("select", { onchange: (e) => { f[key] = e.target.value; apply(); } },
-    h("option", { value: "" }, label), opts(key).map((v) => h("option", { value: v, selected: f[key] === v }, v)));
-  requestAnimationFrame(apply);
-  return h("div", {}, h("div", { class: "filters" }, select("source", "усі джерела"), select("type", "усі типи"),
-    select("severity", "усі рівні"), select("device", "усі пристрої")), viewport);
-}
-
-function gptHistory() {
-  if (!current.data.llm.length) return h("div", { class: "muted" }, "ще немає");
-  return h("div", { class: "scroll-list" }, current.data.llm.slice(0, 50).map((ev) => h("div", { class: `decision ${ev.payload.risk_level_final || ev.payload.risk_level}` },
-    h("div", {}, sourceBadge(ev.payload), " ", h("b", {}, ev.payload.risk_level_final || ev.payload.risk_level),
-      ev.payload.envelope_applied ? h("span", { class: "badge-rejected" }, `GPT: ${ev.payload.risk_level} — зниження відхилено`) : null,
-      ` · ${ev.payload.recommended_action} · `, h("span", { class: "muted" }, hms(ev.timestamp))),
-    h("div", {}, ev.payload.summary), corridorBand(ev.payload), ev.payload.envelope_applied ? envelopeReasons(ev.payload) : null,
-    h("button", { onclick: async () => {
-      try { const j = await api("GET", `/api/snapshot/${encodeURIComponent(ev.payload.snapshot_id)}`);
-        dialog(`Знімок ${ev.payload.snapshot_id}`, h("p", { class: "muted" }, "Надіслано в GPT:"), h("pre", {}, prettyPayload(j.digest_sent_to_gpt)), json(j.snapshot));
-      } catch (e) { dialog("Знімок", h("p", {}, e.message)); } } }, "знімок"))));
-}
-
-// F18: the v2 view is compact JSON — show it indented (text digests unchanged)
-function prettyPayload(text) {
-  if (!text) return "—";
-  try { return text.startsWith("{") ? JSON.stringify(JSON.parse(text), null, 1) : text; } catch (e) { return text; }
-}
-
-function deviceHealth(location) {
-  const devices = store.devices.filter((d) => d.location_id === location.location_id);
-  if (!devices.length) return h("div", { class: "muted" }, "пристроїв немає");
-  const modules = (store.status || {}).modules || {};
-  return h("div", { class: "health" }, devices.map((d) => {
-    const name = `${d.kind === "camera" ? "vision" : d.kind === "mic" ? "audio" : "gas"}@${d.device_id}`;
-    const m = modules[name] || {}, restarts = current.data.restarts.filter((e) => e.payload.module === name).length;
-    return h("div", { class: "row" }, h("span", { class: `dot ${d.status === "online" ? "on" : ""}` }), h("b", {}, d.name),
-      h("span", { class: "muted" }, `${d.kind} · ${d.transport}`), h("span", {}, m.frame_fps ? `${m.frame_fps} FPS` : d.status),
-      h("span", { class: "muted" }, d.last_seen ? `${hms(d.last_seen)}` : ""), h("span", { class: restarts ? "warn" : "muted" }, `перезапусків: ${restarts}`));
-  }));
-}
-
+export function redrawCharts() { drawGas(); }
 export function leaveLocation() { current = null; }
+export { describe };

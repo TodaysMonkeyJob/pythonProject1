@@ -1,21 +1,25 @@
-// Overview (carousel page 0): every camera + every location card + the latest notifications, without scrolling.
-import { ackLocation, ackNotification, cameras, orderedLocations, personName, store, unacked } from "../store.js";
-import { STATE_LABEL, STATE_RANK, h, hms } from "../ui.js";
+// Overview (F21): left ~65 % every camera (click → its territory), right ~35 % the territory cards sorted by severity
+// (danger → attention → offline → safe) and a short global log, newest on top, scrolling inside its own box.
+// The skeleton is mounted once; live updates replace the grid / cards and prepend to the log (never re-created, so
+// its scroll position is kept).
+import { ackNotification, cameras, orderedLocations, personName, store } from "../store.js";
+import { LiveList, STATE_LABEL, STATE_RANK, h, hms } from "../ui.js";
+import { forGlobalLog, eventRow } from "./events.js";
 import { cameraGrid } from "./grid.js";
 
-let page = 0;
+let mounted = null;           // {root, grid, cards, log, page}
 
-export function locationCard(location, go) {
+export function locationCard(location) {
   const s = store.summaries[location.location_id], state = s ? s.state : "safe";
-  const people = s ? s.people.map((p) => personName(p.person_id, p.name) + (p.action ? ` ${p.action}` : "")).slice(0, 3).join(", ") : "";
-  return h("div", { class: `loc-card st-${state}`, onclick: () => go(`#/loc/${encodeURIComponent(location.location_id)}`) },
+  const people = s ? s.people.map((p) => personName(p.person_id, p.name)).slice(0, 3).join(", ") : "";
+  return h("a", { class: `loc-card st-${state}`, href: `#/loc/${encodeURIComponent(location.location_id)}`,
+                  "aria-label": `${location.name}: ${STATE_LABEL[state] || state}` },
     h("div", { class: "row" }, h("span", { class: "title" }, `${location.icon || ""} ${location.name}`.trim()),
-      h("span", { class: `badge st-${state}` }, `● ${STATE_LABEL[state] || state}`)),
-    s && s.reason ? h("div", { class: "reason" }, s.reason) : null,
-    h("div", { class: "muted" }, `людей: ${s ? s.people_count : 0}${people ? " — " + people : ""}`,
-      s ? ` · пристрої ${s.devices.online}/${s.devices.total}` : ""),
-    s && s.active_alerts ? h("button", { class: "ack", onclick: (e) => { e.stopPropagation(); ackLocation(location.location_id); } },
-                             `Підтвердити (${s.active_alerts})`) : null);
+      h("span", { class: `badge st-${state}` }, h("span", { class: `dot st-${state}`, "aria-hidden": "true" }),
+        ` ${(STATE_LABEL[state] || state).toUpperCase()}`)),
+    h("div", { class: "reason" }, s && s.reason ? s.reason : state === "safe" ? "без подій" : "—"),
+    h("div", { class: "muted small" }, `людей: ${s ? s.people_count : 0}${people ? ` — ${people}` : ""}`,
+      s ? ` · пристрої ${s.devices.online}/${s.devices.total}` : ""));
 }
 
 export function notificationFeed(limit = 5) {
@@ -34,18 +38,29 @@ export function sortedLocations() {
     || a.order - b.order);
 }
 
+function mount(root) {
+  const log = new LiveList({ cls: "global-log", empty: "подій ще немає", label: "загальний журнал" });
+  const grid = h("section", { class: "panel cams", "aria-label": "камери" });
+  const cards = h("div", { class: "loc-list" });
+  root.replaceChildren(h("div", { class: "overview", dataset: { view: "overview" } }, grid,
+    h("aside", { class: "panel side" }, h("h2", {}, "Території"), cards, h("h2", {}, "Журнал"), log.el)));
+  log.set(store.events.filter(forGlobalLog).slice(-150).reverse().map((ev) => eventRow(ev, { withLocation: true })));
+  mounted = { root, grid, cards, log, page: mounted ? mounted.page : 0 };
+}
+
 export function renderOverview(root, { go }) {
+  if (!mounted || mounted.root !== root || !root.querySelector('[data-view="overview"]')) mount(root);
   const order = Object.fromEntries(orderedLocations().map((l, i) => [l.location_id, i]));
   const cams = cameras().slice().sort((a, b) => (order[a.location_id] ?? 99) - (order[b.location_id] ?? 99)
                                                || a.name.localeCompare(b.name));
-  const grid = cameraGrid(cams, { page, onPage: (n) => { page = n; renderOverview(root, { go }); },
-                                   onTile: (d) => go(`#/loc/${encodeURIComponent(d.location_id)}?focus=${encodeURIComponent(d.device_id)}`) });
-  root.replaceChildren(h("div", { class: "overview" },
-    h("section", { class: "panel cams" }, grid),
-    h("aside", { class: "panel side" },
-      h("h2", {}, "Локації"),
-      h("div", { class: "loc-list" }, sortedLocations().map((l) => locationCard(l, go))),
-      h("h2", {}, `Сповіщення${unacked().length ? ` (${unacked().length})` : ""}`),
-      h("div", { class: "note-feed" }, notificationFeed(5)))));
+  mounted.grid.replaceChildren(cameraGrid(cams, {
+    page: mounted.page, onPage: (n) => { mounted.page = n; renderOverview(root, { go }); },
+    onTile: (d) => go(`#/loc/${encodeURIComponent(d.location_id)}`) }));
+  mounted.cards.replaceChildren(...sortedLocations().map(locationCard));
 }
 
+export function onOverviewEvent(ev) {
+  if (mounted && forGlobalLog(ev)) mounted.log.prepend([eventRow(ev, { withLocation: true })]);
+}
+
+export function leaveOverview() { mounted = null; }
