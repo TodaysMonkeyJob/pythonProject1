@@ -298,6 +298,8 @@ llm:                        # F6: GPT analysis of snapshot digests (Azure OpenAI
   temperature: 0.2
   max_output_tokens: 300
   min_llm_interval_sec: 300 # regular snapshots at most this often (critical ones immediately)
+  max_snapshot_age_min: 30  # older pending snapshots are skipped as stale (e.g. after an outage or a bad key)
+  max_rows_per_step: 5      # GPT requests per loop pass (heartbeat in between, so a backlog can't trip the watchdog)
   gating: true              # F19: a fuzzy gate decides whether a snapshot needs GPT (rules: gating in config/fuzzy.yaml);
                             # routine → fuzzy-only decision (risk = r_floor), critical / untrusted claims → always GPT
   poll_sec: 1.0

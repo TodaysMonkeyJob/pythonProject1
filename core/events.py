@@ -33,6 +33,7 @@ EVENT_TYPES = (
     "alert",
     "llm_decision",
     "deescalation_rejected",    # F17: the risk corridor raised the LLM's level (attack success rate metrics)
+    "llm_status",               # GPT availability changed: ok / auth_error / rate_limited / unreachable / disabled
     "llm_gating",               # F19: logged to gating.jsonl only (call / fuzzy-only, inputs, tokens saved)
     "heartbeat",
     "scene_active",

@@ -290,7 +290,8 @@ def test_gpt_throttle_is_per_location_and_decisions_carry_it(tmp_path):
                 created_at=n + 1, digest=f"{location} {n}")
     box.add({"snapshot_id": "g", "trigger": "global"}, "global", created_at=9, digest="site overview")
     gpt = FakeGPT()
-    worker = LLMWorker(queue.Queue(), queue.Queue(), {"llm": {"min_llm_interval_sec": 300, "poll_sec": 0}},
+    config = {"llm": {"min_llm_interval_sec": 300, "poll_sec": 0, "max_snapshot_age_min": 0}}
+    worker = LLMWorker(queue.Queue(), queue.Queue(), config,
                        gpt=gpt, outbox=box, clock=lambda: 1000.0)
     worker.step()
     assert sorted(gpt.digests) == ["office 3", "site overview", "warehouse 2"]   # newest per location + site

@@ -91,7 +91,7 @@ def test_hard_overrides():
 def make_worker(tmp_path, gpt=None, min_interval=300, wall=None):
     wall = wall or [T0]
     box = Outbox(str(tmp_path / "outbox.db"))
-    config = {"llm": {"poll_sec": 0, "min_llm_interval_sec": min_interval},
+    config = {"llm": {"poll_sec": 0, "min_llm_interval_sec": min_interval, "max_snapshot_age_min": 0},
               "logging": {"dir": str(tmp_path / "logs")}, "trust": {"fuzzy_config": FUZZY}}
     clock = [1000.0]
     worker = LLMWorker(queue.Queue(), queue.Queue(), config, gpt=gpt if gpt is not None else FakeGPT(),
