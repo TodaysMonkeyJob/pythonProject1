@@ -13,12 +13,11 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-import yaml
-
 from core.events import Event
+from core.fuzzy import load_yaml
 from modules.envelope.confirmation import Confirmation
 from modules.envelope.corridor import Corridor
-from modules.envelope.projection import DEFAULT_LLM_LEVELS, DEFAULT_THRESHOLDS, level_value, project
+from modules.envelope.projection import DEFAULT_LLM_LEVELS, DEFAULT_THRESHOLDS, level_of, level_value, project
 from modules.envelope.state import TrustedState
 from modules.llm.calibration import RiskCalibrator
 
@@ -47,8 +46,7 @@ class RiskEnvelope:
     @classmethod
     def from_config(cls, path: str = "config/fuzzy.yaml",
                     locations_path: Optional[str] = "config/locations.yaml") -> "RiskEnvelope":
-        with open(path, encoding="utf-8") as f:
-            return cls(yaml.safe_load(f) or {}, path, locations_path)
+        return cls(load_yaml(path), path, locations_path)
 
     def observe(self, event: Event) -> None:
         self.state.observe(event)
@@ -74,6 +72,10 @@ class RiskEnvelope:
         terms = self.corridor.engine(location_id).fuzzify("risk", floor)
         term = max(terms, key=terms.get)
         return {"term": term, "mu": round(terms[term], 2)}
+
+    def level(self, risk: float) -> str:
+        """:return: The level of a risk number with this envelope's thresholds (``envelope.thresholds``)"""
+        return level_of(risk, self.thresholds)
 
     def r_llm(self, risk_level: str, distribution: Optional[Dict[str, float]] = None):
         """:return: (r_LLM, source): calibrated centroid of the distribution, or the fixed level number"""

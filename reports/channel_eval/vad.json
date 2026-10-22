@@ -1,0 +1,38 @@
+{
+ "channel": "vad",
+ "measured_at": "2026-10-22T19:44:37+00:00",
+ "device": "mic",
+ "correct": 386,
+ "wrong": 254,
+ "unit": "clip: segment iff speech",
+ "speech": {
+  "detected": 320,
+  "missed": 0
+ },
+ "noise_only": {
+  "rejected": 66,
+  "false": 254
+ },
+ "noise_false_by_level": {
+  "-30..-20 dBFS": {
+   "rejected": 0,
+   "false": 85
+  },
+  "-40..-30 dBFS": {
+   "rejected": 0,
+   "false": 80
+  },
+  "-50..-40 dBFS": {
+   "rejected": 5,
+   "false": 74
+  },
+  "-60..-50 dBFS": {
+   "rejected": 61,
+   "false": 15
+  }
+ },
+ "sound_threshold_db": -35,
+ "source": "data/calibration/speech/manifest.csv",
+ "sha256": "147acd52988e8b645a9c9b89c951199216a8307d53fe9b03a5b103aabd4783f4",
+ "note": "synthetic TTS speech (incl. low SNR) and white noise −60…−20 dBFS; no real room recordings yet"
+}

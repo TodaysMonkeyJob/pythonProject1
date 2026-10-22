@@ -545,13 +545,10 @@ class Aggregator:
         if location_id not in self._fuzzy:
             engine, theta = None, 0.6
             try:
-                import yaml
-
-                from core.fuzzy import FuzzyEngine
+                from core.fuzzy import FuzzyEngine, load_yaml
 
                 if self._fuzzy_root is None:
-                    with open(self.fuzzy_path, encoding="utf-8") as f:
-                        self._fuzzy_root = yaml.safe_load(f) or {}
+                    self._fuzzy_root = load_yaml(self.fuzzy_path)
                 envelope = self._fuzzy_root.get("envelope") or {}
                 theta = float(((envelope.get("locations") or {}).get(location_id) or {}).get(
                     "theta", envelope.get("theta", 0.6)))

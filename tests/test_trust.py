@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from core.events import make_event
+from core.fuzzy import FuzzyEngine, load_yaml
 from modules.audio.attribution import Segment, align, iso
 from modules.audio.speaker import Turn
 from modules.llm.whisper_client import _segments
@@ -146,8 +147,10 @@ def test_physical_sensors_default_high_and_degrade(scorer):
     assert p["trust"] >= 0.9 and p["provenance"] == "sensor:gas-1@warehouse"
     twin = feed(scorer, ev("gas", "gas_reading", {**reading, "concentration_pct": 3.5}, T0 + 5, device="gas-2"))
     assert twin["trust"] == 0.6 and any("disagrees with gas-1" in r for r in twin["trust_reasons"])
+    # measured (config/calibration/gas.yaml): a low predict_proba is still almost always the right gas → no penalty;
+    # gas-3 is only distrusted because it disagrees with gas-2
     unsure = feed(scorer, ev("gas", "gas_reading", {**reading, "gas_confidence": 0.2}, T0 + 6, device="gas-3"))
-    assert unsure["trust"] < 0.5
+    assert unsure["trust"] == 0.6 and not any("classifier unsure" in r for r in unsure["trust_reasons"])
     scorer.apply(ev("system", "device_offline", {"device_id": "gas-1", "kind": "gas", "location_id": "warehouse"}))
     assert feed(scorer, ev("gas", "gas_reading", dict(reading), T0 + 60, device="gas-1"))["trust"] == 0.3
     motion = feed(scorer, ev("camera", "motion", {"level": 0.4}))
@@ -160,7 +163,28 @@ def test_identity_trust_follows_face_match(scorer):
     weak = feed(scorer, ev("camera", "person_identified", {"track_id": 2, "person_id": OLEH, "known": True,
                                                            "similarity": 0.46}))
     stranger = feed(scorer, ev("camera", "person_identified", {"track_id": 3, "person_id": "u", "known": False}))
-    assert strong["trust"] > 0.85 > weak["trust"] and stranger["trust"] == 0.8
+    face_unknown = load_yaml(str(REPO / "config" / "fuzzy.yaml"))["trust"]["base"]["identity_unknown"]
+    assert strong["trust"] > 0.85 > weak["trust"] and stranger["trust"] == face_unknown > 0.99   # measured on LFW
+
+
+def test_without_calibration_files_the_fallback_rule_bases_apply():
+    cfg = load_yaml(str(REPO / "config" / "fuzzy.yaml"))
+    cfg["trust"]["calibration"] = {}
+    plain = TrustScorer(cfg["trust"], FuzzyEngine.from_dict(cfg))
+    reading = {"gas": "ethanol", "concentration_pct": 0.3, "trend": "stable", "gas_confidence": 0.2}
+    assert feed(plain, ev("gas", "gas_reading", reading, device="gas-9"))["trust"] < 0.5   # gas_confidence_min rule
+    weak = feed(plain, ev("camera", "person_identified", {"track_id": 2, "person_id": OLEH, "known": True,
+                                                          "similarity": 0.46}))
+    assert 0.3 < weak["trust"] < 0.7                                                          # trust.identity rules
+
+
+def test_calibrated_maps_are_monotone_and_measured(scorer):
+    asr, speaker, face, gas = (scorer.maps[k] for k in ("asr", "speaker", "face", "gas"))
+    grid = [i / 20 for i in range(21)]
+    for mapping in (asr, speaker, face, gas):
+        values = [mapping(x) for x in grid]
+        assert values == sorted(values) and 0.0 <= values[0] and values[-1] <= 1.0
+    assert asr(0.2) < 0.2 and asr(0.9) > 0.8 and speaker(0.1) < 0.1 and speaker(0.6) > 0.9 and face(0.3) < 0.2
 
 
 def test_system_events_are_not_scored(scorer):

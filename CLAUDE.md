@@ -160,6 +160,19 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   4 ablations (`configs.py`, `pipeline.py`), GPT cached by payload hash (`experiments/cache/llm_<backend>.sqlite`),
   metrics + bootstrap CIs + McNemar (`metrics.py`) → `reports/experiment_<date>/` (`report.py`, `RESULTS.md`).
   `record.py` cuts / labels the recorded set (raw media in git-ignored `data/eval/raw/`). See `experiments/README.md`.
+- F22 (TOD-33) measured trust inputs (`core/calibration.py`): `config/fuzzy.yaml` has no hand-picked trust degree /
+  threshold — strings `"@trust_priors:…"` / `"@thresholds:…"` are resolved by `core.fuzzy.load_yaml` (always load
+  fuzzy.yaml through it) from `config/trust_priors.yaml` (`tools/trust_priors.py`: one entry per TOD-34 device ×
+  channel, r0 / s0 on held-out data → τ0, u0, Wilson LB; no data → `prior_status: unmeasured`, r0 = s0 = 0, never a
+  typed value; counts from `tools/measure_channels.py` → `reports/channel_eval/`; `policy.*` = rules + interim
+  values, `measured: false`), `config/thresholds.yaml` (`tools/fit_thresholds.py`: min C_miss·P_miss +
+  C_fa·P_fa on the calibration split, `calibration.cost_ratio` in config.yaml; reads the GPT cache read-only, misses →
+  simulator, level boundaries kept when < 10 scenarios have recorded answers; log `reports/thresholds_log.jsonl`) and
+  `trust.calibration` maps `config/calibration/{asr,speaker,face,gas}.yaml` (`tools/calibrate_channels.py`: isotonic /
+  logistic / Bayes bins; the scorer falls back to the `trust.asr` / `trust.identity` rule bases without them).
+  Data: `tools/synth_speech.py` (macOS `say` voices + noise → git-ignored `data/calibration/speech/`), committed
+  `data/calibration/asr_phrases.csv` / `speaker_pairs.csv`. `tools/calibration_report.py` → `reports/calibration_<date>/`.
+  Changing trust values changes the GPT payloads: re-run `experiments.run --llm azure` (new calls) before refitting levels.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

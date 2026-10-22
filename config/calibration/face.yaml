@@ -1,0 +1,78 @@
+# F22 (TOD-33) measured channel calibration — written by python -m tools.calibrate_channels face; do not edit
+channel: face
+version: 1
+fitted_at: '2026-10-22T11:12:49+00:00'
+raw_score: SFace similarity of the best gallery match
+meaning: P(the face belongs to the matched known person | similarity)
+method: Bayes over measured TAR / FAR bins (+0.5 Jeffreys counts), monotone
+prior: 0.5
+prior_meaning: P(a face in view is a known person) — set per site (--prior)
+n: 650
+n_known: 150
+n_strangers: 500
+dataset:
+  path: reports/identity_eval_lfw.json
+  sha256: b8c7ce8eeca9bf851868b8242279dd145e90d31776a2c26330dde94ee13c88e2
+  source: LFW (lfw_funneled, sklearn.datasets.fetch_lfw_people)
+bins:
+- lo: 0.0
+  hi: 0.3
+  known: 0.0
+  strangers: 469.0
+  posterior: 0.0035
+- lo: 0.3
+  hi: 0.363
+  known: 0.0
+  strangers: 27.0
+  posterior: 0.0563
+- lo: 0.363
+  hi: 0.4
+  known: 0.0
+  strangers: 3.0
+  posterior: 0.3191
+- lo: 0.4
+  hi: 0.45
+  known: 0.0
+  strangers: 1.0
+  posterior: 0.5223
+- lo: 0.45
+  hi: 0.5
+  known: 0.0
+  strangers: 0.0
+  posterior: 0.7664
+- lo: 0.5
+  hi: 0.55
+  known: 1.1
+  strangers: 0.0
+  posterior: 0.9105
+- lo: 0.55
+  hi: 1.0
+  known: 148.9
+  strangers: 0.0
+  posterior: 0.999
+table:
+  '0.30': 0.047
+  '0.35': 0.154
+  '0.40': 0.406
+  '0.45': 0.644
+  '0.50': 0.838
+  '0.55': 0.919
+  '0.60': 0.937
+map:
+  kind: bayes_bins
+  x:
+  - 0.15
+  - 0.3315
+  - 0.3815
+  - 0.425
+  - 0.475
+  - 0.525
+  - 0.775
+  y:
+  - 0.0035
+  - 0.0563
+  - 0.3191
+  - 0.5223
+  - 0.7664
+  - 0.9105
+  - 0.999

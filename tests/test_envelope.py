@@ -141,7 +141,7 @@ def test_known_person_lying_motionless_is_not_confirmed_safe():
 def test_stranger_at_night_and_location_theta():
     office = [e.model_copy(update={"location_id": "office"}) for e in person(known=False)]
     assert decide(envelope(*office), "low", hour=23, location="office")["risk_level_final"] == "high"
-    root = __import__("yaml").safe_load(Path(CONFIG).read_text())
+    root = __import__("core.fuzzy", fromlist=["load_yaml"]).load_yaml(CONFIG)
     root["envelope"]["locations"] = {"office": {"theta": 0.9}}              # face trust 0.8 < θ → "unknown" unused
     strict = RiskEnvelope(root, CONFIG, None)
     for event in office:
@@ -249,7 +249,7 @@ def test_floor_is_not_diluted_by_milder_rules():
     stranger = person(known=False)                                # stranger in daytime → R14 medium (weight 0.5)
     d = decide(envelope(*stranger, gas(6.5, 0.5, "rising")), "low")
     assert d["risk_floor"] >= 0.85 and d["risk_level_final"] == "critical"
-    root = __import__("yaml").safe_load(Path(CONFIG).read_text())
+    root = __import__("core.fuzzy", fromlist=["load_yaml"]).load_yaml(CONFIG)
     root["envelope"]["floor"] = "centroid"                        # the old behaviour, kept for the ablation
     centroid = RiskEnvelope(root, CONFIG, None)
     for event in [*stranger, gas(6.5, 0.5, "rising")]:

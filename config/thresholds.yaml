@@ -1,0 +1,103 @@
+# F22 (TOD-33) cost-based thresholds — written by python -m tools.fit_thresholds; do not edit by hand.
+# Each value minimises C_miss * P_miss + C_fa * P_fa on the calibration split; cost_ratio = C_miss / C_fa is the only
+# expert input. config/fuzzy.yaml reads `values` through "@thresholds:values.<name>" references.
+version: 1
+fitted_at: '2026-10-22T11:22:20+00:00'
+cost_ratio: 10.0
+c_fa: 1.0
+c_miss: 10.0
+bandwidth: 0.05
+dataset:
+  path: data/eval/scripted
+  name: scripted-42
+  hash: f6d67b63603b83466fe4703ff321927d604bc23be740e2f226106e73689b5414
+  synthetic: true
+  split: calibration
+  seed: 42
+  scenarios: 36
+  evidence_events: 1466
+  gate_evaluations: 79
+fuzzy_config:
+  path: config/fuzzy.yaml
+  sha256: bb65192ab7f03421e5c0673c2432178551b6ac4c8406649791382476780189cb
+llm:
+  backend: azure
+  offline: true
+  calls: 69
+  cache_misses: 69
+values:
+  theta: 0.61
+  levels:
+    medium: 0.24
+    high: 0.53
+    critical: 0.78
+  gating: 0.4
+  critical_floor: 0.78
+expected_cost:
+  theta: 0.0
+  level_medium: 0.002
+  level_high: 0.0013
+  level_critical: 0.0102
+  gating: 0.5
+fits:
+  theta:
+    threshold: 0.61
+    expected_cost: 0.0
+    p_miss: 0.0
+    p_fa: 0.0
+    empirical_p_miss: 0.0
+    empirical_p_fa: 0.0
+    n_pos: 33
+    n_neg: 1433
+  level_medium:
+    threshold: 0.24
+    expected_cost: 0.002
+    p_miss: 0.0001
+    p_fa: 0.0009
+    empirical_p_miss: 0.0
+    empirical_p_fa: 0.0
+    n_pos: 12
+    n_neg: 12
+    kept_from: '2026-10-22T11:22:13+00:00'
+    kept_reason: only 3 calibration scenarios with recorded GPT answers
+  level_high:
+    threshold: 0.53
+    expected_cost: 0.0013
+    p_miss: 0.0001
+    p_fa: 0.0007
+    empirical_p_miss: 0.0
+    empirical_p_fa: 0.0
+    n_pos: 10
+    n_neg: 14
+    kept_from: '2026-10-22T11:22:13+00:00'
+    kept_reason: only 3 calibration scenarios with recorded GPT answers
+  level_critical:
+    threshold: 0.78
+    expected_cost: 0.0102
+    p_miss: 0.0003
+    p_fa: 0.0068
+    empirical_p_miss: 0.0
+    empirical_p_fa: 0.0
+    n_pos: 8
+    n_neg: 16
+    kept_from: '2026-10-22T11:22:13+00:00'
+    kept_reason: only 3 calibration scenarios with recorded GPT answers
+  gating:
+    threshold: 0.4
+    expected_cost: 0.5
+    p_miss: 0.0
+    p_fa: 0.5
+    empirical_p_miss: 0.0
+    empirical_p_fa: 0.5
+    n_pos: 2
+    n_neg: 20
+level_scenarios:
+  used: 3
+  skipped_without_recorded_gpt: 33
+previous_levels:
+  medium: 0.24
+  high: 0.53
+  critical: 0.78
+not_applicable:
+  lambda: corridor risk attitude — not in the code yet (corridor issue)
+  h_min: agreement threshold — not in the code yet (corridor issue)

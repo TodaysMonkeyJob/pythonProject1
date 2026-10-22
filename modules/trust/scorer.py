@@ -20,14 +20,21 @@ Added to the payload (before the event is logged and reaches the aggregator)::
      "trust_reasons": ["speaker unknown", "nobody visible in warehouse during the speech (possible playback)", …],
      "trust_components": {"source": 0.05, "asr": 0.82, "consistency": 0.1}}
 
+Measured inputs (F22 / TOD-33): with ``trust.calibration`` files present (``tools/calibrate_channels.py``) the raw
+scores are calibrated probabilities instead of hand-set term breakpoints — μ_asr = P(WER ≤ 10 % | asr_confidence),
+speaker = P(same speaker | ECAPA score), identity τ = P(known | SFace similarity), gas τ = min(prior, P(label right |
+gas_confidence)); base degrees come from ``config/trust_priors.yaml`` (``@trust_priors:…`` refs). A missing file falls
+back to the ``trust.asr`` / ``trust.identity`` rule bases.
+
 Local and deterministic: no network, no LLM; ≈ 0.5 ms per speech event on the dev Mac (budget on the Pi: 10 ms).
 """
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
-import yaml
 
+from core.calibration import load_map
 from core.events import Event
-from core.fuzzy import FuzzyEngine
+from core.fuzzy import FuzzyEngine, load_yaml
 from core.fuzzy.membership import parse_term
 from core.fuzzy.variables import LinguisticVariable
 from modules.trust.channels import EvidenceState, channel_of, epoch
@@ -40,10 +47,11 @@ TWIN_WINDOW_SEC = 30.0
 
 class TrustScorer:
     def __init__(self, cfg: Dict[str, Any], risk_engine: Optional[FuzzyEngine] = None,
-                 state: Optional[EvidenceState] = None):
+                 state: Optional[EvidenceState] = None, base_dir: str = "config"):
         """
         :param cfg: The ``trust`` section of ``config/fuzzy.yaml``
         :param risk_engine: The base risk engine (TOD-26) — its gas variables grade "how alarming" the sensors are
+        :param base_dir: Folder of ``fuzzy.yaml`` — ``trust.calibration`` paths are relative to it
         """
         self.cfg = cfg
         self.base = {"physical": 0.95, "physical_degraded": 0.3, "redundant_disagreement": 0.6, "scene_text": 0.1,
@@ -60,14 +68,18 @@ class TrustScorer:
         self.grace = float(cfg.get("presence_grace_sec", 3))
         self.gas_confidence_min = float(cfg.get("gas_confidence_min", 0.5))
         self.gas_disagreement = float(cfg.get("gas_disagreement_pct", 1.0))
+        self.maps = {}
+        for channel, rel in (cfg.get("calibration") or {}).items():
+            mapping = load_map(os.path.join(base_dir, rel))
+            if mapping is not None:
+                self.maps[channel] = mapping
 
     @classmethod
     def from_config(cls, path: str = "config/fuzzy.yaml") -> "TrustScorer":
-        with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        data = load_yaml(path)
         if "trust" not in data:
             raise KeyError(f"{path} has no trust section")
-        return cls(data["trust"], FuzzyEngine.from_dict(data))
+        return cls(data["trust"], FuzzyEngine.from_dict(data), base_dir=os.path.dirname(os.path.abspath(path)))
 
     # --- entry point --------------------------------------------------------------------------------------------
 
@@ -108,7 +120,14 @@ class TrustScorer:
             tau, reasons = self.base["physical_degraded"], [f"device {device} is offline / in error"]
         if event.type == "gas_reading":
             confidence = p.get("gas_confidence")
-            if confidence is not None and float(confidence) < self.gas_confidence_min:
+            if device not in self.state.unhealthy:
+                tau = float(self.base.get("gas", tau))
+            if confidence is not None and "gas" in self.maps:
+                calibrated = self.maps["gas"](float(confidence))
+                if calibrated < tau:
+                    tau = calibrated
+                    reasons.append(f"gas label right with P = {calibrated:.2f} at confidence {float(confidence):.2f}")
+            elif confidence is not None and float(confidence) < self.gas_confidence_min:
                 tau = min(tau, self.base["physical"] * max(0.3, float(confidence) / self.gas_confidence_min))
                 reasons.append(f"gas classifier unsure ({float(confidence):.2f})")
             now = epoch(event.timestamp) or 0.0
@@ -132,6 +151,9 @@ class TrustScorer:
         if not p.get("known"):
             return self._result(self.base["identity_unknown"], provenance, ["unknown person (physical observation)"])
         similarity = float(p.get("similarity") or 0.0)
+        if "face" in self.maps:
+            tau = self.maps["face"](similarity)
+            return self._result(tau, provenance, [f"face match {similarity:.2f} → P(known) {tau:.2f}"])
         tau = self.identity.infer({"face_match": similarity})["crisp"]
         return self._result(tau, provenance, [f"face match {similarity:.2f}"])
 
@@ -161,7 +183,14 @@ class TrustScorer:
         start = epoch(p.get("start")) or epoch(event.timestamp) or 0.0
         end = epoch(p.get("end")) or start
         status, speaker_id = p.get("speaker_status"), p.get("person_id")
-        if status == "known":
+        if "speaker" in self.maps and p.get("speaker_score") is not None \
+                and status in ("known", "unknown", "uncertain"):
+            score = float(p["speaker_score"])
+            speaker = self.maps["speaker"](score)
+            reasons.append(f"known speaker {p.get('speaker_name') or speaker_id} ({score:.2f})" if status == "known"
+                           else f"speaker {status}")
+            reasons.append(f"P(same speaker) {speaker:.2f}")
+        elif status == "known":
             score = float(p.get("speaker_score") or 0.0)
             speaker = 0.7 + 0.3 * min(1.0, max(0.0, (score - 0.3) / 0.4))
             reasons.append(f"known speaker {p.get('speaker_name') or speaker_id} ({score:.2f})")
@@ -197,7 +226,8 @@ class TrustScorer:
         if confidence is None:
             asr = 1.0
         else:
-            asr = self.asr.infer({"asr_confidence": float(confidence)})["crisp"]
+            asr = self.maps["asr"](float(confidence)) if "asr" in self.maps \
+                else self.asr.infer({"asr_confidence": float(confidence)})["crisp"]
             if asr < 0.7:
                 reasons.append(f"low ASR confidence ({float(confidence):.2f})")
         who = p.get("speaker_name") or (speaker_id[:8] if speaker_id else "unattributed")

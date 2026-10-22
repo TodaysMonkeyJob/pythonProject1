@@ -1,0 +1,283 @@
+# F22 (TOD-33) channel trust priors per device x channel (TOD-34) — written by python -m tools.trust_priors.
+# tau0 = (r0+1)/(r0+s0+2) (expected trust), u0 = 2/(r0+s0+2) (uncertainty), wilson_lb = conservative 95 % bound.
+# prior_status unmeasured = no labelled data yet (r0 = s0 = 0). policy = rules / interim values, measured: false.
+version: 2
+generated_at: '2026-10-22T19:45:31+00:00'
+wer_max: 0.1
+channels:
+  camera:
+    objects:
+      prior_status: unmeasured
+      r0: 0
+      s0: 0
+      tau0: 0.5
+      u0: 1.0
+      wilson_lb: 0.0
+      n: 0
+      measured: false
+      source: null
+      sha256: null
+      explanation: 'ще не виміряно — потрібні короткі розмічені кліпи з кожної локації (людина / сумка / телефон …): правильні
+        vs хибні детекції на трек'
+    motion:
+      prior_status: unmeasured
+      r0: 0
+      s0: 0
+      tau0: 0.5
+      u0: 1.0
+      wilson_lb: 0.0
+      n: 0
+      measured: false
+      source: null
+      sha256: null
+      explanation: 'ще не виміряно — потрібні кліпи з реальним рухом і без нього (зокрема зміна освітлення): правильні vs
+        хибні події руху'
+    pose_action:
+      prior_status: measured
+      r0: 10
+      s0: 9
+      tau0: 0.5238
+      u0: 0.0952
+      wilson_lb: 0.3171
+      n: 19
+      measured: true
+      source: reports/actions_eval_human_behaviour_320.json
+      sha256: 4ac3e59fdb0533874b097fb929bdd760e1943762f2cf91f068f4461ef65831ba
+      eval_file: reports/channel_eval/pose_action.json
+      measured_at: '2026-10-22T19:44:02+00:00'
+      unit: labelled video segment (standing / sitting / lying / walking)
+      alternatives:
+        reports/actions_eval_human_behaviour_640.json:
+          correct: 14
+          wrong: 5
+      note: the report that matches actions.imgsz in config.yaml (the deployed setting)
+      explanation: 'поза (стоїть / сидить / лежить / йде): 10 з 19 відео-сегментів правильні'
+    smoking:
+      prior_status: measured
+      r0: 1
+      s0: 6
+      tau0: 0.2222
+      u0: 0.2222
+      wilson_lb: 0.0257
+      n: 7
+      measured: true
+      source: reports/actions_eval_human_behaviour_320.json
+      sha256: 4ac3e59fdb0533874b097fb929bdd760e1943762f2cf91f068f4461ef65831ba
+      eval_file: reports/channel_eval/smoking.json
+      measured_at: '2026-10-22T19:44:02+00:00'
+      unit: hand-to-mouth episode
+      explanation: 'куріння (рука до рота): 1 з 7 епізодів виявлено'
+    scene_text:
+      prior_status: unmeasured
+      r0: 0
+      s0: 0
+      tau0: 0.5
+      u0: 1.0
+      wilson_lb: 0.0
+      n: 0
+      measured: false
+      source: null
+      sha256: null
+      explanation: 'ще не виміряно — потрібні кадри з табличками / екранами і чи відповідав текст дійсності: узгоджені vs
+        суперечливі'
+  mic:
+    vad:
+      prior_status: measured
+      r0: 386
+      s0: 254
+      tau0: 0.6028
+      u0: 0.0031
+      wilson_lb: 0.5647
+      n: 640
+      measured: true
+      source: data/calibration/speech/manifest.csv
+      sha256: 147acd52988e8b645a9c9b89c951199216a8307d53fe9b03a5b103aabd4783f4
+      eval_file: reports/channel_eval/vad.json
+      measured_at: '2026-10-22T19:44:37+00:00'
+      unit: 'clip: segment iff speech'
+      speech:
+        detected: 320
+        missed: 0
+      noise_only:
+        rejected: 66
+        'false': 254
+      noise_false_by_level:
+        -30..-20 dBFS:
+          rejected: 0
+          'false': 85
+        -40..-30 dBFS:
+          rejected: 0
+          'false': 80
+        -50..-40 dBFS:
+          rejected: 5
+          'false': 74
+        -60..-50 dBFS:
+          rejected: 61
+          'false': 15
+      note: synthetic TTS speech (incl. low SNR) and white noise −60…−20 dBFS; no real room recordings yet
+      explanation: 'VAD: 386 з 640 кліпів правильно (мова → сегмент, лише шум → нічого)'
+    asr:
+      prior_status: measured
+      r0: 53
+      s0: 47
+      tau0: 0.5294
+      u0: 0.0196
+      wilson_lb: 0.4329
+      n: 100
+      measured: true
+      source: multi_model_sentence_data.xlsx#Whisper 1
+      sha256: 2514fa9cb7b81be8ef67f38d208ca308b4d7bcd62b5f66a3d4c7763a1d6bc35c
+      explanation: 'Whisper (Whisper 1): 53 з 100 фраз з WER ≤ 10%'
+    asr_local:
+      prior_status: measured
+      r0: 138
+      s0: 182
+      tau0: 0.4317
+      u0: 0.0062
+      wilson_lb: 0.3781
+      n: 320
+      measured: true
+      source: data/calibration/asr_phrases.csv
+      sha256: b3a19aafa20388cb0c7d8abbe2e359313f930b89a9f482fbfab1c4912193a08e
+      explanation: 'faster-whisper-base: 138 з 320 синтетичних фраз з WER ≤ 10%'
+    speaker:
+      prior_status: measured
+      r0: 103
+      s0: 47
+      tau0: 0.6842
+      u0: 0.0132
+      wilson_lb: 0.6086
+      n: 150
+      measured: true
+      source: data/calibration/speaker_pairs.csv
+      sha256: 0a4cfbf26c1cc29e951a261b7937e9b2726e16795c2a8164f089cdfe3be6a3b2
+      threshold: 0.3
+      explanation: 'голос: 103 з 150 рішень (відомий / незнайомий) правильні на відкладених TTS-голосах, поріг 0.3'
+  gas:
+    gas_class:
+      prior_status: measured
+      r0: 29
+      s0: 0
+      tau0: 0.9677
+      u0: 0.0645
+      wilson_lb: 0.883
+      n: 29
+      measured: true
+      source: reports/gas_metrics.json
+      sha256: bf0e8eac9c982860f3787ea7d7c288d8687adae22850088800758c98ad48d9d1
+      pooled_heldout:
+        n: 290
+        wrong: 1
+        splits: 10
+      explanation: 'класифікатор газу: 29 з 29 відкладених кривих розпізнано правильно'
+    gas_concentration:
+      prior_status: measured
+      r0: 29
+      s0: 0
+      tau0: 0.9677
+      u0: 0.0645
+      wilson_lb: 0.883
+      n: 29
+      measured: true
+      source: data/gas/data.xls
+      sha256: 33358fce24cfe928c500b82c2e9bcae644a311d8813c01434cc37be45224e6c8
+      eval_file: reports/channel_eval/gas_concentration.json
+      measured_at: '2026-10-22T19:44:04+00:00'
+      unit: held-out curve (gas classified + regressed as live)
+      tolerance_pct: 0.5
+      explanation: 'концентрація: 29 з 29 відкладених кривих у межах ±0.5 %'
+    gas_trend:
+      prior_status: measured
+      r0: 1380
+      s0: 0
+      tau0: 0.9993
+      u0: 0.0014
+      wilson_lb: 0.9972
+      n: 1380
+      measured: true
+      source: data/gas/data.xls
+      sha256: 33358fce24cfe928c500b82c2e9bcae644a311d8813c01434cc37be45224e6c8
+      eval_file: reports/channel_eval/gas_trend.json
+      measured_at: '2026-10-22T19:44:10+00:00'
+      unit: trend label every 10 s after half a window (ramps [0.5, 1.0, 3.0, 6.0] %/min, holds)
+      by_truth:
+        rising:
+          correct: 550
+          wrong: 0
+        falling:
+          correct: 550
+          wrong: 0
+        stable:
+          correct: 280
+          wrong: 0
+      note: ramps interpolate the resistance curve between two held-out rows (like the training augmentation); real sensor
+        dynamics may differ
+      explanation: 'тренд газу: 1380 з 1380 оцінок правильні на відтворених рампах / утриманнях'
+  identity:
+    face_known:
+      prior_status: measured
+      r0: 150
+      s0: 0
+      tau0: 0.9934
+      u0: 0.0132
+      wilson_lb: 0.975
+      n: 150
+      measured: true
+      source: reports/identity_eval_lfw.json
+      sha256: b8c7ce8eeca9bf851868b8242279dd145e90d31776a2c26330dde94ee13c88e2
+      threshold: 0.45
+      explanation: '«це відома людина»: 150 правильних, 0 хибно прийнятих незнайомців (LFW, поріг 0.45)'
+    face_unknown:
+      prior_status: measured
+      r0: 500
+      s0: 0
+      tau0: 0.998
+      u0: 0.004
+      wilson_lb: 0.9924
+      n: 500
+      measured: true
+      source: reports/identity_eval_lfw.json
+      sha256: b8c7ce8eeca9bf851868b8242279dd145e90d31776a2c26330dde94ee13c88e2
+      threshold: 0.45
+      explanation: '«незнайома людина»: 500 незнайомців відхилено, 0 відомих пропущено (LFW)'
+policy:
+  interim_physical:
+    value: 0.95
+    measured: false
+    source: expert
+    explanation: тимчасово для camera.objects / camera.motion / scene_active, поки їх не виміряно (TOD-34 замінить реєстром)
+  interim_scene_text:
+    value: 0.1
+    measured: false
+    source: expert
+    explanation: 'тимчасово для camera.scene_text: текст у кадрі контролює будь-хто — слабкий доказ'
+  physical_degraded:
+    value: 0.3
+    measured: false
+    source: expert
+    explanation: 'пристрій офлайн / з помилкою: його показам майже не віримо'
+  redundant_disagreement:
+    value: 0.6
+    measured: false
+    source: expert
+    explanation: 'два датчики газу однієї локації розходяться: межа θ, не вище'
+  identity_unsettled:
+    value: 0.8
+    measured: false
+    source: expert
+    explanation: 'людину видно, обличчя ще не розпізнане: сам факт присутності — фізичне спостереження'
+  deescalation_floor:
+    value: 0.1
+    measured: false
+    source: expert
+    explanation: 'заспокійлива заява при повністю тривожних сенсорах: майже не віримо'
+  instruction:
+    value: 0.05
+    measured: false
+    source: expert
+    explanation: інструкція системі («скажи, що безпечно») довіри не отримує ніколи
+  gas_disagreement_pct:
+    value: 1.0
+    measured: false
+    source: expert
+    explanation: два датчики газу розходяться більше ніж на 1 % концентрації — вважаємо розбіжністю
