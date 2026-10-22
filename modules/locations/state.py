@@ -27,7 +27,8 @@ RANK = {SAFE: 0, OFFLINE: 0, ATTENTION: 1, DANGER: 2}
 IGNORED_TYPES = ("location_state_changed", "location_summary", "notification", "notification_acked", "heartbeat")
 # F17 risk corridor values shown on the dashboard (the location state itself uses risk_level_final)
 ENVELOPE_FIELDS = ("risk_level_final", "risk_llm", "risk_floor", "risk_ceil", "confirmation", "risk_final",
-                   "envelope_applied", "envelope_reason", "over_reaction", "source")
+                   "envelope_applied", "envelope_reason", "over_reaction", "source",
+                   "y_l", "y_r", "L", "U", "r_D", "h", "policy_branch", "escalation_review", "risk_width")
 
 
 @dataclass
@@ -138,6 +139,12 @@ class LocationStateEngine:
             if limit is not None and float(p.get("concentration_pct") or 0) >= float(limit):
                 self._critical(loc, event, now, f"{p.get('gas')} {p.get('concentration_pct')}% ≥ {limit}% "
                                                 f"(rule of {self.names(loc.location_id)})")
+        if event.type == "escalation_resolved":         # F25: the operator accepted GPT's higher level
+            if p.get("accepted") and loc.last_llm and loc.last_llm.get("event_id") == p.get("review_id") \
+                    and p.get("risk_level_llm"):
+                loc.last_llm["risk_level_final"] = p["risk_level_llm"]
+                loc.last_llm["accepted_by"] = p.get("by")
+            return self.evaluate(now, [loc.location_id])
         if event.type == "llm_decision":
             loc.last_llm = {"risk_level": p.get("risk_level"), "summary": p.get("summary"), "ts": event.timestamp,
                             "at": now, "event_id": event.event_id,

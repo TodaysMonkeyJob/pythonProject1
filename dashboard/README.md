@@ -40,3 +40,11 @@ Camera tiles show the weakest channel's τ and get a red frame when degraded. Ev
 for the event's channel and a transcript correction box for speech (`POST /api/trust/feedback` → `trust_feedback`
 event → the router's registry; the dashboard only reads `trust.registry_db`).
 
+## Two-sided corridor (F25 / TOD-36)
+
+Decision cards draw the corridor band [L, U] with GPT's and the final marker and print the agreement h. When GPT
+sees a higher risk than U the card (and the event dialog of `escalation_review` in the log) shows "GPT бачить вищий
+ризик — потрібне рішення оператора" with Accept / Reject (`POST /api/escalation/{review_id}`); accepting raises the
+location to GPT's level, both answers are logged with the operator and feed the trust registry and the
+rule-suggestion store.
+

@@ -12,6 +12,7 @@ device_channels:
   mic: [vad, asr, speaker_identity, face_voice_link]
   gas: [gas_class, gas_concentration, gas_trend]
   identity: [person_registry]
+  llm: [risk_assessment]    # F25: GPT's escalations above the corridor, judged by the operator
 
 priors:                     # channel kind → measured prior (null = no validation data yet → unmeasured)
   objects: "@trust_priors:channels.camera.objects"
@@ -28,6 +29,7 @@ priors:                     # channel kind → measured prior (null = no validat
   gas_concentration: "@trust_priors:channels.gas.gas_concentration"
   gas_trend: "@trust_priors:channels.gas.gas_trend"
   person_registry: null
+  risk_assessment: null     # no validation of GPT's escalations yet → unmeasured
 
 gamma:                      # forgetting factor per day (r, s ← γ^days · r, s): how fast old evidence stops counting
   objects: {value: 0.95, reason: "освітлення / розташування предметів змінюються тижнями"}
@@ -44,6 +46,7 @@ gamma:                      # forgetting factor per day (r, s ← γ^days · r, 
   gas_concentration: {value: 0.98, reason: "дрейф концентрації повільний (тижні)"}
   gas_trend: {value: 0.98, reason: "той самий сенсор, що й концентрація"}
   person_registry: {value: 0.97, reason: "виправлення реєстру людей рідкісні"}
+  risk_assessment: {value: 0.9, reason: "якість відповідей GPT змінюється з промптом / моделлю — за дні"}
 
 health:                     # each failing check multiplies h by its factor (h = product); lowest wins per channel
   recovery_per_min: 0.1     # h rises at most this much per minute after a fix (drops at once) → gradual recovery

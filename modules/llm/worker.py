@@ -260,7 +260,8 @@ class LLMWorker(BaseModule):
 
         corridor = decision.corridor
         location_id = row["payload"].get("location_id")
-        floor = float(corridor["floor"])
+        fallback = self.envelope.fallback(location_id, self.wall_clock()) if location_id else None
+        floor = float(fallback["r_final"] if fallback else corridor["floor"])        # F25: no GPT → r_final = L
         level = level_of(floor, self.envelope.thresholds)
         payload = {"snapshot_id": row["id"], "trigger": row["trigger"], "source": "fuzzy_only", "risk_level": level,
                    "summary": fuzzy_summary(level, corridor["fired_rules"]),
@@ -268,6 +269,8 @@ class LLMWorker(BaseModule):
                    "reasons": [r["explanation"] for r in corridor["fired_rules"][:3]], "follow_up": None,
                    "risk_llm": None, "risk_floor": corridor["floor"], "risk_ceil": corridor["ceil"],
                    "risk_width": corridor.get("width"), "risk_type1": corridor.get("type1"),
+                   **({k: fallback[k] for k in ("y_l", "y_r", "width", "L", "U", "c", "policy_branch")}
+                      if fallback else {"policy_branch": "fuzzy_only"}),
                    "envelope_reason": {"widened_by": (corridor.get("widened_by") or [])[:3]},
                    "confirmation": None, "risk_final": round(floor, 3), "risk_level_final": level,
                    "envelope_applied": False,
@@ -353,11 +356,23 @@ class LLMWorker(BaseModule):
                 "snapshot_id": row["id"], "decision_event_id": event.event_id, "location_id": location_id,
                 "risk_level_llm": decision.risk_level, "risk_level_final": level, "risk_llm": payload["risk_llm"],
                 "risk_floor": payload["risk_floor"], "confirmation": payload["confirmation"],
-                "risk_final": payload["risk_final"], "reasons": payload["envelope_reason"]},
+                "risk_final": payload["risk_final"], "reasons": payload["envelope_reason"],
+                "policy_branch": payload.get("policy_branch"), "h": payload.get("h")},
                 severity="warning", location_id=location_id)
             logger.warning(f"Envelope raised the GPT risk for {location_id}: {decision.risk_level} → {level}")
             if self.envelope_log is not None:
                 self.envelope_log.write(rejected)
+        if payload.get("escalation_review"):                  # F25: GPT above the corridor — the operator decides
+            review = self.emit("escalation_review", {
+                "review_id": event.event_id, "snapshot_id": row["id"], "decision_event_id": event.event_id,
+                "location_id": location_id, "risk_level_llm": decision.risk_level, "risk_level_final": level,
+                "risk_llm": payload["risk_llm"], "U": payload["U"], "h": payload["h"], "summary": decision.summary,
+                "reasons": decision.reasons, "recommended_action": decision.recommended_action,
+                "inputs": payload.get("trusted_inputs")},
+                severity="warning", location_id=location_id)
+            logger.warning(f"GPT sees {decision.risk_level} above the corridor for {location_id}: operator review")
+            if self.envelope_log is not None:
+                self.envelope_log.write(review)
         return True
 
     def _pause(self, error: Exception) -> None:

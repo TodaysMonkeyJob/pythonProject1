@@ -255,10 +255,11 @@ envelope:
   # F24 (TOD-35): no θ cut — all physical evidence enters; its uncertainty u widens the FOU (it2.k below)
   alpha: 0.5                  # type-1 ablation only (floor: mom): r_ceil = upper end of the α-cut
   floor: it2_mom              # r_floor = max(KM y_l, centroid of the strongest LOWER firing) | it2 = y_l | mom = type-1
+  lambda: "@thresholds:values.lambda"   # F25 risk attitude: L = (1 − c)·(y_l + λ·(y_r − y_l)), U = y_r
+  h_min: "@thresholds:values.h_min"     # F25 agreement: h = sup min(μ_LLM, μ_K) ≥ h_min → GPT refines inside [L, U]
   ack_valid_min: 30           # an operator acknowledgement releases the floor (c = 1) this long / until a new alarm
   llm_levels: {low: 0.1, medium: 0.4, high: 0.7, critical: 0.95}   # FALLBACK only: calibration_path replaces it
   thresholds: "@thresholds:values.levels"                           # number → level (r ≥ threshold), cost-fitted
-  over_reaction_margin: 0.3   # informational flag for the operator only (never changes a decision)
   calibration_path: config/calibration.yaml   # F18: fitted level sets (python -m tools.calibrate_llm_risk); absent → llm_levels
   confirmation:
     inherit: [gas_concentration, gas_trend, motion_level, action_risk, unknown_share]   # shared (gas: no default)

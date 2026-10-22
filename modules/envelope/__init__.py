@@ -4,7 +4,8 @@ lower the risk on its own.
 
     [r_floor, r_ceil] = IT2-FIS({e_i, u_i})               corridor.py — all physical evidence, u widens the FOU (F24)
     c                 = lower end of IT2-FIS_confirm     confirmation.py — operator acknowledgement → 1
-    r_final           = max(r_LLM, (1 − c) · r_floor)    projection.py
+    L, U              = (1 − c)·(y_l + λ(y_r − y_l)), y_r  fuzzy_corridor.py (F25 / TOD-36) — two active bounds
+    r_final           = r_D (GPT ∩ corridor, h ≥ h_min) | L (GPT below) | U (GPT above → escalation_review)
 
 ``RiskEnvelope`` runs inside the LLM worker: it follows the forwarded (trust-scored) events and decides every
 ``llm_decision`` before it is published.
@@ -15,9 +16,10 @@ from typing import Any, Dict, Optional
 
 from core.events import Event
 from core.fuzzy import load_yaml
+from modules.envelope import fuzzy_corridor
 from modules.envelope.confirmation import Confirmation
 from modules.envelope.corridor import Corridor
-from modules.envelope.projection import DEFAULT_LLM_LEVELS, DEFAULT_THRESHOLDS, level_of, level_value, project
+from modules.envelope.projection import LEVELS, DEFAULT_LLM_LEVELS, DEFAULT_THRESHOLDS, level_of, level_value, project
 from modules.envelope.state import TrustedState
 from modules.llm.calibration import RiskCalibrator
 
@@ -34,7 +36,6 @@ class RiskEnvelope:
         self.cfg = cfg
         self.llm_levels = {**DEFAULT_LLM_LEVELS, **(cfg.get("llm_levels") or {})}
         self.thresholds = {**DEFAULT_THRESHOLDS, **(cfg.get("thresholds") or {})}
-        self.margin = float(cfg.get("over_reaction_margin", 0.3))
         # F24: no θ cut — only language / scene-text claims need trust.claim_threshold to count
         self.state = TrustedState(float((root.get("trust") or {}).get("claim_threshold", 0.6)))
         self.corridor = Corridor(path, locations_path, float(cfg.get("alpha", 0.5)), cfg.get("floor", "it2"))
@@ -42,6 +43,11 @@ class RiskEnvelope:
         self.action_map = (root.get("maps") or {}).get("action_risk") or {}
         # F18: r_LLM from the model's risk distribution once a calibration was fitted (else the fixed mapping)
         self.calibrator = RiskCalibrator.from_file(cfg.get("calibration_path", "config/calibration.yaml"))
+        # F25: the two-sided corridor — risk attitude λ, agreement threshold h_min (cost-fitted), K's slope width
+        self.lam = float(cfg.get("lambda", 0.0))
+        self.h_min = float(cfg.get("h_min", 0.5))
+        self.slope = fuzzy_corridor.output_slope(self.corridor.engine(None).variables[
+            self.corridor.engine(None).output].terms)
 
     @classmethod
     def from_config(cls, path: str = "config/fuzzy.yaml",
@@ -77,6 +83,23 @@ class RiskEnvelope:
         """:return: The level of a risk number with this envelope's thresholds (``envelope.thresholds``)"""
         return level_of(risk, self.thresholds)
 
+    def level_sets(self) -> Dict[str, Any]:
+        """The calibrated GPT level sets (F18 fit when present, else the risk output terms)"""
+        from modules.llm.calibration import DEFAULT_PARAMS
+
+        return self.calibrator.params if self.calibrator is not None else DEFAULT_PARAMS
+
+    def fallback(self, location_id: str, now: Optional[float] = None,
+                 local_hour: Optional[float] = None) -> Dict[str, Any]:
+        """F25: no GPT answer (offline / gated) → r_final = L of the location's corridor"""
+        now = time.time() if now is None else now
+        inputs, facts, corridor = self._trusted(location_id, now, local_hour)
+        c, reasons, _ = self.confirmation.compute(inputs, facts, now)
+        y_l, y_r = corridor["floor"], corridor["ceil"]
+        out = fuzzy_corridor.decide(y_l, y_r, c, None, None, self.level_sets(), self.lam, self.h_min, self.slope)
+        return {**out, "y_l": y_l, "y_r": y_r, "width": corridor["width"], "c": round(c, 3), "corridor": corridor,
+                "confirmation_reasons": reasons}
+
     def r_llm(self, risk_level: str, distribution: Optional[Dict[str, float]] = None):
         """:return: (r_LLM, source): calibrated centroid of the distribution, or the fixed level number"""
         if distribution and self.calibrator is not None:
@@ -103,7 +126,10 @@ class RiskEnvelope:
                     "envelope_reason": {"note": "site-wide summary: no per-location corridor"}}
         inputs, facts, corridor = self._trusted(location_id, now, local_hour)
         c, confirm_reasons, operator = self.confirmation.compute(inputs, facts, now)
-        projection = project(r_llm, corridor["floor"], corridor["ceil"], c, self.thresholds, self.margin)
+        y_l, y_r = corridor["floor"], corridor["ceil"]
+        fc = fuzzy_corridor.decide(y_l, y_r, c, distribution, risk_level, self.level_sets(), self.lam, self.h_min,
+                                   self.slope)
+        final_level = level_of(fc["r_final"], self.thresholds)
         reason = {"fired": [r["explanation"] for r in corridor["fired_rules"][:3]],
                   "confirmation": confirm_reasons,
                   "ignored_claims": [{k: v for k, v in claim.items() if k != "at"} for claim in facts["ignored"]],
@@ -111,11 +137,17 @@ class RiskEnvelope:
                   "interval": corridor["interval"], "widened_by": corridor["widened_by"][:3]}
         if operator:
             reason["operator"] = operator
-        return {"risk_llm": r_llm, "risk_llm_source": source, "risk_floor": corridor["floor"],
-                "risk_ceil": corridor["ceil"], "risk_width": corridor["width"], "risk_type1": corridor["type1"],
-                "confirmation": round(c, 3), "risk_final": projection["risk_final"],
-                "risk_level_final": projection["risk_level_final"],
-                "envelope_applied": projection["envelope_applied"], "over_reaction": projection["over_reaction"],
+        reason.update(h=fc["h"], h_min=self.h_min, policy_branch=fc["policy_branch"], **{"lambda": self.lam})
+        raised = LEVELS.index(final_level) > LEVELS.index(risk_level)
+        return {"risk_llm": fc["r_llm"], "risk_llm_source": source, "risk_llm_level": r_llm,
+                "y_l": y_l, "y_r": y_r, "width": corridor["width"], "L": fc["L"], "U": fc["U"], "r_D": fc["r_D"],
+                "h": fc["h"], "policy_branch": fc["policy_branch"], "c": round(c, 3),
+                "risk_floor": fc["L"], "risk_ceil": fc["U"], "risk_width": corridor["width"],
+                "risk_type1": corridor["type1"], "confirmation": round(c, 3), "risk_final": fc["r_final"],
+                "risk_level_final": final_level,
+                "envelope_applied": raised,              # the corridor lifted GPT's level (L, or r_D clamped to L)
+                "escalation_review": fc["policy_branch"] == "escalation_review",
+                "over_reaction": fc["policy_branch"] == "escalation_review",
                 "envelope_reason": reason, "trusted_inputs": corridor["inputs"]}
 
 

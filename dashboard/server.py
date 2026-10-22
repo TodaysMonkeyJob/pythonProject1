@@ -601,6 +601,31 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         state.publish(make_event("system", "trust_feedback", payload))
         return {"accepted": True, **payload}
 
+    # --- F25 (TOD-36): operator decision on GPT's escalation above the corridor -----------------------------------
+    @app.post("/api/escalation/{review_id}", dependencies=[Depends(auth)])
+    def api_escalation(review_id: str, body: Dict[str, Any], request: Request):
+        if not isinstance(body.get("accepted"), bool):
+            raise HTTPException(400, "accepted: true / false required")
+        if state.publish is None:
+            raise HTTPException(503, "event bus not available")
+        review = None
+        for data in reversed(state.recent):
+            if review_id in data and '"escalation_review"' in data:
+                candidate = Event.from_json(data)
+                if candidate.type == "escalation_review" and candidate.payload.get("review_id") == review_id:
+                    review = candidate
+                    break
+        from core.events import make_event
+
+        location_id = (review.payload.get("location_id") if review else None) or body.get("location_id")
+        payload = {"review_id": review_id, "accepted": body["accepted"], "by": user_of(request),
+                   "reason": str(body.get("reason") or "")[:200],
+                   "risk_level_llm": (review.payload.get("risk_level_llm") if review else None)
+                   or body.get("risk_level_llm"), "location_id": location_id}
+        state.publish(make_event("system", "escalation_resolved", payload,
+                                 **({"location_id": location_id} if location_id else {})))
+        return {"resolved": True, **payload}
+
     from dashboard.node import add_node_routes, preview_frames
 
     add_node_routes(app, state.node_hub, auth, STATIC_DIR)

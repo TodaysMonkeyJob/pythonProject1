@@ -141,9 +141,9 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
             if trace is not None:
                 trace.setdefault("gate", []).append({"t": now, "trigger": row["trigger"], "score": verdict.score,
                                                      "override": verdict.override, "floor": corridor["floor"]})
-            if not verdict.call:
-                level = envelope.level(corridor["floor"])
-                result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", level, corridor["floor"]))
+            if not verdict.call:                           # F25: no GPT answer → r_final = L
+                lower = envelope.fallback(location, now)["r_final"]
+                result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", envelope.level(lower), lower))
                 return
             override = verdict.override is not None
         else:
@@ -172,6 +172,12 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
         if config.envelope and envelope is not None:
             final = envelope.decide(location, decision.risk_level, now=now, distribution=distribution)
             level, risk, applied = final["risk_level_final"], final["risk_final"], final["envelope_applied"]
+            if trace is not None:
+                trace.setdefault("decision", []).append({
+                    "t": now, "h": final.get("h"), "level_llm": decision.risk_level,
+                    "branch": final.get("policy_branch"),
+                    "r_D": final.get("r_D"), "r_llm": final.get("risk_llm"), "L": final.get("L"), "U": final.get("U"),
+                    "cached": bool(usage.get("cache_hit"))})
         else:
             level = decision.risk_level
             risk = calibrator.risk(distribution) if (config.view and calibrator and distribution) else FIXED[level]

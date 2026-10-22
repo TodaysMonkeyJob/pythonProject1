@@ -8,6 +8,7 @@ import { ackLocation, api, cameras, history, locationOf, personName, renamePerso
 import { LiveList, STATE_LABEL, dialog, h, hms, json, personColour, since } from "../ui.js";
 import { describe, eventRow } from "./events.js";
 import { tile } from "./grid.js";
+import { reviewPanel } from "./review.js";
 
 export const PANEL_TABS = ["events", "talk", "gas", "gpt"];
 const TAB_LABEL = { events: "Події", talk: "Розмова", gas: "Газ", gpt: "Рішення GPT" };
@@ -70,7 +71,7 @@ export function sourceBadge(p) {
     fuzzy ? "без GPT" : "LLM");
 }
 
-function decisionCard(p, ts) {
+function decisionCard(p, ts, id) {
   const final = p.risk_level_final || p.risk_level;
   return h("div", { class: `decision ${final}` },
     h("div", { class: "row" }, sourceBadge(p), h("b", { class: `lvl ${final}` }, (LEVEL_LABEL[final] || final || "").toUpperCase()),
@@ -81,8 +82,9 @@ function decisionCard(p, ts) {
     p.risk_floor !== undefined ? h("div", { class: "muted small" },
       p.source === "fuzzy_only" ? `коридор ${fmt2(p.risk_floor)}–${fmt2(p.risk_ceil)} · ризик = floor ${fmt2(p.risk_final)}`
         : `коридор ${fmt2(p.risk_floor)}–${fmt2(p.risk_ceil)} · GPT ${fmt2(p.risk_llm)} → ${fmt2(p.risk_final)} · c = ${fmt2(p.confirmation)}`,
-      p.over_reaction ? " · GPT, можливо, перебільшує" : "") : null,
+      p.h !== undefined && p.h !== null ? ` · згода h = ${fmt2(p.h)}` : "") : null,
     widthNote(p),
+    p.escalation_review && (id || p.event_id) ? reviewPanel(id || p.event_id, p) : null,
     p.envelope_applied ? h("details", { class: "rejected" },
       h("summary", {}, h("span", { class: "badge-rejected" }, "зниження відхилено")), envelopeReasons(p)) : null,
     p.snapshot_id ? h("button", { class: "link", onclick: () => snapshotDialog(p.snapshot_id) }, "знімок, надісланий у GPT") : null);
@@ -109,7 +111,7 @@ const speechRow = (ev) => h("div", { class: "talk-row" },
   h("span", { class: "mono muted" }, hms(ev.payload.start || ev.timestamp)),
   h("b", { style: { color: personColour(ev.payload.person_id) } }, speakerName(ev)),
   h("span", { class: "talk-text" }, ev.payload.text), trustBadge(ev.payload));
-const gptRow = (ev) => decisionCard(ev.payload, ev.timestamp);
+const gptRow = (ev) => decisionCard(ev.payload, ev.timestamp, ev.event_id);
 
 // --- skeleton ---------------------------------------------------------------------------------------------------
 function mount(root, id, tab, go) {

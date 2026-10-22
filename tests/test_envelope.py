@@ -124,12 +124,14 @@ def test_operator_ack_releases_the_floor():
     assert decide(envelope(*person(known=False), SMOKE, ack, alarm), "low")["confirmation"] == 0.0   # newer alarm
 
 
-def test_llm_escalation_is_never_reduced():
+def test_llm_escalation_above_the_corridor_goes_to_operator_review():
+    # F25 (TOD-36): escalation is no longer accepted blindly — GPT far above U ends at U and asks the operator
     calm = envelope(*person(known=True), CLEAN)
-    for level, value in (("critical", 0.95), ("high", 0.7), ("medium", 0.4)):
-        d = decide(calm, level)
-        assert d["risk_final"] == value and d["risk_level_final"] == level and not d["envelope_applied"]
-    assert decide(calm, "critical")["over_reaction"] is True                # flagged for the operator only
+    d = decide(calm, "critical")
+    assert d["policy_branch"] == "escalation_review" and d["escalation_review"] and d["risk_final"] == d["U"]
+    assert d["h"] < d["envelope_reason"]["h_min"] and not d["envelope_applied"]
+    low = decide(calm, "low")                                                # GPT agrees with a calm corridor
+    assert low["policy_branch"] == "agree" and low["L"] <= low["risk_final"] <= low["U"]
 
 
 def test_uncertain_evidence_widens_the_corridor_instead_of_being_cut():
@@ -199,7 +201,8 @@ def test_worker_bounds_the_decision_and_logs_everything(tmp_path):
     decision, rejected = published(worker)
     p = decision.payload
     assert (decision.type, p["risk_level"], p["risk_level_final"]) == ("llm_decision", "low", "high")
-    assert decision.severity == "critical" and p["envelope_applied"] and p["risk_llm"] == 0.1
+    assert decision.severity == "critical" and p["envelope_applied"] and p["risk_llm"] == pytest.approx(0.108, abs=0.01)
+    assert p["policy_branch"] == "deescalation_rejected" and p["risk_final"] == p["L"] and p["h"] < 0.5
     assert {"risk_floor", "risk_ceil", "confirmation", "risk_final", "envelope_reason"} <= p.keys()
     assert rejected.type == "deescalation_rejected" and rejected.payload["decision_event_id"] == decision.event_id
     assert rejected.payload["reasons"]["ignored_claims"]
