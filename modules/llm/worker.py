@@ -267,6 +267,8 @@ class LLMWorker(BaseModule):
                    "recommended_action": ACTION_UA[level],
                    "reasons": [r["explanation"] for r in corridor["fired_rules"][:3]], "follow_up": None,
                    "risk_llm": None, "risk_floor": corridor["floor"], "risk_ceil": corridor["ceil"],
+                   "risk_width": corridor.get("width"), "risk_type1": corridor.get("type1"),
+                   "envelope_reason": {"widened_by": (corridor.get("widened_by") or [])[:3]},
                    "confirmation": None, "risk_final": round(floor, 3), "risk_level_final": level,
                    "envelope_applied": False,
                    "gating": {"score": round(decision.score, 3), "inputs": decision.inputs, "fired": decision.fired}}

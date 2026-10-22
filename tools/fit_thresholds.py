@@ -7,9 +7,14 @@ input is the cost ratio C_miss / C_fa (``calibration.cost_ratio`` in config.yaml
 
 | threshold | score | positive (= a miss is costly) |
 | -- | -- | -- |
-| envelope.theta | trust τ of an evidence event | lowering claim in an adversarial scenario (distrusted below θ) |
+| trust.claim_threshold | τ of a speech / scene-text event | lowering claim in an adversarial scenario |
 | levels medium / high / critical | r_final of the scenario's last decision | expert level ≥ that level |
 | gating.threshold | call_llm score of a non-override snapshot | fuzzy-only gives the wrong level (floor ≠ truth) |
+
+F24 (TOD-35): the IT2 corridor's FOU scale k_var = κ · span_var (span = the variable's mean edge width, its natural
+unit of vagueness) — κ minimises the mean interval score of the final corridor [r_floor, r_ceil] against the expert
+risk y: (r_ceil − r_floor) + C·(r_floor − y)⁺ + C·(y − r_ceil)⁺ with C = the cost ratio (a corridor that misses the
+expert risk costs C per unit, its width 1), replayed through trust scoring + the envelope only (no LLM).
 
 Truth per snapshot for gating: the scenario's expert level from the danger onset on, ``low`` before it. Rates are
 kernel smoothed (``--bandwidth``), so the result moves with the cost ratio even where the calibration split is
@@ -40,8 +45,11 @@ LEVELS = ("low", "medium", "high", "critical")
 LOWERING = ("deescalation", "instruction_to_system")
 # The hand-picked values before F22 — only written when no thresholds.yaml exists yet, so the first replay can load
 # config/fuzzy.yaml (which refers to this file); the fit then replaces them.
-BOOTSTRAP = {"theta": 0.6, "levels": {"medium": 0.25, "high": 0.5, "critical": 0.8}, "gating": 0.5,
-             "critical_floor": 0.8}
+BOOTSTRAP = {"claim_theta": 0.6, "levels": {"medium": 0.25, "high": 0.5, "critical": 0.8}, "gating": 0.5,
+             "critical_floor": 0.8, "k_var": {}}
+KAPPA_GRID = (0.0, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
+FOU_VARIABLES = ("gas_concentration", "gas_trend", "motion_level", "people_count", "unknown_share", "action_risk",
+                 "known_present")
 HEADER = """F22 (TOD-33) cost-based thresholds — written by python -m tools.fit_thresholds; do not edit by hand.
 Each value minimises C_miss * P_miss + C_fa * P_fa on the calibration split; cost_ratio = C_miss / C_fa is the only
 expert input. config/fuzzy.yaml reads `values` through "@thresholds:values.<name>" references."""
@@ -108,6 +116,8 @@ def collect(scenarios, llm, fuzzy: str, min_interval: float) -> Dict[str, List[D
                          "expert_level": scenario.expert_level, "risk_final": result.final_risk,
                          "recorded_llm": getattr(llm, "misses", 0) == misses})
         for item in trace["evidence"]:
+            if item["type"] not in ("speech", "scene_text"):     # F24: the threshold only gates language claims
+                continue
             attack = scenario.category == "adversarial" and item["claim_type"] in LOWERING
             evidence.append({**item, "attack": attack, "scenario_id": scenario.scenario_id})
         onset = epoch(scenario.danger_onset) if scenario.danger_onset else None
@@ -133,8 +143,8 @@ def fit_all(data: Dict[str, List[Dict[str, Any]]], cost_ratio: float, bandwidth:
 
     fits: Dict[str, Any] = {}
     evidence = data["evidence"]
-    fits["theta"] = fit_cost_threshold([e["trust"] for e in evidence], [e["attack"] for e in evidence], cost_ratio,
-                                       np.linspace(0.05, 0.95, 91), bandwidth, positive_above=False)
+    fits["claim_theta"] = fit_cost_threshold([e["trust"] for e in evidence], [e["attack"] for e in evidence],
+                                             cost_ratio, np.linspace(0.05, 0.95, 91), bandwidth, positive_above=False)
     outcomes, levels, lo = [o for o in data["outcomes"] if o["recorded_llm"]], {}, 0.05   # real GPT answers only
     kept = previous if (previous and not previous.get("bootstrap")) else None
     if len(outcomes) < MIN_LEVEL_SCENARIOS and kept:
@@ -155,9 +165,84 @@ def fit_all(data: Dict[str, List[Dict[str, Any]]], cost_ratio: float, bandwidth:
     fits["gating"] = fit_cost_threshold([g["score"] for g in gates], wrong, cost_ratio, np.linspace(0.05, 0.95, 91),
                                         bandwidth, positive_above=True)
     used = {"used": len(outcomes), "skipped_without_recorded_gpt": len(data["outcomes"]) - len(outcomes)}
-    values = {"theta": fits["theta"]["threshold"], "levels": levels, "gating": fits["gating"]["threshold"],
+    values = {"claim_theta": fits["claim_theta"]["threshold"], "levels": levels, "gating": fits["gating"]["threshold"],
               "critical_floor": levels["critical"]}
     return {"values": values, "fits": fits, "previous_levels": current_levels, "level_scenarios": used}
+
+
+def spans(fuzzy: str) -> Dict[str, float]:
+    """:return: {variable: mean width of its sloped term edges} (Gaussians: σ) — the unit of k_var"""
+    from core.fuzzy import FuzzyEngine, load_yaml
+
+    root = load_yaml(fuzzy)
+    variables = dict(FuzzyEngine.from_dict(root).variables)
+    confirmation = ((root.get("envelope") or {}).get("confirmation") or {}).get("variables") or {}
+    if confirmation:
+        variables.update(FuzzyEngine.from_dict({"output": "confirmation", "variables": confirmation,
+                                                "rules": []}).variables)
+    out = {}
+    for name in FOU_VARIABLES:
+        if name not in variables:
+            continue
+        widths = []
+        for parts in variables[name].terms.values():
+            for shape, p in parts:
+                if shape == "gauss":
+                    widths.append(p[1])
+                else:
+                    pts = (p[0], p[1], p[1], p[2]) if shape == "tri" else p
+                    widths += [w for w in (pts[1] - pts[0], pts[3] - pts[2]) if w > 0]
+        out[name] = round(float(np.mean(widths)), 4) if widths else 0.0
+    return out
+
+
+def corridor_scores(scenarios, fuzzy: str, k: Dict[str, float]) -> List[Dict[str, Any]]:
+    """Replays trust scoring + the envelope (no aggregator / LLM) → the final corridor of every scenario."""
+    from core.events import Event
+    from modules.envelope import RiskEnvelope
+    from modules.trust import TrustScorer
+    from modules.trust.channels import epoch
+
+    rows = []
+    for scenario in scenarios:
+        scorer, envelope = TrustScorer.from_config(fuzzy), RiskEnvelope.from_config(fuzzy, None)
+        envelope.corridor.k_override = k
+        envelope.confirmation.it2.k = dict(k)
+        now, location = 0.0, None
+        for line in scenario.events():
+            event = Event.from_json(line)
+            event.payload.pop("trust", None)
+            now = epoch(event.timestamp) or now
+            location = location or (event.location_id if event.location_id != "unassigned" else None)
+            scorer.apply(event)
+            envelope.observe(event)
+        _, _, corridor = envelope.assess(location, now + 1)
+        rows.append({"scenario_id": scenario.scenario_id, "floor": corridor["floor"], "ceil": corridor["ceil"],
+                     "expert": scenario.expert_risk})
+        scorer.registry.close()
+    return rows
+
+
+def interval_score(rows: List[Dict[str, Any]], cost_ratio: float) -> Dict[str, float]:
+    width = [r["ceil"] - r["floor"] for r in rows]
+    below = [max(0.0, r["floor"] - r["expert"]) for r in rows]
+    above = [max(0.0, r["expert"] - r["ceil"]) for r in rows]
+    score = [w + cost_ratio * (b + a) for w, b, a in zip(width, below, above, strict=True)]
+    covered = [r["floor"] - 1e-9 <= r["expert"] <= r["ceil"] + 1e-9 for r in rows]
+    return {"interval_score": round(float(np.mean(score)), 4), "mean_width": round(float(np.mean(width)), 4),
+            "coverage": round(float(np.mean(covered)), 4)}
+
+
+def fit_k(scenarios, fuzzy: str, cost_ratio: float) -> Dict[str, Any]:
+    """:return: {"k_var": {...}, "kappa", "by_kappa": [...], "spans"} — the smallest κ with the lowest score"""
+    unit = spans(fuzzy)
+    tried = []
+    for kappa in KAPPA_GRID:
+        k = {name: round(kappa * span, 4) for name, span in unit.items()}
+        tried.append({"kappa": kappa, **interval_score(corridor_scores(scenarios, fuzzy, k), cost_ratio)})
+    best = min(tried, key=lambda t: (t["interval_score"], t["kappa"]))
+    return {"kappa": best["kappa"], "k_var": {name: round(best["kappa"] * span, 4) for name, span in unit.items()},
+            "spans": unit, "by_kappa": tried, "expected_cost": best["interval_score"]}
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -198,6 +283,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     from core.calibration import read_yaml
 
     result = fit_all(data, cost_ratio, args.bandwidth, current, read_yaml(args.out))
+    k_fit = fit_k(calibration, args.fuzzy, cost_ratio)                  # F24: FOU scale of the IT2 corridor
+    result["values"]["k_var"] = k_fit["k_var"]
+    result["fits"]["k_var"] = {key: v for key, v in k_fit.items() if key != "k_var"}
     output = {"version": 1, "fitted_at": now_iso(), "cost_ratio": cost_ratio, "c_fa": 1.0, "c_miss": cost_ratio,
               "bandwidth": args.bandwidth,
               "dataset": {"path": args.dataset, "name": dataset.name, "hash": dataset.hash(),

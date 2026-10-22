@@ -24,16 +24,30 @@ def ev(source, type, payload, t=T0, location="warehouse", device="cam-1", severi
     return event.model_copy(update={"timestamp": iso(t)})
 
 
-def person(known, trust=None, track=1, person_id=None):
-    return [ev("camera", "object_detected", {"class": "person", "track_id": track, "state": "appeared", "trust": 0.95}),
+def person(known, trust=None, track=1, person_id=None, u=0.0):
+    return [ev("camera", "object_detected", {"class": "person", "track_id": track, "state": "appeared", "trust": 0.95,
+                                             "trust_u": 0.0}),
             ev("camera", "person_identified", {"track_id": track, "person_id": person_id or ("oleh" if known else "u4"),
                                                "known": known, "similarity": 0.7,
-                                               "trust": trust if trust is not None else (0.89 if known else 0.8)})]
+                                               "trust": trust if trust is not None else (0.89 if known else 0.8),
+                                               "trust_u": u})]
 
 
-def gas(concentration, rate, trend, trust=0.95, t=T0, name="acetone"):
+def gas(concentration, rate, trend, trust=0.95, t=T0, name="acetone", u=0.0):
     return ev("gas", "gas_reading", {"gas": name, "concentration_pct": concentration, "trend": trend,
-                                     "rise_rate_pct_per_min": rate, "trust": trust}, t, device="gas-1")
+                                     "rise_rate_pct_per_min": rate, "trust": trust, "trust_u": u}, t, device="gas-1")
+
+
+K = {"gas_concentration": 1.5, "gas_trend": 1.0, "unknown_share": 0.3, "people_count": 0.5, "motion_level": 0.2,
+     "action_risk": 0.2, "known_present": 0.2}
+
+
+def wide(env):
+    """The envelope with a non-zero FOU scale (the fitted it2.k may be anything, these tests need one)"""
+    env.corridor.k_override = K
+    env.corridor._engines.clear()
+    env.confirmation.it2.k = dict(K)
+    return env
 
 
 SMOKE = gas(1.2, 2.6, "sharply_rising")
@@ -118,11 +132,13 @@ def test_llm_escalation_is_never_reduced():
     assert decide(calm, "critical")["over_reaction"] is True                # flagged for the operator only
 
 
-def test_low_trust_evidence_does_not_raise_the_floor():
-    d = decide(envelope(gas(5.0, 0.0, "stable", trust=0.3, name="ammonia")), "low")
-    assert d["risk_floor"] < 0.2 and not d["envelope_applied"]
-    d = decide(envelope(gas(5.0, 0.0, "stable", trust=0.95, name="ammonia")), "low")
-    assert d["risk_floor"] > 0.85 and d["risk_level_final"] == "critical"
+def test_uncertain_evidence_widens_the_corridor_instead_of_being_cut():
+    certain = decide(wide(envelope(gas(3.6, 0.0, "stable", name="ammonia"))), "low")
+    assert certain["risk_floor"] > 0.85 and certain["risk_level_final"] == "critical" and certain["risk_width"] < 0.05
+    failing = decide(wide(envelope(gas(3.6, 0.0, "stable", trust=0.24, name="ammonia", u=0.9))), "low")
+    assert failing["risk_width"] > certain["risk_width"] + 0.1 and failing["risk_floor"] < certain["risk_floor"]
+    assert failing["envelope_reason"]["widened_by"][0]["variable"] == "gas_concentration"
+    assert failing["risk_floor"] > 0                                            # it still enters (no θ cut)
 
 
 def test_untrusted_calming_claims_never_confirm():
@@ -138,16 +154,14 @@ def test_known_person_lying_motionless_is_not_confirmed_safe():
     assert d["confirmation"] == 0.0 and d["risk_level_final"] == "critical"
 
 
-def test_stranger_at_night_and_location_theta():
+def test_stranger_at_night_and_an_uncertain_face():
     office = [e.model_copy(update={"location_id": "office"}) for e in person(known=False)]
-    assert decide(envelope(*office), "low", hour=23, location="office")["risk_level_final"] == "high"
-    root = __import__("core.fuzzy", fromlist=["load_yaml"]).load_yaml(CONFIG)
-    root["envelope"]["locations"] = {"office": {"theta": 0.9}}              # face trust 0.8 < θ → "unknown" unused
-    strict = RiskEnvelope(root, CONFIG, None)
-    for event in office:
-        strict.observe(event)
-    d = strict.decide("office", "low", now=T0 + 60, local_hour=23)
-    assert d["risk_level_final"] == "low" and d["envelope_reason"]["theta"] == 0.9
+    sure = decide(wide(envelope(*office)), "low", hour=23, location="office")
+    assert sure["risk_level_final"] == "high"
+    unsure = [e.model_copy(update={"location_id": "office"}) for e in person(known=False, u=1.0)]
+    d = decide(wide(envelope(*unsure)), "low", hour=23, location="office")
+    assert d["risk_width"] > sure["risk_width"] and d["risk_floor"] <= sure["risk_floor"]
+    assert "theta" not in d["envelope_reason"] and d["envelope_reason"]["claim_threshold"] > 0
 
 
 def test_site_wide_summary_has_no_corridor():
@@ -250,7 +264,7 @@ def test_floor_is_not_diluted_by_milder_rules():
     d = decide(envelope(*stranger, gas(6.5, 0.5, "rising")), "low")
     assert d["risk_floor"] >= 0.85 and d["risk_level_final"] == "critical"
     root = __import__("core.fuzzy", fromlist=["load_yaml"]).load_yaml(CONFIG)
-    root["envelope"]["floor"] = "centroid"                        # the old behaviour, kept for the ablation
+    root["envelope"]["floor"] = "it2"                             # plain KM y_l: diluted (ablation)
     centroid = RiskEnvelope(root, CONFIG, None)
     for event in [*stranger, gas(6.5, 0.5, "rising")]:
         centroid.observe(event)

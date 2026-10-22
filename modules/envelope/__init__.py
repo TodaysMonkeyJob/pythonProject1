@@ -2,8 +2,8 @@
 Fuzzy risk corridor (F17 / TOD-28, component A): the LLM stays the source of context and explanations but cannot
 lower the risk on its own.
 
-    [r_floor, r_ceil] = FIS({e_i : τ(e_i) ≥ θ})          corridor.py — risk rules over trusted evidence only
-    c                 = FIS_confirm(trusted evidence)    confirmation.py — operator acknowledgement → 1
+    [r_floor, r_ceil] = IT2-FIS({e_i, u_i})               corridor.py — all physical evidence, u widens the FOU (F24)
+    c                 = lower end of IT2-FIS_confirm     confirmation.py — operator acknowledgement → 1
     r_final           = max(r_LLM, (1 − c) · r_floor)    projection.py
 
 ``RiskEnvelope`` runs inside the LLM worker: it follows the forwarded (trust-scored) events and decides every
@@ -35,9 +35,9 @@ class RiskEnvelope:
         self.llm_levels = {**DEFAULT_LLM_LEVELS, **(cfg.get("llm_levels") or {})}
         self.thresholds = {**DEFAULT_THRESHOLDS, **(cfg.get("thresholds") or {})}
         self.margin = float(cfg.get("over_reaction_margin", 0.3))
-        thetas = {loc: float(v["theta"]) for loc, v in (cfg.get("locations") or {}).items() if "theta" in v}
-        self.state = TrustedState(float(cfg.get("theta", 0.6)), thetas)
-        self.corridor = Corridor(path, locations_path, float(cfg.get("alpha", 0.5)), cfg.get("floor", "mom"))
+        # F24: no θ cut — only language / scene-text claims need trust.claim_threshold to count
+        self.state = TrustedState(float((root.get("trust") or {}).get("claim_threshold", 0.6)))
+        self.corridor = Corridor(path, locations_path, float(cfg.get("alpha", 0.5)), cfg.get("floor", "it2"))
         self.confirmation = Confirmation(root, cfg["confirmation"], float(cfg.get("ack_valid_min", 30)))
         self.action_map = (root.get("maps") or {}).get("action_risk") or {}
         # F18: r_LLM from the model's risk distribution once a calibration was fitted (else the fixed mapping)
@@ -60,7 +60,7 @@ class RiskEnvelope:
             moment = datetime.fromtimestamp(now)
             local_hour = moment.hour + moment.minute / 60
         inputs, facts = self.state.features(location_id, now, self.action_map, local_hour)
-        return inputs, facts, self.corridor.compute(location_id, inputs)
+        return inputs, facts, self.corridor.compute(location_id, inputs, facts.get("uncertainty"))
 
     def floor_term(self, location_id: Optional[str], now: Optional[float] = None,
                    local_hour: Optional[float] = None) -> Optional[Dict[str, Any]]:
@@ -107,11 +107,12 @@ class RiskEnvelope:
         reason = {"fired": [r["explanation"] for r in corridor["fired_rules"][:3]],
                   "confirmation": confirm_reasons,
                   "ignored_claims": [{k: v for k, v in claim.items() if k != "at"} for claim in facts["ignored"]],
-                  "theta": self.state.theta_for(location_id)}
+                  "claim_threshold": self.state.claim_threshold,
+                  "interval": corridor["interval"], "widened_by": corridor["widened_by"][:3]}
         if operator:
             reason["operator"] = operator
         return {"risk_llm": r_llm, "risk_llm_source": source, "risk_floor": corridor["floor"],
-                "risk_ceil": corridor["ceil"],
+                "risk_ceil": corridor["ceil"], "risk_width": corridor["width"], "risk_type1": corridor["type1"],
                 "confirmation": round(c, 3), "risk_final": projection["risk_final"],
                 "risk_level_final": projection["risk_level_final"],
                 "envelope_applied": projection["envelope_applied"], "over_reaction": projection["over_reaction"],

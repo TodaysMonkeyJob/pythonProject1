@@ -78,10 +78,12 @@ Cost ratio C_miss / C_fa = **10.0** (the only expert input, `calibration.cost_ra
 
 | threshold | value | expected cost | P_miss | P_fa | pos / neg | status |
 | -- | -- | -- | -- | -- | -- | -- |
-| envelope.theta | 0.61 | 0.0 | 0.0 | 0.0 | 33 / 1433 | fitted |
+| trust.claim_threshold | 0.42 | 0.027 | 0.0 | 0.0 | 33 / 30 | fitted |
 | level medium | 0.24 | 0.002 | 0.0 | 0.0 | 12 / 12 | kept: only 3 calibration scenarios with recorded GPT answers |
 | level high | 0.53 | 0.0013 | 0.0 | 0.0 | 10 / 14 | kept: only 3 calibration scenarios with recorded GPT answers |
 | level critical | 0.78 | 0.0102 | 0.0 | 0.0 | 8 / 16 | kept: only 3 calibration scenarios with recorded GPT answers |
-| gating.threshold | 0.4 | 0.5 | 0.0 | 0.5 | 2 / 20 | fitted |
+| gating.threshold | 0.41 | 0.5 | 0.0 | 0.5 | 2 / 20 | fitted |
+
+IT2 FOU scale (F24): κ = 1.5 → k_var = gas_concentration 0.9499, gas_trend 0.9, motion_level 0.225, people_count 1.8, unknown_share 0.225, action_risk 0.375, known_present 0.375. Mean interval score by κ: κ 0.0: 0.2471, κ 0.1: 0.2427, κ 0.25: 0.2365, κ 0.5: 0.2223, κ 0.75: 0.2207, κ 1.0: 0.2107, κ 1.5: 0.2084, κ 2.0: 0.2317, κ 3.0: 0.2756.
 
 `gating.critical_floor` = level critical = 0.78. Not applicable yet: lambda — corridor risk attitude — not in the code yet (corridor issue); h_min — agreement threshold — not in the code yet (corridor issue).

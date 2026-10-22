@@ -213,7 +213,8 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
                                                              "trust": event.payload["trust"],
                                                              "claim_type": event.payload.get("claim_type")})
             elif event.type in EVIDENCE:
-                event.payload["trust"] = 1.0                # no B: everything counts as trusted
+                event.payload["trust"] = 1.0                # no B: everything counts as trusted …
+                event.payload["trust_u"] = 0.0              # … and certain (no FOU, F24)
             if envelope is not None:
                 envelope.observe(event)
             produced(aggregator.on_event(event))

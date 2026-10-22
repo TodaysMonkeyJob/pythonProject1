@@ -56,6 +56,18 @@ def reliability_png(channel: str, data: Dict[str, Any], path: str) -> None:
     plt.close(fig)
 
 
+def _k_note(th: Dict[str, Any]) -> str:
+    """F24: the fitted FOU scale of the interval type-2 corridor"""
+    fit = (th.get("fits") or {}).get("k_var") or {}
+    k = (th.get("values") or {}).get("k_var") or {}
+    if not k:
+        return "IT2 FOU scale k_var: not fitted (type-1 behaviour)."
+    tried = ", ".join(f"κ {t['kappa']}: {t['interval_score']}" for t in fit.get("by_kappa", []))
+    return (f"IT2 FOU scale (F24): κ = {fit.get('kappa')} → k_var = "
+            + ", ".join(f"{name} {value}" for name, value in k.items())
+            + f". Mean interval score by κ: {tried}.")
+
+
 def table(rows: List[List[Any]], head: List[str]) -> str:
     lines = ["| " + " | ".join(head) + " |", "| " + " | ".join("--" for _ in head) + " |"]
     lines += ["| " + " | ".join(str(c).replace("|", "\\|") for c in row) + " |" for row in rows]
@@ -130,10 +142,11 @@ def build(cal_dir: str, priors_path: str, thresholds_path: str, out: str) -> str
                   f"Cost ratio C_miss / C_fa = **{th['cost_ratio']}** (the only expert input, "
                   f"`calibration.cost_ratio`); dataset {ds['name']} ({kind}), calibration split, {ds['scenarios']} "
                   f"scenarios, hash `{ds['hash'][:12]}`.", "",
-                  table([row("envelope.theta", "theta"), row("level medium", "level_medium"),
+                  table([row("trust.claim_threshold", "claim_theta"), row("level medium", "level_medium"),
                          row("level high", "level_high"), row("level critical", "level_critical"),
                          row("gating.threshold", "gating")],
                         ["threshold", "value", "expected cost", "P_miss", "P_fa", "pos / neg", "status"]), "",
+                  _k_note(th), "",
                   f"`gating.critical_floor` = level critical = {values['critical_floor']}. Not applicable yet: "
                   + "; ".join(f"{k} — {v}" for k, v in (th.get("not_applicable") or {}).items()) + ".", ""]
     path = os.path.join(out, "calibration.md")

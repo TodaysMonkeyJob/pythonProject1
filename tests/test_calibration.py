@@ -148,11 +148,14 @@ def test_no_unreferenced_trust_constant_or_threshold_in_fuzzy_yaml():
         assert str(trust["consistency"][key]).startswith("@trust_priors:"), key
     assert str(registry["gas"]["disagreement_pct"]).startswith("@trust_priors:") and "gas_confidence_min" not in trust
     assert set(trust["calibration"]) == {"asr", "speaker", "face", "gas"}
-    assert envelope["theta"] == "@thresholds:values.theta" and envelope["thresholds"] == "@thresholds:values.levels"
+    assert "theta" not in envelope and "locations" not in envelope                   # F24: no θ cut any more
+    assert trust["claim_threshold"] == "@thresholds:values.claim_theta"
+    assert raw["it2"]["k"] == "@thresholds:values.k_var"
+    assert envelope["thresholds"] == "@thresholds:values.levels"
     assert gating["threshold"].startswith("@thresholds:") and gating["critical_floor"].startswith("@thresholds:")
     resolved = load_yaml(str(REPO / "config" / "fuzzy.yaml"))
-    assert 0 < resolved["envelope"]["theta"] < 1 and set(resolved["envelope"]["thresholds"]) == {"medium", "high",
-                                                                                                    "critical"}
+    assert 0 < resolved["trust"]["claim_threshold"] < 1
+    assert set(resolved["envelope"]["thresholds"]) == {"medium", "high", "critical"}
 
 
 def test_committed_calibration_files_carry_provenance():
@@ -200,7 +203,7 @@ def test_fit_thresholds_is_deterministic_and_follows_the_cost_ratio():
     a, b = fit_all(data, 10, 0.05, {}), fit_all(data, 10, 0.05, {})
     assert a == b
     cheap = fit_all(data, 1, 0.05, {})
-    assert a["values"]["theta"] >= cheap["values"]["theta"]
+    assert a["values"]["claim_theta"] >= cheap["values"]["claim_theta"]
     assert a["values"]["levels"]["high"] <= cheap["values"]["levels"]["high"]
     lv = a["values"]["levels"]
     assert lv["medium"] < lv["high"] < lv["critical"] == a["values"]["critical_floor"]

@@ -184,6 +184,16 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `/api/trust/history`, POST `/api/trust/feedback`), trust dot on camera tiles, feedback buttons in event dialogs.
   `experiments.run` stores the registry setup in `manifest.json`. Pose / smoking priors come from the 640 px action
   evaluation (`tools/measure_channels.py --actions-report`; deployed `actions.imgsz` is recorded next to it).
+- F24 (TOD-35) interval type-2 engine: `core/fuzzy/it2.py` (UMF / LMF = type-1 edges moved ±δ, shoulders on the
+  universe edges fixed; Karnik–Mendel centre-of-sets `cos_interval`, `brute_force_cos` for tests) and
+  `core/fuzzy/engine2.py` `FuzzyEngine2.infer(inputs, uncertainty={var: u})` → interval [y_l, y_r], type1 COS,
+  firing [lo, hi], fou, `widened_by` (inputs ranked by width contribution); δ_var = k_var · u, `it2.k` =
+  `@thresholds:values.k_var` (κ · span_var, κ fitted by `tools/fit_thresholds.py` on the interval score with the cost
+  ratio as non-coverage penalty). The corridor (`modules/envelope/corridor.py`, `envelope.floor`: it2_mom default |
+  it2 | mom ablation) and the confirmation (c = lower end) use it; NO θ cut for physical evidence any more — events
+  carry `trust_u` (registry u discounted by health) and `TrustedState.features` returns `facts["uncertainty"]`;
+  only speech / scene-text claims use `trust.claim_threshold` (`@thresholds:values.claim_theta`). `llm_decision` has
+  `risk_width`, `risk_type1`, `envelope_reason.widened_by`; the location page prints what widened the corridor.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —
