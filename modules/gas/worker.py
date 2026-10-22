@@ -135,6 +135,15 @@ class GasWorker(BaseModule):
         self.clock = clock
         self._next_poll = 0.0
         self._last_alert: Dict[str, float] = {}
+        from modules.trust.health import HealthPublisher, registry_config
+
+        health_cfg = registry_config(config)    # F23 (TOD-34): gas self-diagnostics + clean-air self-test
+        self.health_cfg = (health_cfg or {}).get("gas") if health_cfg is not None else None
+        self.health = None
+        self.health_publisher = HealthPublisher(self.emit, "gas", (health_cfg or {}).get("health", {}).get(
+            "refresh_sec", 300)) if health_cfg is not None else None
+        self._last_selftest = float("-inf")
+        self._drift: Optional[Dict[str, Any]] = None
 
     def setup(self) -> None:
         if self.predictor is None:
@@ -142,6 +151,14 @@ class GasWorker(BaseModule):
             self.predictor = GasPredictor(self.gas_config["classifier_path"], self.gas_config["regressor_path"])
         if self.reader is None:
             self.reader = load_reader(self.gas_config)
+        if self.health_cfg is not None and self.health is None:
+            from modules.trust.health import GasHealth
+
+            try:
+                self.health = GasHealth.from_dataset(self.health_cfg, self.gas_config.get("data_path",
+                                                                                          "data/gas/data.xls"))
+            except Exception as e:  # self-diagnostics must never stop the sensor
+                logger.warning(f"Gas self-diagnostics off: {e}")
 
     def step(self) -> None:
         now = self.clock()
@@ -164,6 +181,8 @@ class GasWorker(BaseModule):
         except Exception as e:
             logger.error(f"Gas poll failed: {e}", exc_info=True)
             self._alert(now, "sensor_error", {"error": str(e)}, severity="warning")
+            if self.health is not None:
+                self.health_publisher.publish(self.health.error(), now)
             return None
 
         gas, concentration = prediction["gas"], prediction["concentration_pct"]
@@ -178,6 +197,8 @@ class GasWorker(BaseModule):
             "curve": curve_summary(curve, self.predictor.voltages),
         }
         self.emit("gas_reading", payload, confidence=prediction["gas_confidence"])
+        if self.health is not None:
+            self._check_health(curve, gas, now)
 
         threshold = self.thresholds.get(gas)
         if threshold is not None and concentration >= threshold:
@@ -188,6 +209,21 @@ class GasWorker(BaseModule):
                                             "rise_rate_pct_per_min": round(rate, 3),
                                             "rise_rate_threshold": self.rise_rate_threshold})
         return payload
+
+    def _check_health(self, curve, gas: str, now: float) -> None:
+        """F23: flat / out-of-range readings every poll; a clean-air self-test when the air is classified clean."""
+        failing = self.health.observe(curve, gas)
+        extra: Dict[str, Any] = {}
+        interval = float(self.health_cfg.get("selftest_interval_sec", 600))
+        if gas == "clean_air" and now - self._last_selftest >= interval:
+            self._last_selftest = now
+            result = self.health.baseline(curve)
+            if result is not None:
+                self._drift = None if result["ok"] else {"value": result["drift"], "detail": result["detail"]}
+                extra = {"baseline_ok": result["ok"], "baseline_detail": result["detail"]}
+        if self._drift is not None:
+            failing["baseline_drift"] = self._drift
+        self.health_publisher.publish(failing, now, **extra)
 
     def _alert(self, now: float, reason: str, details: Dict[str, Any], severity: str = "critical") -> None:
         last = self._last_alert.get(reason)

@@ -30,3 +30,13 @@ Plain ES modules in `static/app/` — no build step, no CDN, works without inter
 * One `/ws/video` socket; only visible tiles are subscribed (overview: small; territory: the main camera full size).
 * State colours always come with a text label; phones (< 900 px) stack the panels and may scroll.
 * Fonts: "IBM Plex Sans / Mono" when installed, otherwise the system font (not vendored — no extra downloads).
+
+## Довіра (F23 / TOD-34)
+
+`#/trust` lists the trust registry grouped location → device → channel: τ, u, h (↗ = recovering), prior status
+(measured / unmeasured), last change and the Ukrainian explanation; "лише деградовані" keeps channels with τ < 0.4,
+h < 1 or a failing check. A row opens its τ / h history (health changes marked) with ✓ / ✗ operator feedback.
+Camera tiles show the weakest channel's τ and get a red frame when degraded. Event dialogs carry "✓ Вірно / ✗ Хибно"
+for the event's channel and a transcript correction box for speech (`POST /api/trust/feedback` → `trust_feedback`
+event → the router's registry; the dashboard only reads `trust.registry_db`).
+

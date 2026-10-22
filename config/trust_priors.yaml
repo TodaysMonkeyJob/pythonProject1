@@ -1,8 +1,8 @@
 # F22 (TOD-33) channel trust priors per device x channel (TOD-34) — written by python -m tools.trust_priors.
 # tau0 = (r0+1)/(r0+s0+2) (expected trust), u0 = 2/(r0+s0+2) (uncertainty), wilson_lb = conservative 95 % bound.
-# prior_status unmeasured = no labelled data yet (r0 = s0 = 0). policy = rules / interim values, measured: false.
+# prior_status unmeasured = no labelled data yet (r0 = s0 = 0). policy = system rules, measured: false.
 version: 2
-generated_at: '2026-10-22T19:45:31+00:00'
+generated_at: '2026-10-22T20:10:10+00:00'
 wer_max: 0.1
 channels:
   camera:
@@ -34,24 +34,24 @@ channels:
         хибні події руху'
     pose_action:
       prior_status: measured
-      r0: 10
-      s0: 9
-      tau0: 0.5238
+      r0: 14
+      s0: 5
+      tau0: 0.7143
       u0: 0.0952
-      wilson_lb: 0.3171
+      wilson_lb: 0.5121
       n: 19
       measured: true
-      source: reports/actions_eval_human_behaviour_320.json
-      sha256: 4ac3e59fdb0533874b097fb929bdd760e1943762f2cf91f068f4461ef65831ba
+      source: reports/actions_eval_human_behaviour_640.json
+      sha256: fd6b9a2f428ab13ccf2e06445f011c5e2dd1243292dfa65273a1dab429e76e13
       eval_file: reports/channel_eval/pose_action.json
-      measured_at: '2026-10-22T19:44:02+00:00'
+      measured_at: '2026-10-22T19:59:21+00:00'
       unit: labelled video segment (standing / sitting / lying / walking)
       alternatives:
-        reports/actions_eval_human_behaviour_640.json:
-          correct: 14
-          wrong: 5
-      note: the report that matches actions.imgsz in config.yaml (the deployed setting)
-      explanation: 'поза (стоїть / сидить / лежить / йде): 10 з 19 відео-сегментів правильні'
+        reports/actions_eval_human_behaviour_320.json:
+          correct: 10
+          wrong: 9
+      note: evaluation run named in TOD-33 / TOD-34; compare deployed_imgsz with the run's resolution
+      explanation: 'поза (стоїть / сидить / лежить / йде): 14 з 19 відео-сегментів правильні'
     smoking:
       prior_status: measured
       r0: 1
@@ -61,10 +61,10 @@ channels:
       wilson_lb: 0.0257
       n: 7
       measured: true
-      source: reports/actions_eval_human_behaviour_320.json
-      sha256: 4ac3e59fdb0533874b097fb929bdd760e1943762f2cf91f068f4461ef65831ba
+      source: reports/actions_eval_human_behaviour_640.json
+      sha256: fd6b9a2f428ab13ccf2e06445f011c5e2dd1243292dfa65273a1dab429e76e13
       eval_file: reports/channel_eval/smoking.json
-      measured_at: '2026-10-22T19:44:02+00:00'
+      measured_at: '2026-10-22T19:59:21+00:00'
       unit: hand-to-mouth episode
       explanation: 'куріння (рука до рота): 1 з 7 епізодів виявлено'
     scene_text:
@@ -241,31 +241,6 @@ channels:
       threshold: 0.45
       explanation: '«незнайома людина»: 500 незнайомців відхилено, 0 відомих пропущено (LFW)'
 policy:
-  interim_physical:
-    value: 0.95
-    measured: false
-    source: expert
-    explanation: тимчасово для camera.objects / camera.motion / scene_active, поки їх не виміряно (TOD-34 замінить реєстром)
-  interim_scene_text:
-    value: 0.1
-    measured: false
-    source: expert
-    explanation: 'тимчасово для camera.scene_text: текст у кадрі контролює будь-хто — слабкий доказ'
-  physical_degraded:
-    value: 0.3
-    measured: false
-    source: expert
-    explanation: 'пристрій офлайн / з помилкою: його показам майже не віримо'
-  redundant_disagreement:
-    value: 0.6
-    measured: false
-    source: expert
-    explanation: 'два датчики газу однієї локації розходяться: межа θ, не вище'
-  identity_unsettled:
-    value: 0.8
-    measured: false
-    source: expert
-    explanation: 'людину видно, обличчя ще не розпізнане: сам факт присутності — фізичне спостереження'
   deescalation_floor:
     value: 0.1
     measured: false

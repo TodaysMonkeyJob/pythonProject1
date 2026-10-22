@@ -170,6 +170,8 @@ def test_run_cli_end_to_end_and_reproducible(tmp_path, scripted):
     manifest = json.loads((tmp_path / "r2" / "manifest.json").read_text())
     assert manifest["llm"]["cache_hits"] == manifest["llm"]["calls"] > 0
     assert manifest["dataset"]["synthetic"] and manifest["kappa"]["kappa"] is not None
+    registry = manifest["trust_registry"]                                # F23: the setup every replay starts from
+    assert registry["priors"]["gas_class"]["prior_status"] == "measured" and "camera" in registry["device_channels"]
     for name in ("RESULTS.md", "metrics.md", "mcnemar.md", "per_scenario.csv", "asr.png", "reliability.png",
                  "confusion_proposed.png"):
         assert (tmp_path / "r2" / name).exists(), name

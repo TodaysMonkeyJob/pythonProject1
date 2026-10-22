@@ -138,8 +138,9 @@ class EvidenceState:
             del loc.tracks[key]
         return [t.person_id for t in loc.tracks.values()]
 
-    def has_working_camera(self, location_id: Optional[str]) -> bool:
-        return any(c not in self.unhealthy for c in self.at(location_id).cameras)
+    def has_working_camera(self, location_id: Optional[str], degraded: Optional[Set[str]] = None) -> bool:
+        """:param degraded: cameras the trust registry reports unhealthy (covered lens, frozen, …)"""
+        return any(c not in self.unhealthy and c not in (degraded or ()) for c in self.at(location_id).cameras)
 
     def person_seen_between(self, location_id: Optional[str], start: float, end: float, grace: float) -> bool:
         loc = self.at(location_id)

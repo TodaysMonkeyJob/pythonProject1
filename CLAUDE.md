@@ -173,6 +173,17 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   Data: `tools/synth_speech.py` (macOS `say` voices + noise → git-ignored `data/calibration/speech/`), committed
   `data/calibration/asr_phrases.csv` / `speaker_pairs.csv`. `tools/calibration_report.py` → `reports/calibration_<date>/`.
   Changing trust values changes the GPT payloads: re-run `experiments.run --llm azure` (new calls) before refitting levels.
+- F23 (TOD-34) trust registry (`modules/trust/registry.py`, `config/trust_registry.yaml`): trust per device × channel
+  (camera objects / motion / pose_action / smoking / face_identity / scene_text; mic vad / asr / speaker_identity /
+  face_voice_link; gas gas_class / gas_concentration / gas_trend; identity person_registry), τ = (r+1)/(r+s+2)·h with
+  measured priors (unmeasured → r0 = s0 = 0), γ per channel kind, health h from `device_health` events of the workers'
+  self-diagnostics (`modules/trust/health.py`, `trust.health`), confirmations / refutations from the stream
+  (`evidence.py`) and operator `trust_feedback`; SQLite `trust.registry_db` (`data/trust_registry.db`, never commit;
+  replays / tests use `:memory:`, the conftest guard covers it) with `history`; Ukrainian explanations. `trust.base`
+  is gone: μ_source = registry τ. Dashboard page `#/trust` «Довіра» (`views/trust.js`, `/api/trust`,
+  `/api/trust/history`, POST `/api/trust/feedback`), trust dot on camera tiles, feedback buttons in event dialogs.
+  `experiments.run` stores the registry setup in `manifest.json`. Pose / smoking priors come from the 640 px action
+  evaluation (`tools/measure_channels.py --actions-report`; deployed `actions.imgsz` is recorded next to it).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

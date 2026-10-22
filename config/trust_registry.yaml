@@ -1,0 +1,107 @@
+# F23 (TOD-34): trust registry — trust per device × channel (modules/trust/registry.py, data/trust_registry.db).
+#
+#   r_t = γ·r_{t−1} + Δr,  s_t = γ·s_{t−1} + Δs,  τ_t = (r_t + 1)/(r_t + s_t + 2) · h_t,  u_t = 2/(r_t + s_t + 2)
+#
+# r_0 / s_0 come from the measured priors (config/trust_priors.yaml, TOD-33) — never typed here; a channel without
+# a measurement starts from r0 = s0 = 0 (τ 0.5, u 1, prior_status unmeasured). γ (per day) and the health factors are
+# design parameters: each carries its reason, and every change is explained in Ukrainian in the registry history.
+version: 1
+
+device_channels:
+  camera: [objects, motion, pose_action, smoking, face_identity, scene_text]
+  mic: [vad, asr, speaker_identity, face_voice_link]
+  gas: [gas_class, gas_concentration, gas_trend]
+  identity: [person_registry]
+
+priors:                     # channel kind → measured prior (null = no validation data yet → unmeasured)
+  objects: "@trust_priors:channels.camera.objects"
+  motion: "@trust_priors:channels.camera.motion"
+  pose_action: "@trust_priors:channels.camera.pose_action"
+  smoking: "@trust_priors:channels.camera.smoking"
+  face_identity: "@trust_priors:channels.identity.face_known"
+  scene_text: "@trust_priors:channels.camera.scene_text"
+  vad: "@trust_priors:channels.mic.vad"
+  asr: "@trust_priors:channels.mic.asr"              # Azure whisper-1 = the main path (local base: mic.asr_local)
+  speaker_identity: "@trust_priors:channels.mic.speaker"
+  face_voice_link: null
+  gas_class: "@trust_priors:channels.gas.gas_class"
+  gas_concentration: "@trust_priors:channels.gas.gas_concentration"
+  gas_trend: "@trust_priors:channels.gas.gas_trend"
+  person_registry: null
+
+gamma:                      # forgetting factor per day (r, s ← γ^days · r, s): how fast old evidence stops counting
+  objects: {value: 0.95, reason: "освітлення / розташування предметів змінюються тижнями"}
+  motion: {value: 0.9, reason: "хибний рух залежить від освітлення і погоди — змінюється за кілька днів"}
+  pose_action: {value: 0.95, reason: "якість поз залежить від ракурсу камери, змінюється рідко"}
+  smoking: {value: 0.95, reason: "те саме, що й поза (той самий детектор ключових точок)"}
+  face_identity: {value: 0.97, reason: "галерея облич стабільна, змінюється при додаванні людей"}
+  scene_text: {value: 0.8, reason: "текст у кадрі (екрани, таблички) змінюється щодня"}
+  vad: {value: 0.9, reason: "фоновий шум приміщення змінюється за дні"}
+  asr: {value: 0.8, reason: "акустика, мова й мовці змінюються швидко — ASR забуває найшвидше"}
+  speaker_identity: {value: 0.95, reason: "голосові профілі стабільні"}
+  face_voice_link: {value: 0.97, reason: "зв'язки голос ↔ обличчя міняються лише при злитті / розділенні"}
+  gas_class: {value: 0.99, reason: "хімія сенсора стабільна; деградація — місяцями"}
+  gas_concentration: {value: 0.98, reason: "дрейф концентрації повільний (тижні)"}
+  gas_trend: {value: 0.98, reason: "той самий сенсор, що й концентрація"}
+  person_registry: {value: 0.97, reason: "виправлення реєстру людей рідкісні"}
+
+health:                     # each failing check multiplies h by its factor (h = product); lowest wins per channel
+  recovery_per_min: 0.1     # h rises at most this much per minute after a fix (drops at once) → gradual recovery
+  refresh_sec: 300          # workers re-send an unchanged health report this often (else only on a change)
+  checks:                   # check → {factor, reason}; channels: only these channel kinds (default: the whole device)
+    offline: {factor: 0.0, reason: "пристрій офлайн — даних немає"}
+    no_frames: {factor: 0.1, reason: "камера не віддає кадрів"}
+    low_fps: {factor: 0.7, reason: "FPS нижче цільового — події можуть пропускатися"}
+    frozen_frame: {factor: 0.2, reason: "кадр не змінюється (зависла камера / відтворення)"}
+    too_dark: {factor: 0.4, reason: "занадто темно для детекції"}
+    overexposed: {factor: 0.4, reason: "засвічений кадр"}
+    blurred: {factor: 0.6, reason: "розмитий кадр (низька дисперсія Лапласіана)"}
+    lens_covered: {factor: 0.3, reason: "кадр майже однорідний — ймовірно, закрито об'єктив"}
+    camera_moved: {factor: 0.5, reason: "різка зміна сцени без руху — камеру зрушили"}
+    clipping: {factor: 0.5, reason: "кліпінг — сигнал перевантажений"}
+    noisy: {factor: 0.6, reason: "високий рівень шуму (низьке SNR)"}
+    digital_silence: {factor: 1.0, reason: "цифрова тиша (сама по собі не збій)"}
+    stuck_silence: {factor: 0.3, reason: "цифрова тиша, хоча в локації є люди"}
+    wrong_sample_rate: {factor: 0.3, reason: "частота дискретизації не та, що очікується"}
+    sensor_error: {factor: 0.2, reason: "помилка читання сенсора газу"}
+    flat_readings: {factor: 0.3, reason: "покази не змінюються (сенсор завис)"}
+    out_of_range: {factor: 0.3, reason: "покази поза діапазоном навчальних даних"}
+    baseline_drift: {factor: 0.25, reason: "дрейф базової лінії чистого повітря — потрібне перекалібрування"}
+    twin_disagreement: {factor: 0.6, reason: "розходиться з другим сенсором газу цієї локації"}
+    unknown_storm: {factor: 0.5, channels: [face_identity], reason: "забагато нових unknown_N за годину (дублікати)"}
+
+camera:                     # thresholds of the camera self-diagnostics (modules/trust/health.py)
+  interval_sec: 5           # one check per this many seconds (on a frame sample, ≈ 1 ms on the Pi)
+  target_fps: 5
+  dark_mean: 25             # mean brightness 0..255 below → too dark
+  bright_mean: 235          # above → overexposed
+  uniform_std: 6            # brightness std below → near-uniform frame (lens covered)
+  blur_laplacian: 15        # Laplacian variance below → blurred
+  frozen_sec: 30            # identical frame hash this long → frozen
+  moved_change: 0.6         # share of pixels changed between two samples without motion → camera moved
+  moved_hold_sec: 60        # the camera_moved flag stays this long
+mic:
+  interval_sec: 10
+  clip_level: 32000         # |sample| at / above → clipped
+  clip_ratio: 0.01          # share of clipped samples in the window above → clipping
+  noise_floor_db: -35       # 10th-percentile frame loudness above (dBFS) → noisy
+  silence_db: -85           # every frame quieter than this → digital silence
+  stuck_silence_min: 10     # digital silence this long while people are seen in the location → stuck_silence
+gas:
+  flat_polls: 30            # identical curves this many polls in a row → flat_readings
+  range_margin: 0.5         # resistance beyond (1 ± margin) × training range → out_of_range
+  baseline_tolerance: 0.25  # clean-air curve R_peak / Dirac point off the training clean-air mean by more → drift
+  selftest_interval_sec: 600   # a clean-air self-test at most this often (when the classifier says clean_air)
+  disagreement_pct: "@trust_priors:policy.gas_disagreement_pct.value"
+identity:
+  unknown_per_hour: 10      # more new unknown_N per hour → unknown_storm on every camera's face_identity
+
+evidence:                   # how the event stream confirms / refutes channels (modules/trust/evidence.py)
+  flicker_sec: 2            # a track that disappears this soon after appearing → objects refuted
+  corroborate_sec: 5        # motion with an object track within this → motion confirmed
+  action_window_sec: 4      # an action replaced sooner (flip) → pose_action refuted; held longer → confirmed
+  smoking_gas_sec: 60       # gas rising in the location within this after possible_smoking → smoking confirmed
+  twin_every_sec: 600       # twin gas sensors agreeing → confirmed at most this often
+  selftest_every_sec: 3600  # a passed self-test confirms gas channels at most this often
+  registry_quiet_days: 1    # a day without corrections → person_registry confirmed
+  transcript_edit_ratio: 0.2   # operator's correction changes more than this share of characters → asr refuted

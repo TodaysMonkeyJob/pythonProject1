@@ -314,7 +314,10 @@ llm:                        # F6: GPT analysis of snapshot digests (Azure OpenAI
 
 trust:                      # F16 (TOD-27): fuzzy trust degree on every evidence event (orchestrator router)
   enabled: true
-  fuzzy_config: config/fuzzy.yaml   # trust section: base values, source / asr / identity rules, claim patterns
+  fuzzy_config: config/fuzzy.yaml   # trust section: registry, calibration maps, source / asr / identity rules, claims
+  registry_config: config/trust_registry.yaml   # F23 (TOD-34): channels, priors, γ, health checks of every device
+  registry_db: data/trust_registry.db   # trust per device × channel + history (the router writes, the dashboard reads)
+  health: true              # device self-diagnostics in the camera / microphone / gas workers → device_health events
 
 envelope:                   # F17 (TOD-28): fuzzy risk corridor around GPT decisions (LLM worker)
   enabled: true             # parameters: envelope section of trust.fuzzy_config (θ, levels, confirmation rules)

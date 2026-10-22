@@ -43,6 +43,20 @@ def fit_calibration(scenarios, llm, fuzzy: str, min_interval: float):
     return calibrator, {"fitted": True, "n": len(rows), "fit": metrics, "params": calibrator.params}
 
 
+def registry_snapshot(fuzzy: str) -> Dict:
+    """F23: the trust registry setup every replay starts from (channels, measured priors, γ, health factors)"""
+    from core.fuzzy import load_yaml
+    from modules.trust.registry import TrustRegistry
+
+    path = os.path.join(os.path.dirname(os.path.abspath(fuzzy)),
+                        (load_yaml(fuzzy).get("trust") or {}).get("registry", "trust_registry.yaml"))
+    registry = TrustRegistry(load_yaml(path))
+    try:
+        return {"config": os.path.relpath(path), **registry.config_snapshot()}
+    finally:
+        registry.close()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate the fuzzy-bounded LLM pipeline against baselines")
     parser.add_argument("--dataset", default="data/eval/recorded", help="folder with manifest.json")
@@ -99,7 +113,7 @@ def main(argv=None) -> int:
                 "llm": {"backend": args.llm, "model": llm.backend.model, "temperature": llm.backend.temperature,
                         "calls": llm.calls, "cache_hits": llm.hits, "invalid_json": llm.invalid},
                 "calibration": calibration_info, "configs": {c.name: c.flags() for c in configs},
-                "min_interval_sec": args.min_interval}
+                "min_interval_sec": args.min_interval, "trust_registry": registry_snapshot(args.fuzzy)}
     write(out, summaries, results, tests, manifest)
     llm.close()
     width = max(len(n) for n in summaries)

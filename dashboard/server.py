@@ -563,6 +563,44 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         acked(note["location_id"], by, notification_id)
         return note
 
+    # --- trust registry (F23 / TOD-34): read-only here, the router writes; feedback goes back as an event --------
+    registry_db = config.get("trust", {}).get("registry_db", "data/trust_registry.db")
+
+    def trust_db() -> str:
+        if not os.path.isfile(registry_db):
+            raise HTTPException(503, "trust registry not available yet (the orchestrator creates it)")
+        return registry_db
+
+    @app.get("/api/trust", dependencies=[Depends(auth)])
+    def api_trust():
+        from modules.trust.registry import read_channels
+
+        return {"channels": read_channels(trust_db())}
+
+    @app.get("/api/trust/history", dependencies=[Depends(auth)])
+    def api_trust_history(channel_id: str, limit: int = 500):
+        from modules.trust.registry import read_history
+
+        return {"channel_id": channel_id, "history": read_history(trust_db(), channel_id, min(limit, 5000))}
+
+    @app.post("/api/trust/feedback", dependencies=[Depends(auth)])
+    def api_trust_feedback(body: Dict[str, Any], request: Request):
+        channel_id = str(body.get("channel_id") or "")
+        verdict = body.get("verdict")
+        if "/" not in channel_id or (verdict not in ("confirm", "refute") and body.get("corrected") is None):
+            raise HTTPException(400, "channel_id and verdict confirm / refute (or original + corrected) required")
+        if state.publish is None:
+            raise HTTPException(503, "event bus not available")
+        from core.events import make_event
+
+        payload = {"channel_id": channel_id, "verdict": verdict, "by": user_of(request),
+                   "reason": str(body.get("reason") or "")[:200]}
+        for key in ("original", "corrected", "event_id"):
+            if body.get(key) is not None:
+                payload[key] = str(body[key])[:2000]
+        state.publish(make_event("system", "trust_feedback", payload))
+        return {"accepted": True, **payload}
+
     from dashboard.node import add_node_routes, preview_frames
 
     add_node_routes(app, state.node_hub, auth, STATIC_DIR)

@@ -137,20 +137,12 @@ locations:
 #   calibration/*.yaml (python -m tools.calibrate_channels asr | speaker | face | gas)
 # Time windows (…_sec / …_min) are operating parameters, not trust degrees or decision thresholds.
 trust:
-  base:
-    physical: "@trust_priors:policy.interim_physical.value"          # objects / motion unmeasured yet (interim)
-    gas: "@trust_priors:channels.gas.gas_class.tau0"                 # gas classifier, held-out test (29 / 29)
-    physical_degraded: "@trust_priors:policy.physical_degraded.value"   # device offline / in error
-    redundant_disagreement: "@trust_priors:policy.redundant_disagreement.value"   # twin gas sensors disagree
-    scene_text: "@trust_priors:policy.interim_scene_text.value"      # camera.scene_text unmeasured yet (interim)
-    identity_unknown: "@trust_priors:channels.identity.face_unknown.tau0"   # strangers rejected on LFW
-    identity_unsettled: "@trust_priors:policy.identity_unsettled.value"
+  registry: trust_registry.yaml   # F23 (TOD-34): μ_source = τ of <device_id>/<channel> (priors, evidence, health)
   calibration:                # raw score → probability; a missing file → the fallback rule bases asr / identity below
     asr: calibration/asr.yaml           # asr_confidence → P(WER ≤ 10 %)
     speaker: calibration/speaker.yaml   # ECAPA score → P(same speaker)
     face: calibration/face.yaml         # SFace similarity → P(known person)
     gas: calibration/gas.yaml           # gas_confidence → P(gas label right)
-  gas_disagreement_pct: "@trust_priors:policy.gas_disagreement_pct.value"   # twin gas sensors differ more → disagree
   presence_grace_sec: 3       # a person seen this close to a speech segment counts as visible during it
   presence_stale_sec: 600     # person tracks without any update for this long are forgotten
   alarm_memory_sec: 300       # physical alerts / risky actions this recent make a calming claim contradictory

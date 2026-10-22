@@ -23,6 +23,7 @@ models/
 # Face photos and embeddings (biometric data, never commit)
 data/faces/
 data/identity.db*
+data/trust_registry.db*
 data/devices.db*
 data/tls/
 data/node_agent/

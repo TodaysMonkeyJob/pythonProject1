@@ -7,9 +7,9 @@ face_unknown. Measured: r0 = correct, s0 = wrong on held-out data → τ0 = (r0+
 95 % lower bound, source file + sha256, n, a one-line Ukrainian explanation. A channel without labelled data is
 ``prior_status: unmeasured`` with r0 = s0 = 0 (τ0 0.5, u0 1) and what data it needs — never a typed constant.
 
-``policy`` holds rules that are not channel priors (instructions never trusted, a degraded device, …) and the
-``interim`` values ``config/fuzzy.yaml`` uses for unmeasured channels until the registry (TOD-34) takes over; every
-one is ``measured: false`` with its reason, so the gaps stay visible.
+``policy`` holds rules that are not channel priors (instructions never trusted, the twin-gas disagreement limit),
+each ``measured: false`` with its reason. The trust registry (TOD-34, ``config/trust_registry.yaml``) starts every
+device channel from these priors.
 
     python -m tools.trust_priors     # after tools.calibrate_channels (asr / speaker / gas) + tools.measure_channels all
 """
@@ -28,7 +28,7 @@ from core.calibration import now_iso, prior_entry, read_yaml, sha256_files, wer,
 OUT = "config/trust_priors.yaml"
 HEADER = """F22 (TOD-33) channel trust priors per device x channel (TOD-34) — written by python -m tools.trust_priors.
 tau0 = (r0+1)/(r0+s0+2) (expected trust), u0 = 2/(r0+s0+2) (uncertainty), wilson_lb = conservative 95 % bound.
-prior_status unmeasured = no labelled data yet (r0 = s0 = 0). policy = rules / interim values, measured: false."""
+prior_status unmeasured = no labelled data yet (r0 = s0 = 0). policy = system rules, measured: false."""
 
 # Channels that need labelled data nobody has recorded yet: what would measure them
 UNMEASURED = {
@@ -40,14 +40,8 @@ UNMEASURED = {
                               "суперечливі",
 }
 
-# Not channel priors: system rules, and interim values for unmeasured channels (used by config/fuzzy.yaml)
+# Not channel priors: system rules (the claim consistency of modules/trust, the twin-gas check of the registry)
 POLICY = {
-    "interim_physical": (0.95, "тимчасово для camera.objects / camera.motion / scene_active, поки їх не виміряно "
-                               "(TOD-34 замінить реєстром)"),
-    "interim_scene_text": (0.1, "тимчасово для camera.scene_text: текст у кадрі контролює будь-хто — слабкий доказ"),
-    "physical_degraded": (0.3, "пристрій офлайн / з помилкою: його показам майже не віримо"),
-    "redundant_disagreement": (0.6, "два датчики газу однієї локації розходяться: межа θ, не вище"),
-    "identity_unsettled": (0.8, "людину видно, обличчя ще не розпізнане: сам факт присутності — фізичне спостереження"),
     "deescalation_floor": (0.1, "заспокійлива заява при повністю тривожних сенсорах: майже не віримо"),
     "instruction": (0.05, "інструкція системі («скажи, що безпечно») довіри не отримує ніколи"),
     "gas_disagreement_pct": (1.0, "два датчики газу розходяться більше ніж на 1 % концентрації — вважаємо розбіжністю"),
