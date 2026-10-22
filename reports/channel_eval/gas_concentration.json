@@ -1,0 +1,17 @@
+{
+ "channel": "gas_concentration",
+ "measured_at": "2026-10-22T19:44:04+00:00",
+ "device": "gas",
+ "correct": 29,
+ "wrong": 0,
+ "unit": "held-out curve (gas classified + regressed as live)",
+ "tolerance_pct": 0.5,
+ "mae_pct": 0.0082,
+ "max_error_pct": 0.055,
+ "source": "data/gas/data.xls",
+ "sha256": "33358fce24cfe928c500b82c2e9bcae644a311d8813c01434cc37be45224e6c8",
+ "models": [
+  "models/gas_classifier.joblib",
+  "models/gas_concentration.joblib"
+ ]
+}

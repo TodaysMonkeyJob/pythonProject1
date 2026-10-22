@@ -1,0 +1,11 @@
+{
+ "channel": "smoking",
+ "measured_at": "2026-10-22T19:44:02+00:00",
+ "device": "camera",
+ "correct": 1,
+ "wrong": 6,
+ "unit": "hand-to-mouth episode",
+ "source": "reports/actions_eval_human_behaviour_320.json",
+ "sha256": "4ac3e59fdb0533874b097fb929bdd760e1943762f2cf91f068f4461ef65831ba",
+ "false_alarms_in_non_smoking_videos": 1
+}

@@ -1,0 +1,27 @@
+{
+ "channel": "gas_trend",
+ "measured_at": "2026-10-22T19:44:10+00:00",
+ "device": "gas",
+ "correct": 1380,
+ "wrong": 0,
+ "unit": "trend label every 10 s after half a window (ramps [0.5, 1.0, 3.0, 6.0] %/min, holds)",
+ "by_truth": {
+  "rising": {
+   "correct": 550,
+   "wrong": 0
+  },
+  "falling": {
+   "correct": 550,
+   "wrong": 0
+  },
+  "stable": {
+   "correct": 280,
+   "wrong": 0
+  }
+ },
+ "window_sec": 60.0,
+ "stable_band": 0.2,
+ "source": "data/gas/data.xls",
+ "sha256": "33358fce24cfe928c500b82c2e9bcae644a311d8813c01434cc37be45224e6c8",
+ "note": "ramps interpolate the resistance curve between two held-out rows (like the training augmentation); real sensor dynamics may differ"
+}

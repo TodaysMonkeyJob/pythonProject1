@@ -1,0 +1,102 @@
+# F22 (TOD-33) measured channel calibration — written by python -m tools.calibrate_channels gas; do not edit
+channel: gas
+version: 1
+fitted_at: '2026-10-22T11:12:50+00:00'
+raw_score: predict_proba of the predicted gas (gas_reading.gas_confidence)
+meaning: P(the gas label is right | proba)
+method: isotonic regression over held-out splits
+n: 290
+splits: 10
+wrong: 1
+dataset:
+  path: data/gas/data.xls
+  sha256: e056e7989a7aeacd4d373e12c076ca13e80702541ab1ac03a3a05c9c5d8f3f28
+  model: models/gas_classifier.joblib
+  model_sha256: efdf13af1b46e6d182c561db191d52a8eec8e91f97aab8b2e0ab4cae44b72b76
+deployed_test:
+  path: reports/gas_metrics.json
+  correct: 29
+  wrong: 0
+  sha256: bf0e8eac9c982860f3787ea7d7c288d8687adae22850088800758c98ad48d9d1
+metrics:
+  in_sample:
+    brier: 0.0034
+    ece: 0.0
+    base_rate: 0.9966
+    brier_base_rate: 0.0034
+  out_of_fold:
+    brier: 0.0035
+    ece: 0.0005
+    base_rate: 0.9966
+    brier_base_rate: 0.0034
+  mean_proba: 0.6869
+  accuracy: 0.9966
+  min_proba: 0.1229
+reliability:
+- lo: 0.1
+  hi: 0.2
+  n: 9
+  mean_p: 0.1359
+  observed: 1.0
+- lo: 0.2
+  hi: 0.3
+  n: 11
+  mean_p: 0.2676
+  observed: 1.0
+- lo: 0.3
+  hi: 0.4
+  n: 30
+  mean_p: 0.3541
+  observed: 1.0
+- lo: 0.4
+  hi: 0.5
+  n: 30
+  mean_p: 0.4559
+  observed: 1.0
+- lo: 0.5
+  hi: 0.6
+  n: 43
+  mean_p: 0.546
+  observed: 0.9767
+- lo: 0.6
+  hi: 0.7
+  n: 22
+  mean_p: 0.6582
+  observed: 1.0
+- lo: 0.7
+  hi: 0.8
+  n: 26
+  mean_p: 0.7576
+  observed: 1.0
+- lo: 0.8
+  hi: 0.9
+  n: 29
+  mean_p: 0.8516
+  observed: 1.0
+- lo: 0.9
+  hi: 1.0
+  n: 90
+  mean_p: 0.9821
+  observed: 1.0
+table:
+  '0.1': 0.988
+  '0.2': 0.988
+  '0.3': 0.988
+  '0.4': 0.988
+  '0.5': 0.988
+  '0.6': 1.0
+  '0.7': 1.0
+  '0.8': 1.0
+  '0.9': 1.0
+map:
+  kind: isotonic
+  x:
+  - 0.1229
+  - 0.5092
+  - 0.5104
+  - 1.0
+  y:
+  - 0.9881
+  - 0.9881
+  - 1.0
+  - 1.0

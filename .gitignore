@@ -37,4 +37,5 @@ data/human_behaviour_video/*.mp4
 # F20 evaluation: raw recordings never leave the machine; generated sets and the simulated-LLM cache are rebuilt
 data/eval/raw/
 data/eval/scripted/
+data/calibration/speech/
 experiments/cache/llm_sim.sqlite

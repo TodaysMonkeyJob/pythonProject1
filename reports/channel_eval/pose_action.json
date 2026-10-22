@@ -1,0 +1,17 @@
+{
+ "channel": "pose_action",
+ "measured_at": "2026-10-22T19:44:02+00:00",
+ "device": "camera",
+ "correct": 10,
+ "wrong": 9,
+ "unit": "labelled video segment (standing / sitting / lying / walking)",
+ "source": "reports/actions_eval_human_behaviour_320.json",
+ "sha256": "4ac3e59fdb0533874b097fb929bdd760e1943762f2cf91f068f4461ef65831ba",
+ "alternatives": {
+  "reports/actions_eval_human_behaviour_640.json": {
+   "correct": 14,
+   "wrong": 5
+  }
+ },
+ "note": "the report that matches actions.imgsz in config.yaml (the deployed setting)"
+}

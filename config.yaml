@@ -320,6 +320,9 @@ envelope:                   # F17 (TOD-28): fuzzy risk corridor around GPT decis
   enabled: true             # parameters: envelope section of trust.fuzzy_config (θ, levels, confirmation rules)
   log: true                 # every decision with all intermediate values → logs/<date>/envelope.jsonl
 
+calibration:                # F22 (TOD-33): measured trust inputs (config/calibration/, trust_priors.yaml, thresholds.yaml)
+  cost_ratio: 10            # C_miss / C_fa — the only expert input of python -m tools.fit_thresholds
+
 dashboard:                  # F7: http://<pi-ip>:8000 (login DASHBOARD_USER / DASHBOARD_PASS from .env)
   enabled: true
   host: 0.0.0.0             # without DASHBOARD_USER / DASHBOARD_PASS the server only listens on 127.0.0.1

@@ -1,0 +1,109 @@
+# F22 (TOD-33) measured channel calibration — written by python -m tools.calibrate_channels speaker; do not edit
+channel: speaker
+version: 1
+fitted_at: '2026-10-22T11:13:41+00:00'
+raw_score: ECAPA cosine of a speech chunk to the person's voice centroid
+meaning: P(same speaker | score) at the prior
+method: logistic regression (Platt)
+prior: 0.5
+pair_prior: 0.0909
+prior_meaning: P(a voice in view is the matched known person) — set per site (--prior)
+n: 1760
+n_fit: 935
+n_heldout: 825
+speakers: 11
+dataset:
+  path: data/calibration/speaker_pairs.csv
+  sha256: 0a4cfbf26c1cc29e951a261b7937e9b2726e16795c2a8164f089cdfe3be6a3b2
+  note: synthetic TTS voices (tools/synth_speech.py, each voice = one speaker); real voices differ less from each other than
+    TTS voices — refit on recorded people
+metrics:
+  heldout:
+    brier: 0.0195
+    ece: 0.0169
+    base_rate: 0.0909
+    brier_base_rate: 0.0826
+    eer: 0.0533
+    eer_threshold: 0.3417
+    cllr: 0.2153
+  genuine_mean: 0.6432
+  impostor_mean: 0.1295
+at_voice_threshold:
+  threshold: 0.3
+  correct: 103
+  wrong: 47
+  known_correct: 71
+  known_wrong: 4
+  stranger_correct: 32
+  stranger_wrong: 43
+reliability:
+- lo: 0.0
+  hi: 0.1
+  n: 707
+  mean_p: 0.0084
+  observed: 0.0057
+- lo: 0.1
+  hi: 0.2
+  n: 26
+  mean_p: 0.1428
+  observed: 0.0769
+- lo: 0.2
+  hi: 0.3
+  n: 8
+  mean_p: 0.2316
+  observed: 0.375
+- lo: 0.3
+  hi: 0.4
+  n: 4
+  mean_p: 0.3596
+  observed: 0.25
+- lo: 0.4
+  hi: 0.5
+  n: 4
+  mean_p: 0.4446
+  observed: 0.0
+- lo: 0.5
+  hi: 0.6
+  n: 5
+  mean_p: 0.5604
+  observed: 0.6
+- lo: 0.6
+  hi: 0.7
+  n: 4
+  mean_p: 0.6415
+  observed: 0.25
+- lo: 0.7
+  hi: 0.8
+  n: 4
+  mean_p: 0.7484
+  observed: 0.25
+- lo: 0.8
+  hi: 0.9
+  n: 6
+  mean_p: 0.8527
+  observed: 0.5
+- lo: 0.9
+  hi: 1.0
+  n: 57
+  mean_p: 0.9809
+  observed: 1.0
+table:
+  '0.1': 0.015
+  '0.2': 0.088
+  '0.3': 0.386
+  '0.4': 0.804
+  '0.5': 0.964
+  '0.6': 0.994
+  '0.7': 0.999
+  '0.8': 1.0
+  '0.9': 1.0
+map:
+  kind: logistic
+  a: 18.72257
+  b: -6.0798
+  train_prior: 0.5
+map_at_pair_prior:
+  kind: logistic
+  a: 18.72257
+  b: -8.38239
+  train_prior: 0.0909

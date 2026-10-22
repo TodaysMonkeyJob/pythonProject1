@@ -18,6 +18,10 @@ Usage::
     engine = FuzzyEngine.from_config("config/fuzzy.yaml", location_id="warehouse")
     result = engine.infer({"gas_concentration": 4.2, "gas": "acetone", "time_of_day_risk": 23.5})
     result["crisp"], result["fired_rules"][0]["explanation"]
+
+Measured values (F22 / TOD-33): a string ``"@<name>:<dotted.path>"`` anywhere in the file is replaced on load by that
+value of ``<name>.yaml`` next to it (``@thresholds:envelope.theta`` → ``config/thresholds.yaml``), so every trust
+degree / threshold names the file that measured or fitted it. A missing file / key fails the load.
 """
 import copy
 import os
@@ -35,9 +39,42 @@ DEFUZZIFIERS = ("centroid", "bisector", "mom", "som", "lom")
 MIN_STRENGTH = 1e-6
 
 
+REF_PREFIX = "@"
+
+
+class MeasuredRefError(ValueError):
+    pass
+
+
+def resolve_refs(data: Any, base_dir: str, _cache: Optional[Dict[str, Any]] = None) -> Any:
+    """:return: ``data`` with every ``"@<name>:<dotted.path>"`` string replaced by the referenced value"""
+    cache = {} if _cache is None else _cache
+    if isinstance(data, dict):
+        return {k: resolve_refs(v, base_dir, cache) for k, v in data.items()}
+    if isinstance(data, list):
+        return [resolve_refs(v, base_dir, cache) for v in data]
+    if not (isinstance(data, str) and data.startswith(REF_PREFIX) and ":" in data):
+        return data
+    name, dotted = data[1:].split(":", 1)
+    path = os.path.join(base_dir, f"{name}.yaml")
+    if path not in cache:
+        if not os.path.isfile(path):
+            raise MeasuredRefError(f"{data}: {path} not found (run the tool that writes it, see core/calibration.py)")
+        with open(path, encoding="utf-8") as f:
+            cache[path] = yaml.safe_load(f) or {}
+    value: Any = cache[path]
+    for key in dotted.split("."):
+        if not isinstance(value, dict) or key not in value:
+            raise MeasuredRefError(f"{data}: no {key!r} in {path}")
+        value = value[key]
+    return value
+
+
 def load_yaml(path: str) -> Dict[str, Any]:
+    """Reads a fuzzy config (or locations.yaml) and resolves its measured-value references."""
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f) or {}
+    return resolve_refs(data, os.path.dirname(os.path.abspath(path)))
 
 
 def location_overrides(data: Dict[str, Any], location_id: Optional[str],

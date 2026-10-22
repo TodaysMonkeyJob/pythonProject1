@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from core.events import make_event
-from core.fuzzy import FuzzyEngine
+from core.fuzzy import FuzzyEngine, load_yaml
 from modules.aggregator.aggregator import Aggregator
 from modules.aggregator.llm_view import llm_view, payload_text, with_risk_floor
 from modules.llm.calibration import (FIXED, LEVELS, RiskCalibrator, brier, ece, evaluate, fit, reliability,
@@ -216,11 +216,9 @@ def test_calibrate_tool(tmp_path, capsys):
 
 
 def test_envelope_uses_the_calibration_when_fitted(tmp_path):
-    import yaml
-
     from modules.envelope import RiskEnvelope
 
-    root = yaml.safe_load(Path(FUZZY).read_text())
+    root = load_yaml(FUZZY)
     plain = RiskEnvelope(root, FUZZY, None)
     assert plain.decide(None, "high", distribution={"high": 1.0})["risk_llm_source"] == "fixed"
     RiskCalibrator().to_yaml(str(tmp_path / "c.yaml"), {})

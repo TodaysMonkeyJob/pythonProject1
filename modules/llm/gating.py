@@ -22,9 +22,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 
-import yaml
 
-from core.fuzzy import FuzzyEngine, parse_rule
+from core.fuzzy import FuzzyEngine, load_yaml, parse_rule
 
 LOWERING = ("deescalation", "instruction_to_system")
 RISKY_ACTIONS = ("lying", "possible_smoking")
@@ -101,8 +100,7 @@ class LLMGate:
 
     @classmethod
     def from_config(cls, path: str = "config/fuzzy.yaml", min_interval_sec: float = 300.0) -> "LLMGate":
-        with open(path, encoding="utf-8") as f:
-            return cls((yaml.safe_load(f) or {})["gating"], min_interval_sec)
+        return cls(load_yaml(path)["gating"], min_interval_sec)
 
     def novelty(self, location: str, features: Set[str], now: float) -> Tuple[float, List[str]]:
         history = self.history.get(location)

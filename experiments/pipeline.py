@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from core.events import Event
 from experiments.configs import Config
-from experiments.dataset import LEVELS, Scenario, level_of
+from experiments.dataset import LEVELS, Scenario
 
 FIXED = {"low": 0.1, "medium": 0.4, "high": 0.7, "critical": 0.95}
 EVIDENCE = ("gas_reading", "motion", "object_detected", "person_identified", "action", "alert", "speech",
@@ -97,7 +97,12 @@ def pattern_filter(digest: str, detector) -> str:
 
 def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str = "config/fuzzy.yaml",
                  calibrator=None, min_interval_sec: float = 300.0,
-                 prices: Optional[Dict[str, float]] = None) -> ScenarioResult:
+                 prices: Optional[Dict[str, float]] = None,
+                 trace: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> ScenarioResult:
+    """
+    :param trace: Optional {"evidence": [], "gate": []} filled for the threshold fit (F22): every scored evidence
+        event (type, trust, claim_type) and every gate evaluation (score, override, corridor floor, time)
+    """
     from modules.aggregator.aggregator import Aggregator
     from modules.aggregator.llm_view import with_risk_floor
     from modules.envelope import RiskEnvelope
@@ -133,8 +138,11 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
         if gate is not None:
             ignored = sum(1 for c in facts["ignored"] if location not in last_call or c["at"] > last_call[location])
             verdict = gate.evaluate(row, corridor, ignored, last_call.get(location), now)
+            if trace is not None:
+                trace.setdefault("gate", []).append({"t": now, "trigger": row["trigger"], "score": verdict.score,
+                                                     "override": verdict.override, "floor": corridor["floor"]})
             if not verdict.call:
-                level = level_of(corridor["floor"])
+                level = envelope.level(corridor["floor"])
                 result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", level, corridor["floor"]))
                 return
             override = verdict.override is not None
@@ -200,6 +208,10 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
                 danger_at = clock[0]                       # fallback when the manifest has no danger_onset
             if scorer is not None:
                 scorer.apply(event)
+                if trace is not None and "trust" in event.payload:
+                    trace.setdefault("evidence", []).append({"t": clock[0], "type": event.type,
+                                                             "trust": event.payload["trust"],
+                                                             "claim_type": event.payload.get("claim_type")})
             elif event.type in EVIDENCE:
                 event.payload["trust"] = 1.0                # no B: everything counts as trusted
             if envelope is not None:

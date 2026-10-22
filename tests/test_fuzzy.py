@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import yaml
 
-from core.fuzzy import FuzzyConfigError, FuzzyEngine, RuleError, parse_rule
+from core.fuzzy import FuzzyConfigError, FuzzyEngine, RuleError, load_yaml, parse_rule
 from core.fuzzy.membership import gaussmf, parse_term, shift, trapmf, trimf
 from core.fuzzy.variables import LinguisticVariable
 
@@ -16,7 +16,7 @@ CONFIG = str(REPO / "config" / "fuzzy.yaml")
 
 
 def base_config():
-    return yaml.safe_load(Path(CONFIG).read_text())
+    return load_yaml(CONFIG)
 
 
 def engine(location=None, locations_path=None):
