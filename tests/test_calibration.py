@@ -140,11 +140,13 @@ def test_refs_resolve_from_neighbour_files_and_fail_loudly(tmp_path):
 def test_no_unreferenced_trust_constant_or_threshold_in_fuzzy_yaml():
     raw = yaml.safe_load((REPO / "config" / "fuzzy.yaml").read_text())
     trust, envelope, gating = raw["trust"], raw["envelope"], raw["gating"]
-    for key, value in trust["base"].items():
-        assert str(value).startswith("@trust_priors:"), key
+    assert "base" not in trust and trust["registry"] == "trust_registry.yaml"          # F23: per device × channel
+    registry = yaml.safe_load((REPO / "config" / "trust_registry.yaml").read_text())
+    for kind, prior in registry["priors"].items():
+        assert prior is None or str(prior).startswith("@trust_priors:"), kind
     for key in ("deescalation_floor", "instruction"):
         assert str(trust["consistency"][key]).startswith("@trust_priors:"), key
-    assert str(trust["gas_disagreement_pct"]).startswith("@trust_priors:") and "gas_confidence_min" not in trust
+    assert str(registry["gas"]["disagreement_pct"]).startswith("@trust_priors:") and "gas_confidence_min" not in trust
     assert set(trust["calibration"]) == {"asr", "speaker", "face", "gas"}
     assert envelope["theta"] == "@thresholds:values.theta" and envelope["thresholds"] == "@thresholds:values.levels"
     assert gating["threshold"].startswith("@thresholds:") and gating["critical_floor"].startswith("@thresholds:")

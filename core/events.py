@@ -52,6 +52,9 @@ EVENT_TYPES = (
     "location_summary",         # F12 live summary per location (dashboard only, not logged)
     "notification",             # F12: id, location_id, level, title, body
     "notification_acked",
+    "device_health",        # F23 (TOD-34): device self-diagnostics — device_id, kind, failing {check: {value, detail}}
+    "trust_evidence",       # F23: a worker confirms / refutes a channel (channel, verdict, reason), e.g. vad
+    "trust_feedback",       # F23: operator feedback from the dashboard (channel_id, verdict, reason / transcript fix)
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"

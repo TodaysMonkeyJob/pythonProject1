@@ -5,7 +5,7 @@ Validation counts for channel priors (F22 / TOD-33, TOD-34 channels) → ``repor
     python -m tools.measure_channels all
     python -m tools.measure_channels gas_concentration --tolerance 0.5
 
-* camera.pose_action — ``reports/actions_eval_human_behaviour_<imgsz>.json`` (imgsz from config.yaml): segments passed;
+* camera.pose_action — ``reports/actions_eval_human_behaviour_640.json`` (``--actions-report``): segments passed;
 * camera.smoking — the same report, hand_to_mouth segments: episodes detected vs missed;
 * gas.gas_concentration — held-out curves of data.xls (split as in training), deployed models: |error| ≤ tolerance %;
 * gas.gas_trend — held-out curves replayed as ramps / holds with a known rate (curves interpolated between held-out
@@ -44,12 +44,16 @@ def save(name: str, data: Dict[str, Any], out_dir: str) -> Dict[str, Any]:
 
 # --- camera (from the action evaluation report) -----------------------------------------------------------------
 
-def actions_report(config: Dict[str, Any]) -> str:
-    imgsz = int((config.get("actions") or {}).get("imgsz", 320))
-    return f"reports/actions_eval_human_behaviour_{imgsz}.json"
+ACTIONS_REPORT = "reports/actions_eval_human_behaviour_640.json"   # the source TOD-33 / TOD-34 specify
 
 
-def pose_action(path: str) -> Dict[str, Any]:
+def actions_report(config: Dict[str, Any], override: Optional[str] = None) -> str:
+    """The action evaluation the pose / smoking priors come from (``--actions-report``; default the 640 px run named
+    in TOD-33 / TOD-34 — the entry records the deployed ``actions.imgsz`` and the other run as an alternative)"""
+    return override or ACTIONS_REPORT
+
+
+def pose_action(path: str, deployed_imgsz: Optional[int] = None) -> Dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         report = json.load(f)
     posture = report["posture"]
@@ -64,7 +68,8 @@ def pose_action(path: str) -> Dict[str, Any]:
             "wrong": int(posture["segments"] - posture["passed"]),
             "unit": "labelled video segment (standing / sitting / lying / walking)", "source": path,
             "sha256": sha256_files([path]), "alternatives": alternatives,
-            "note": "the report that matches actions.imgsz in config.yaml (the deployed setting)"}
+            "deployed_imgsz": deployed_imgsz,
+            "note": "evaluation run named in TOD-33 / TOD-34; compare deployed_imgsz with the run's resolution"}
 
 
 def smoking(path: str) -> Dict[str, Any]:
@@ -210,14 +215,16 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     parser = argparse.ArgumentParser(description="Validation counts per channel (→ trust priors)")
     parser.add_argument("what", choices=("all", "pose_action", "smoking", "gas_concentration", "gas_trend", "vad"))
+    parser.add_argument("--actions-report", help=f"pose / smoking source (default {ACTIONS_REPORT})")
     parser.add_argument("--tolerance", type=float, default=0.5, help="gas_concentration: allowed abs error, %%")
     parser.add_argument("--speech", default="data/calibration/speech", help="vad: tools/synth_speech.py output")
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--out-dir", default=OUT_DIR)
     args = parser.parse_args(argv)
     config = load_config(args.config)
-    report = actions_report(config)
-    jobs = {"pose_action": lambda: pose_action(report), "smoking": lambda: smoking(report),
+    report = actions_report(config, args.actions_report)
+    imgsz = int((config.get("actions") or {}).get("imgsz", 320))
+    jobs = {"pose_action": lambda: pose_action(report, imgsz), "smoking": lambda: smoking(report),
             "gas_concentration": lambda: gas_concentration(config, args.tolerance),
             "gas_trend": lambda: gas_trend(config), "vad": lambda: vad(config, args.speech)}
     for name in (jobs if args.what == "all" else [args.what]):

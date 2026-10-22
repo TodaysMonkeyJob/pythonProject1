@@ -275,6 +275,13 @@ class MicController(BaseModule):
         self._was_loud = False
         self._last_sound_event = float("-inf")
         self._lock = threading.Lock()
+        from modules.trust.health import HealthPublisher, registry_config
+
+        health_cfg = registry_config(config)    # F23 (TOD-34): microphone self-diagnostics → device_health
+        self.health_cfg = (health_cfg or {}).get("mic") if health_cfg is not None else None
+        self.health = None                      # MicHealth, created when the source is open (actual sample rate)
+        self.health_publisher = HealthPublisher(self.emit, "mic", (health_cfg or {}).get("health", {}).get(
+            "refresh_sec", 300)) if health_cfg is not None else None
 
     @property
     def scene_active(self) -> bool:
@@ -365,6 +372,14 @@ class MicController(BaseModule):
 
     def process_frame(self, frame: np.ndarray) -> None:
         """Loudness + VAD always; recording only in ACTIVE."""
+        if self.health_cfg is not None:
+            if self.health is None:
+                from modules.trust.health import MicHealth
+
+                actual = getattr(self.frame_source, "actual_rate", None)
+                self.health = MicHealth(self.health_cfg, self.sample_rate, actual)
+            if (failing := self.health.observe(frame, self.clock())) is not None:
+                self.health_publisher.publish(failing, self.clock())
         db = rms_dbfs(frame)
         loud = db >= self.sound_threshold_db
         speech = bool(self.vad(frame))
@@ -456,6 +471,9 @@ class MicController(BaseModule):
             return
         segments = whisper_segments(result, duration)
         if not segments:
+            if self.health_publisher is not None:      # F23: the VAD sent a segment Whisper found no speech in
+                self.emit("trust_evidence", {"channel": "vad", "kind": "mic", "verdict": "refute",
+                                             "reason": f"Whisper не почув мови у {duration:.1f} с сегменті"})
             return
         chunk_start = (ended_at or self.wall_clock()) - duration
         diarization = self._diarize(segment, duration)

@@ -13,6 +13,8 @@ export const store = {
   events: [],             // newest last, capped
   status: {},
   connected: false,
+  trust: [],              // F23: /api/trust channels (device × channel)
+  trustError: null,
 };
 const MAX_EVENTS = 3000;
 const listeners = {};
@@ -63,6 +65,20 @@ export async function loadNotifications() {
   store.notifications = (await get("/api/notifications?limit=50")).notifications;
   emit("notifications");
 }
+export async function loadTrust() {
+  try { store.trust = (await get("/api/trust")).channels; store.trustError = null; }
+  catch (e) { store.trustError = `Реєстр довіри недоступний: ${e.message}`; }
+  emit("trust");
+}
+export const trustHistory = (channelId) => get("/api/trust/history?" + new URLSearchParams({ channel_id: channelId }))
+  .then((j) => j.history);
+export async function sendTrustFeedback(body) { const r = await api("POST", "/api/trust/feedback", body); setTimeout(loadTrust, 1500); return r; }
+// The weakest channel of a device (tile indicator): {tau, h, explanation} or null
+export function deviceTrust(deviceId) {
+  const rows = store.trust.filter((c) => c.device_id === deviceId);
+  if (!rows.length) return null;
+  return rows.reduce((a, b) => (b.tau < a.tau ? b : a));
+}
 export async function loadStatus() { store.status = await get("/api/status"); emit("status"); }
 export const history = (params) => get("/api/history?" + new URLSearchParams(params)).then((j) => j.events);
 
@@ -101,6 +117,7 @@ function handle(ev) {
   emit("event", ev);
   if (ev.type === "notification") { store.notifications.unshift(p); emit("notifications"); emit("notify", p); }
   else if (ev.type === "notification_acked") loadNotifications();
+  else if (ev.type === "device_health") loadTrust();
   else if (ev.type.startsWith("device_")) loadDevices();
   else if (ev.type.startsWith("identity_")) {
     if (ev.type === "identity_renamed" && store.persons[p.person_id]) store.persons[p.person_id].display_name = p.display_name;
@@ -113,9 +130,10 @@ function handle(ev) {
 
 export async function start() {
   await Promise.allSettled([loadLocations(), loadDevices(), loadPersons(), loadNotifications(), loadStatus(),
-                            loadDuplicates()]);
+                            loadDuplicates(), loadTrust()]);
   connect();
   setInterval(() => loadStatus().catch(() => {}), 3000);
   setInterval(() => loadDevices().catch(() => {}), 10000);
   setInterval(() => loadLocations().catch(() => {}), 15000);
+  setInterval(() => loadTrust(), 10000);
 }

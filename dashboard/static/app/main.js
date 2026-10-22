@@ -1,11 +1,12 @@
 // Control room (F13, single-screen redesign F21): one screen, the page never scrolls on desktop — only panels scroll
 // inside themselves. Views: #/overview · #/loc/<id> · #/loc/<id>/<tab> (events | talk | gas | gpt) · #/people ·
-// #/devices · #/locations. Territories switch with the ◀ ▶ buttons around the tabs, ← → (wrap around), Home
+// #/devices · #/locations · #/trust (F23). Territories switch with the ◀ ▶ buttons around the tabs, ← → (wrap around), Home
 // (Overview) and 1–9 (territory by index); back / forward follow the hash.
 import { cameras, on, orderedLocations, start, stateOf, store, unacked } from "./store.js";
 import { STATE_LABEL, $, clear, h, plural, toast } from "./ui.js";
 import { connectVideo, syncSubscriptions } from "./video.js";
 import { renderDevices, renderLocations, renderPeople } from "./views/admin.js";
+import { renderTrust } from "./views/trust.js";
 import { PANEL_TABS, leaveLocation, onLocationEvent, redrawCharts, renderLocation } from "./views/location.js";
 import { leaveOverview, notificationFeed, onOverviewEvent, renderOverview } from "./views/overview.js";
 
@@ -15,7 +16,7 @@ let route = { page: "overview" };
 function parse(hash) {
   const parts = (hash || "#/overview").replace(/^#\/?/, "").split("?")[0].split("/").map(decodeURIComponent);
   if (parts[0] === "loc" && parts[1]) return { page: "loc", id: parts[1], tab: PANEL_TABS.includes(parts[2]) ? parts[2] : null };
-  if (["people", "devices", "locations"].includes(parts[0])) return { page: parts[0] };
+  if (["people", "devices", "locations", "trust"].includes(parts[0])) return { page: parts[0] };
   return { page: "overview" };
 }
 
@@ -59,6 +60,7 @@ function draw() {
   else if (route.page === "people") renderPeople(view);
   else if (route.page === "devices") renderDevices(view);
   else if (route.page === "locations") renderLocations(view);
+  else if (route.page === "trust") renderTrust(view);
   drawTopbar();
   syncSubscriptions();
 }
@@ -140,7 +142,7 @@ on("notify", (n) => {
   try { if (n.level === "danger" && window.Notification && Notification.permission === "granted")
     new Notification(n.title, { body: n.body, tag: n.id }); } catch (e) { /* not supported */ }
 });
-for (const topic of ["summary", "locations", "devices", "notifications", "persons", "duplicates", "connection"]) on(topic, render);
+for (const topic of ["summary", "locations", "devices", "notifications", "persons", "duplicates", "connection", "trust"]) on(topic, render);
 on("status", drawTopbar);
 on("event", (ev) => { onOverviewEvent(ev); onLocationEvent(ev); });
 setInterval(() => clear($("#clock"), new Date().toLocaleTimeString("uk-UA", { hour12: false })), 1000);

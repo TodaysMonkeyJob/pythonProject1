@@ -1,7 +1,7 @@
 // Camera grid that never scrolls: 1 → 1×1, 2 → 2×1, 3–4 → 2×2, 5–6 → 3×2, 7–9 → 3×3, more → pages of 9.
 // F21 tile: territory chip with its state dot, people count, device name; the border shows the territory state
 // (none when safe); an offline camera says how long it has been silent. Tiles are focusable (Enter opens).
-import { locationOf, stateOf, store } from "../store.js";
+import { deviceTrust, locationOf, stateOf, store } from "../store.js";
 import { STATE_LABEL, h } from "../ui.js";
 
 export function layout(count) {
@@ -47,12 +47,16 @@ export function tile(device, size = "small", onTile = null) {
   const territory = location ? `${location.icon || ""} ${location.name}`.trim() : device.location_id;
   const shownState = online ? state : "offline";
   const open = () => onTile && onTile(device);
-  return h("div", { class: `tile st-${shownState}`, role: onTile ? "button" : null, tabindex: onTile ? "0" : null,
+  const trust = deviceTrust(device.device_id);               // F23: weakest channel of this camera
+  const weak = trust && (trust.tau < 0.4 || trust.h < 0.6);
+  return h("div", { class: `tile st-${shownState}${weak ? " degraded" : ""}`, role: onTile ? "button" : null, tabindex: onTile ? "0" : null,
                     "aria-label": `${device.name}, ${territory}: ${STATE_LABEL[shownState] || shownState}${people ? `, людей ${people}` : ""}`,
                     onclick: open, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { open(); e.preventDefault(); } } },
     online ? h("img", { alt: "", dataset: { video: device.device_id, size } })
            : h("div", { class: "placeholder" }, silentFor(device)),
     h("div", { class: "chip" }, h("span", { class: `dot st-${state}`, "aria-hidden": "true" }), territory,
       people ? h("span", { class: "people" }, ` · 👤 ${people}`) : null),
-    h("div", { class: "overlay" }, h("span", { class: "name" }, device.name)));
+    h("div", { class: "overlay" }, h("span", { class: "name" }, device.name),
+      trust ? h("span", { class: `trust-dot ${trust.tau < 0.4 ? "bad" : trust.tau < 0.6 ? "warn" : "ok"}`,
+                          title: trust.explanation }, `τ ${trust.tau.toFixed(2).replace(".", ",")}`) : null));
 }

@@ -183,6 +183,9 @@ class Orchestrator:
         self._stopping = False
         self.routed = 0
         self.trust = self._trust_scorer(config)    # F16: trust degree on evidence events, before logging
+        self._trust_tick = 0.0
+        if self.trust is not None:
+            self.trust.registry.ensure_device("identity", "identity", None, time.time())
 
     # --- setup -----------------------------------------------------------------------------------------------
 
@@ -238,7 +241,8 @@ class Orchestrator:
             return None
         from modules.trust import TrustScorer
 
-        return TrustScorer.from_config(path)    # a broken trust rule base fails the start loudly
+        # F23 (TOD-34): trust per device × channel, persisted (the dashboard reads the same SQLite file)
+        return TrustScorer.from_config(path, cfg.get("registry_db", ":memory:"))   # config.yaml: data/…db
 
     def start(self) -> None:
         self._create_frame_buffer()
@@ -247,7 +251,11 @@ class Orchestrator:
 
             self.devices = DeviceManager(self, self.config, scan=self.device_scan)
             if self.trust is not None:
-                self.trust.state.seed_devices(self.devices.registry.list_devices())
+                devices = self.devices.registry.list_devices()
+                self.trust.state.seed_devices(devices)
+                for device in devices:              # every channel of every known device exists in the registry
+                    self.trust.registry.ensure_device(device.get("device_id"), device.get("kind"),
+                                                      device.get("location_id"), time.time())
             if "gas" in self.modules:
                 sensor = self.config.get("gas", {}).get("sensor_id", "gas-1")
                 device = self.devices.register_static("gas", f"Gas sensor {sensor}", f"gas:{sensor}")
@@ -415,6 +423,12 @@ class Orchestrator:
         count = self.route_pending(timeout=timeout)
         if self.devices is not None:
             self.devices.tick()
+        if self.trust is not None and time.time() - self._trust_tick >= 30:
+            self._trust_tick = time.time()
+            try:
+                self.trust.registry.tick(self._trust_tick)    # gradual health recovery → history
+            except Exception as e:
+                logger.exception(f"Trust registry tick failed: {e}")
         return count
 
     def emit(self, event: Event) -> None:

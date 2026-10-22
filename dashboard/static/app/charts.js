@@ -90,3 +90,33 @@ export function bars(canvas, points, { threshold = null, minutes = 10, buckets =
     ctx.fillStyle = css("--muted"); ctx.font = "11px sans-serif"; ctx.fillText(`поріг ${threshold}%`, 4, Math.max(11, y - 3));
   }
 }
+
+// F23: τ and h of one trust channel over time; health changes marked as ticks. rows: /api/trust/history
+export function trustChart(canvas, rows) {
+  const { ctx, width, height } = prepare(canvas);
+  const pad = { left: 30, right: 8, top: 14, bottom: 18 }, w = width - pad.left - pad.right, hgt = height - pad.top - pad.bottom;
+  ctx.clearRect(0, 0, width, height);
+  ctx.font = "11px system-ui"; ctx.fillStyle = css("--muted"); ctx.strokeStyle = css("--line");
+  if (!rows.length) { ctx.fillText("немає історії", pad.left, pad.top + 12); return; }
+  const t0 = rows[0].at, t1 = Math.max(rows[rows.length - 1].at, t0 + 1);
+  const x = (t) => pad.left + ((t - t0) / (t1 - t0)) * w, y = (v) => pad.top + hgt - v * hgt;
+  for (const v of [0, 0.4, 0.6, 1]) {
+    ctx.beginPath(); ctx.moveTo(pad.left, y(v)); ctx.lineTo(width - pad.right, y(v)); ctx.stroke();
+    ctx.fillText(v.toFixed(1), 4, y(v) + 4);
+  }
+  for (let i = 0; i <= 3; i++) {
+    const t = t0 + ((t1 - t0) * i) / 3;
+    ctx.fillText(new Date(t * 1000).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" }), x(t) - 14, height - 4);
+  }
+  const line = (key, colour, dash) => {
+    ctx.strokeStyle = colour; ctx.setLineDash(dash); ctx.lineWidth = 1.5; ctx.beginPath();
+    rows.forEach((r, i) => { const px = x(r.at), py = y(r[key]);
+      if (i) { ctx.lineTo(px, y(rows[i - 1][key])); ctx.lineTo(px, py); } else ctx.moveTo(px, py); });
+    ctx.lineTo(width - pad.right, y(rows[rows.length - 1][key])); ctx.stroke(); ctx.setLineDash([]);
+  };
+  line("h", css("--muted"), [4, 3]);
+  line("tau", css("--accent"), []);
+  ctx.fillStyle = css("--critical");
+  rows.filter((r) => r.cause_type === "health").forEach((r) => ctx.fillRect(x(r.at) - 1, pad.top, 2, 6));
+  ctx.fillStyle = css("--text"); ctx.fillText("τ —   h - -   ▮ подія справності", pad.left + 4, 11);
+}

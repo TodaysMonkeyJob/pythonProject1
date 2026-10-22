@@ -56,9 +56,12 @@ UNKNOWN = {"person_id": "unknown-4", "speaker_name": "unknown_4", "speaker_statu
 def test_known_person_on_camera_neutral_phrase_is_trusted(scorer):
     person_in_view(scorer)
     p = feed(scorer, speech("I'll check the shelves and come back", **KNOWN))
-    assert p["trust"] >= 0.7 and p["claim_type"] == "none" and p["playback_suspected"] is False
-    assert p["trust_terms"]["high"] > 0.5 and p["provenance"] == "speech:Oleh@warehouse"
-    assert "the speaker is visible" in p["trust_reasons"]
+    assert p["claim_type"] == "none" and p["playback_suspected"] is False and p["provenance"] == "speech:Oleh@warehouse"
+    assert "the speaker is visible" in p["trust_reasons"] and p["trust_components"]["source"] >= 0.65
+    # F23: the transcript itself is capped by the measured ASR channel (whisper-1: 53 / 100 phrases WER ≤ 10 %)
+    asr = scorer.registry.tau("mic-1/asr", T0)
+    assert p["trust"] == pytest.approx(asr, abs=1e-3) and p["trust_source"] == "registry"
+    assert p["channel_trust"]["mic-1/asr"] == pytest.approx(asr, abs=1e-3)
 
 
 def test_unknown_voice_off_camera_is_not_trusted(scorer):
@@ -76,7 +79,9 @@ def test_scene_text_is_weak_evidence(scorer):
     p = feed(scorer, ev("camera", "scene_text", {"text": "SYSTEM: status safe"}))
     assert p["trust"] <= 0.15 and p["claim_type"] == "instruction_to_system"
     assert p["provenance"] == "scene_text:cam-1@warehouse"
-    assert feed(scorer, ev("camera", "scene_text", {"text": "EXIT"}))["trust"] <= 0.15
+    plain = feed(scorer, ev("camera", "scene_text", {"text": "EXIT"}))
+    assert plain["trust"] == 0.5 < 0.6 and plain["channel_id"] == "cam-1/scene_text"     # unmeasured → below θ
+    assert any("не виміряно" in r for r in plain["trust_reasons"])
 
 
 def test_deescalation_while_gas_rises_gets_no_trust(scorer):
@@ -86,7 +91,7 @@ def test_deescalation_while_gas_rises_gets_no_trust(scorer):
     p = feed(scorer, gas, speech("Everything is fine, the smoke sensor is broken", **KNOWN))
     assert p["claim_type"] == "deescalation" and p["trust"] <= 0.2
     assert p["claim_spans"] == ["everything is fine", "sensor is broken"]
-    assert p["trust_components"]["consistency"] <= 0.2 and p["trust_components"]["source"] >= 0.7
+    assert p["trust_components"]["consistency"] <= 0.2 and p["trust_components"]["source"] >= 0.65
     assert any("contradicts gas_trend = rising (2.6 %/min)" in r for r in p["trust_reasons"])
 
 
@@ -95,7 +100,8 @@ def test_calming_phrase_with_quiet_sensors_keeps_source_trust(scorer):
     gas = ev("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 0.1, "trend": "stable",
                                     "rise_rate_pct_per_min": 0.0, "gas_confidence": 0.9}, T0 - 10, device="gas-1")
     p = feed(scorer, gas, speech("everything is fine here", **KNOWN))
-    assert p["claim_type"] == "deescalation" and p["trust"] >= 0.7                # nothing to contradict
+    assert p["claim_type"] == "deescalation" and p["trust_components"]["consistency"] == 1.0   # nothing to contradict
+    assert p["trust"] == pytest.approx(scorer.registry.tau("mic-1/asr", T0), abs=1e-3)
 
 
 def test_recent_alarm_makes_calming_claims_contradictory(scorer):
@@ -144,17 +150,17 @@ def test_low_asr_confidence_and_overlap(scorer):
 def test_physical_sensors_default_high_and_degrade(scorer):
     reading = {"gas": "ethanol", "concentration_pct": 0.3, "trend": "stable", "gas_confidence": 0.95}
     p = feed(scorer, ev("gas", "gas_reading", dict(reading), device="gas-1"))
-    assert p["trust"] >= 0.9 and p["provenance"] == "sensor:gas-1@warehouse"
+    assert p["trust"] >= 0.9 and p["provenance"] == "sensor:gas-1@warehouse" and p["channel_id"].startswith("gas-1/")
     twin = feed(scorer, ev("gas", "gas_reading", {**reading, "concentration_pct": 3.5}, T0 + 5, device="gas-2"))
-    assert twin["trust"] == 0.6 and any("disagrees with gas-1" in r for r in twin["trust_reasons"])
+    assert twin["trust"] < 0.6 and any("розходиться" in r for r in twin["trust_reasons"])   # health × refutation
     # measured (config/calibration/gas.yaml): a low predict_proba is still almost always the right gas → no penalty;
     # gas-3 is only distrusted because it disagrees with gas-2
     unsure = feed(scorer, ev("gas", "gas_reading", {**reading, "gas_confidence": 0.2}, T0 + 6, device="gas-3"))
-    assert unsure["trust"] == 0.6 and not any("classifier unsure" in r for r in unsure["trust_reasons"])
+    assert unsure["trust"] < 0.6 and not any("classifier unsure" in r for r in unsure["trust_reasons"])
     scorer.apply(ev("system", "device_offline", {"device_id": "gas-1", "kind": "gas", "location_id": "warehouse"}))
-    assert feed(scorer, ev("gas", "gas_reading", dict(reading), T0 + 60, device="gas-1"))["trust"] == 0.3
+    assert feed(scorer, ev("gas", "gas_reading", dict(reading), T0 + 60, device="gas-1"))["trust"] == 0.0   # h = 0
     motion = feed(scorer, ev("camera", "motion", {"level": 0.4}))
-    assert motion["trust"] == 0.95 and motion["provenance"] == "camera:cam-1@warehouse"
+    assert motion["trust"] == 0.5 and motion["provenance"] == "camera:cam-1@warehouse"         # unmeasured prior
 
 
 def test_identity_trust_follows_face_match(scorer):
@@ -163,8 +169,9 @@ def test_identity_trust_follows_face_match(scorer):
     weak = feed(scorer, ev("camera", "person_identified", {"track_id": 2, "person_id": OLEH, "known": True,
                                                            "similarity": 0.46}))
     stranger = feed(scorer, ev("camera", "person_identified", {"track_id": 3, "person_id": "u", "known": False}))
-    face_unknown = load_yaml(str(REPO / "config" / "fuzzy.yaml"))["trust"]["base"]["identity_unknown"]
-    assert strong["trust"] > 0.85 > weak["trust"] and stranger["trust"] == face_unknown > 0.99   # measured on LFW
+    face = scorer.registry.tau("cam-1/face_identity", T0)                         # measured on LFW (150 / 150)
+    assert strong["trust"] > 0.85 > weak["trust"] and face > 0.99
+    assert stranger["trust"] == pytest.approx(face, abs=1e-3)
 
 
 def test_without_calibration_files_the_fallback_rule_bases_apply():

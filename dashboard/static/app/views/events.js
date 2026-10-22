@@ -1,6 +1,7 @@
 // Event rows shared by the Overview's global log and the territory "Події" tab (F21): one line, newest first.
 import { locationOf, personName } from "../store.js";
 import { STATE_LABEL, dialog, h, hms, json } from "../ui.js";
+import { feedbackButtons } from "./trust.js";
 
 const LLM_PROBLEM = { auth_error: "ключ не прийнято", not_found: "немає деплойменту", rate_limited: "ліміт запитів",
                       unreachable: "немає з'єднання", disabled: "немає ключів" };
@@ -37,7 +38,7 @@ export function describe(ev) {
 
 export function eventRow(ev, { withLocation = false } = {}) {
   const location = withLocation ? locationOf(ev.location_id) : null;
-  return h("button", { class: `ev-row sev-${ev.severity}`, title: "деталі події", onclick: () => dialog(`${ev.source} · ${ev.type}`, json(ev)) },
+  return h("button", { class: `ev-row sev-${ev.severity}`, title: "деталі події", onclick: () => dialog(`${ev.source} · ${ev.type}`, feedbackButtons(ev), json(ev)) },
     h("span", { class: "mono muted" }, hms(ev.timestamp)),
     withLocation ? h("span", { class: "ev-loc" }, location ? location.name : ev.location_id) : null,
     h("span", { class: "ev-text" }, describe(ev)));

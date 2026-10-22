@@ -101,6 +101,12 @@ class VisionDetector(BaseModule):
         self._camera_ok: Optional[bool] = None
         self.last_stats: Dict[str, float] = {}
         self.person_names: Dict[int, str] = {}  # track id → display name (forwarded person_identified)
+        from modules.trust.health import CameraHealth, HealthPublisher, registry_config
+
+        health_cfg = registry_config(config)    # F23 (TOD-34): camera self-diagnostics → device_health
+        self.health = CameraHealth(health_cfg.get("camera") or {}) if health_cfg is not None else None
+        self.health_publisher = HealthPublisher(self.emit, "camera", (health_cfg or {}).get("health", {}).get(
+            "refresh_sec", 300)) if health_cfg is not None else None
 
     def heartbeat_payload(self) -> Dict[str, Any]:
         return dict(self.last_stats)
@@ -159,6 +165,8 @@ class VisionDetector(BaseModule):
         now = self.clock()
         self._update_camera_status(frame is not None)
         if frame is None:
+            if self.health is not None and (failing := self.health.no_frame(now)) is not None:
+                self.health_publisher.publish(failing, now)
             time.sleep(0.05)
         else:
             self.process_frame(frame, now)
@@ -197,6 +205,8 @@ class VisionDetector(BaseModule):
         if self.frame_buffer is not None and now - self._last_shared >= self.shared_interval_sec:
             self._last_shared = now
             self._share(frame, motion, now)
+        if self.health is not None and (failing := self.health.observe(frame, now, motion.motion)) is not None:
+            self.health_publisher.publish(failing, now)
 
     def _emit_object(self, track: Track, state: str) -> None:
         self.emit("object_detected", {"track_id": track.track_id, "class": track.cls, "bbox": track.bbox,
