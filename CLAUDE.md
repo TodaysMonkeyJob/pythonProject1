@@ -194,6 +194,15 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   carry `trust_u` (registry u discounted by health) and `TrustedState.features` returns `facts["uncertainty"]`;
   only speech / scene-text claims use `trust.claim_threshold` (`@thresholds:values.claim_theta`). `llm_decision` has
   `risk_width`, `risk_type1`, `envelope_reason.widened_by`; the location page prints what widened the corridor.
+- F25 (TOD-36) two-sided fuzzy corridor (`modules/envelope/fuzzy_corridor.py`): K = plateau on [L, U] with slopes
+  of the risk terms' mean edge width, L = (1 − c)·(y_l + λ(y_r − y_l)), U = y_r; μ_GPT = max_t p_t·μ_t (calibrated
+  level sets), μ_D = min, h = sup μ_D, r_D = centroid (kept in [L, U]); policy agree (h ≥ h_min → r_D) /
+  deescalation_rejected (L) / escalation_review (U, event + dashboard Accept / Reject → POST /api/escalation/{id} →
+  `escalation_resolved` → trust registry `llm/risk_assessment`, `RuleSuggestionStore` (`modules/envelope/
+  suggestions.py`, `envelope.suggestions_db` = data/rule_suggestions.db, guarded) and the location takes GPT's
+  level) / clamp / fuzzy_only (no GPT → L, `RiskEnvelope.fallback`). λ, h_min fitted by `tools/fit_thresholds.py`
+  (λ: cost of L vs expert level on adversarial / normal scenarios; h_min: end-to-end level cost, Youden J tie-break).
+  `llm_decision` carries y_l, y_r, width, L, U, r_llm, r_D, h, policy_branch, c; `envelope_applied` = level raised.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

@@ -18,10 +18,13 @@ expert risk costs C per unit, its width 1), replayed through trust scoring + the
 
 Truth per snapshot for gating: the scenario's expert level from the danger onset on, ``low`` before it. Rates are
 kernel smoothed (``--bandwidth``), so the result moves with the cost ratio even where the calibration split is
-separable. One replay with the current config (no fixed-point iteration). GPT answers come from the experiment cache
+separable. One replay with the current config (no fixed-point iteration). F25: λ (risk attitude of the lower bound
+L, see ``fit_lambda``) and h_min (agreement threshold: a GPT answer whose fuzzy set meets the corridor less than
+h_min is a conflict — positive = GPT's level differs from the truth at that time). GPT answers come from the
+experiment cache
 (``--llm azure``, offline: a cache miss is answered by the local simulator, counted, and that scenario is left out of
 the level fit — its final risk would not be GPT's; θ / gating do not depend on the answer text); nothing is sent. λ and
-h_min of the corridor issue do not exist in the code yet and are listed as not applicable.
+h_min are fitted too (TOD-36).
 
     python -m tools.fit_thresholds                      # cost ratio from config.yaml
     python -m tools.fit_thresholds --cost-ratio 5       # → config/thresholds.yaml + reports/thresholds_log.jsonl
@@ -45,8 +48,8 @@ LEVELS = ("low", "medium", "high", "critical")
 LOWERING = ("deescalation", "instruction_to_system")
 # The hand-picked values before F22 — only written when no thresholds.yaml exists yet, so the first replay can load
 # config/fuzzy.yaml (which refers to this file); the fit then replaces them.
-BOOTSTRAP = {"claim_theta": 0.6, "levels": {"medium": 0.25, "high": 0.5, "critical": 0.8}, "gating": 0.5,
-             "critical_floor": 0.8, "k_var": {}}
+BOOTSTRAP = {"lambda": 0.0, "h_min": 0.5, "claim_theta": 0.6, "levels": {"medium": 0.25, "high": 0.5, "critical": 0.8},
+             "gating": 0.5, "critical_floor": 0.8, "k_var": {}}
 KAPPA_GRID = (0.0, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
 FOU_VARIABLES = ("gas_concentration", "gas_trend", "motion_level", "people_count", "unknown_share", "action_risk",
                  "known_present")
@@ -107,7 +110,7 @@ def collect(scenarios, llm, fuzzy: str, min_interval: float) -> Dict[str, List[D
     from experiments.pipeline import run_scenario
     from modules.trust.channels import epoch
 
-    outcomes, evidence, gates = [], [], []
+    outcomes, evidence, gates, decisions = [], [], [], []
     for scenario in scenarios:
         trace: Dict[str, List[Dict[str, Any]]] = {"evidence": [], "gate": []}
         misses = getattr(llm, "misses", 0)
@@ -121,11 +124,15 @@ def collect(scenarios, llm, fuzzy: str, min_interval: float) -> Dict[str, List[D
             attack = scenario.category == "adversarial" and item["claim_type"] in LOWERING
             evidence.append({**item, "attack": attack, "scenario_id": scenario.scenario_id})
         onset = epoch(scenario.danger_onset) if scenario.danger_onset else None
+        def truth_at(t, scenario=scenario, onset=onset):
+            return scenario.expert_level if (scenario.category == "normal" or onset is None or t >= onset - 1) \
+                else "low"
         for item in trace["gate"]:
-            truth = scenario.expert_level if (scenario.category == "normal" or onset is None
-                                              or item["t"] >= onset - 1) else "low"
-            gates.append({**item, "truth": truth, "scenario_id": scenario.scenario_id})
-    return {"outcomes": outcomes, "evidence": evidence, "gate": gates}
+            gates.append({**item, "truth": truth_at(item["t"]), "scenario_id": scenario.scenario_id})
+        for item in trace.get("decision", []):
+            if item.get("h") is not None:
+                decisions.append({**item, "truth": truth_at(item["t"]), "scenario_id": scenario.scenario_id})
+    return {"outcomes": outcomes, "evidence": evidence, "gate": gates, "decision": decisions}
 
 
 MIN_LEVEL_SCENARIOS = 10
@@ -164,8 +171,12 @@ def fit_all(data: Dict[str, List[Dict[str, Any]]], cost_ratio: float, bandwidth:
     wrong = [level_of(g["floor"], levels) != g["truth"] for g in gates]
     fits["gating"] = fit_cost_threshold([g["score"] for g in gates], wrong, cost_ratio, np.linspace(0.05, 0.95, 91),
                                         bandwidth, positive_above=True)
+    decisions = data.get("decision") or []
+    if decisions:                                       # F25: below h_min a GPT answer is a conflict → a bound holds
+        fits["h_min"] = fit_h_min(decisions, levels, cost_ratio)
     used = {"used": len(outcomes), "skipped_without_recorded_gpt": len(data["outcomes"]) - len(outcomes)}
-    values = {"claim_theta": fits["claim_theta"]["threshold"], "levels": levels, "gating": fits["gating"]["threshold"],
+    values = {"claim_theta": fits["claim_theta"]["threshold"], "levels": levels,
+              "h_min": fits["h_min"]["threshold"] if "h_min" in fits else 0.5, "gating": fits["gating"]["threshold"],
               "critical_floor": levels["critical"]}
     return {"values": values, "fits": fits, "previous_levels": current_levels, "level_scenarios": used}
 
@@ -216,9 +227,10 @@ def corridor_scores(scenarios, fuzzy: str, k: Dict[str, float]) -> List[Dict[str
             location = location or (event.location_id if event.location_id != "unassigned" else None)
             scorer.apply(event)
             envelope.observe(event)
-        _, _, corridor = envelope.assess(location, now + 1)
-        rows.append({"scenario_id": scenario.scenario_id, "floor": corridor["floor"], "ceil": corridor["ceil"],
-                     "expert": scenario.expert_risk})
+        fallback = envelope.fallback(location, now + 1)
+        rows.append({"scenario_id": scenario.scenario_id, "floor": fallback["y_l"], "ceil": fallback["y_r"],
+                     "c": fallback["c"], "expert": scenario.expert_risk, "expert_level": scenario.expert_level,
+                     "category": scenario.category})
         scorer.registry.close()
     return rows
 
@@ -231,6 +243,73 @@ def interval_score(rows: List[Dict[str, Any]], cost_ratio: float) -> Dict[str, f
     covered = [r["floor"] - 1e-9 <= r["expert"] <= r["ceil"] + 1e-9 for r in rows]
     return {"interval_score": round(float(np.mean(score)), 4), "mean_width": round(float(np.mean(width)), 4),
             "coverage": round(float(np.mean(covered)), 4)}
+
+
+LAMBDA_GRID = tuple(round(0.05 * i, 2) for i in range(21))
+H_GRID = tuple(round(0.05 * i, 2) for i in range(1, 20))
+
+
+def fit_h_min(decisions: List[Dict[str, Any]], levels: Dict[str, float], cost_ratio: float) -> Dict[str, Any]:
+    """
+    Agreement threshold h_min: for every candidate the policy branch of each recorded GPT decision is re-run (agree →
+    r_D inside [L, U]; else L / U / clamp) and the final level compared with the truth at that time — miss = below it
+    (cost C), false alarm = above it (cost 1). When that cost is flat (the bounds and r_D give the same levels), the
+    tie is broken by Youden's J of "h < h_min" as a detector of a wrong GPT level (then the smallest h_min).
+    """
+    from modules.envelope.projection import LEVELS as ORDER, level_of
+
+    def final(d, h_min):
+        lower, upper = d["L"], d["U"]
+        if d["h"] >= h_min and d["r_D"] is not None:
+            return min(upper, max(lower, d["r_D"]))
+        if d["r_llm"] < lower:
+            return lower
+        if d["r_llm"] > upper:
+            return upper
+        return min(upper, max(lower, d["r_llm"]))
+
+    usable = [d for d in decisions if None not in (d.get("L"), d.get("U"), d.get("r_llm"))]
+    tried = []
+    for h_min in H_GRID:
+        got = [ORDER.index(level_of(final(d, h_min), levels)) for d in usable]
+        want = [ORDER.index(d["truth"]) for d in usable]
+        miss = float(np.mean([g < w for g, w in zip(got, want, strict=True)])) if usable else 0.0
+        fa = float(np.mean([g > w for g, w in zip(got, want, strict=True)])) if usable else 0.0
+        wrong = [d for d in usable if d["level_llm"] != d["truth"]]
+        right = [d for d in usable if d["level_llm"] == d["truth"]]
+        caught = float(np.mean([d["h"] < h_min for d in wrong])) if wrong else 0.0
+        kept = float(np.mean([d["h"] >= h_min for d in right])) if right else 0.0
+        tried.append({"h_min": h_min, "p_miss": round(miss, 4), "p_fa": round(fa, 4),
+                      "expected_cost": round(cost_ratio * miss + fa, 4), "youden_j": round(caught + kept - 1, 4)})
+    best = min(tried, key=lambda t: (t["expected_cost"], -t["youden_j"], t["h_min"]))
+    return {"threshold": best["h_min"], "expected_cost": best["expected_cost"], "p_miss": best["p_miss"],
+            "p_fa": best["p_fa"], "n": len(usable), "by_h_min": tried,
+            "answers": "recorded" if all(d.get("cached") for d in usable) else "simulated (cache misses)"}
+
+
+def fit_lambda(rows: List[Dict[str, Any]], levels: Dict[str, float], cost_ratio: float) -> Dict[str, Any]:
+    """
+    F25 risk attitude λ of L = (1 − c)·(y_l + λ(y_r − y_l)): the bound GPT cannot go below. Miss = L's level under
+    the expert level in an adversarial scenario (a manipulated GPT is stopped only by L), false alarm = L's level
+    above the expert level in a normal one. Expected cost C·P_miss + P_fa; ties → the smallest λ.
+    """
+    from modules.envelope.projection import LEVELS as ORDER, level_of
+
+    adversarial = [r for r in rows if r["category"] == "adversarial"]
+    normal = [r for r in rows if r["category"] == "normal"]
+    tried = []
+    for lam in LAMBDA_GRID:
+        def lower(r, lam=lam):
+            return (1 - r["c"]) * (r["floor"] + lam * (r["ceil"] - r["floor"]))
+        miss = np.mean([ORDER.index(level_of(lower(r), levels)) < ORDER.index(r["expert_level"])
+                        for r in adversarial]) if adversarial else 0.0
+        fa = np.mean([ORDER.index(level_of(lower(r), levels)) > ORDER.index(r["expert_level"])
+                      for r in normal]) if normal else 0.0
+        tried.append({"lambda": lam, "p_miss": round(float(miss), 4), "p_fa": round(float(fa), 4),
+                      "expected_cost": round(float(cost_ratio * miss + fa), 4)})
+    best = min(tried, key=lambda t: (t["expected_cost"], t["lambda"]))
+    return {"threshold": best["lambda"], "expected_cost": best["expected_cost"], "p_miss": best["p_miss"],
+            "p_fa": best["p_fa"], "by_lambda": tried, "n_adversarial": len(adversarial), "n_normal": len(normal)}
 
 
 def fit_k(scenarios, fuzzy: str, cost_ratio: float) -> Dict[str, Any]:
@@ -286,6 +365,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     k_fit = fit_k(calibration, args.fuzzy, cost_ratio)                  # F24: FOU scale of the IT2 corridor
     result["values"]["k_var"] = k_fit["k_var"]
     result["fits"]["k_var"] = {key: v for key, v in k_fit.items() if key != "k_var"}
+    rows = corridor_scores(calibration, args.fuzzy, k_fit["k_var"])     # F25: λ on the fitted corridor
+    result["fits"]["lambda"] = fit_lambda(rows, result["values"]["levels"], cost_ratio)
+    result["values"]["lambda"] = result["fits"]["lambda"]["threshold"]
     output = {"version": 1, "fitted_at": now_iso(), "cost_ratio": cost_ratio, "c_fa": 1.0, "c_miss": cost_ratio,
               "bandwidth": args.bandwidth,
               "dataset": {"path": args.dataset, "name": dataset.name, "hash": dataset.hash(),
@@ -299,8 +381,7 @@ def main(argv: Optional[List[str]] = None) -> int:
               "expected_cost": {name: fit.get("expected_cost") for name, fit in result["fits"].items()},
               "fits": result["fits"], "level_scenarios": result["level_scenarios"],
               "previous_levels": result["previous_levels"],
-              "not_applicable": {"lambda": "corridor risk attitude — not in the code yet (corridor issue)",
-                                 "h_min": "agreement threshold — not in the code yet (corridor issue)"}}
+              "not_applicable": {}}
     write_yaml(args.out, output, HEADER)
     os.makedirs(os.path.dirname(args.log) or ".", exist_ok=True)
     with open(args.log, "a", encoding="utf-8") as f:

@@ -23,12 +23,13 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-DEVICE_LABEL = {"camera": "камера", "mic": "мікрофон", "gas": "сенсор газу", "identity": "реєстр людей"}
+DEVICE_LABEL = {"camera": "камера", "mic": "мікрофон", "gas": "сенсор газу", "identity": "реєстр людей",
+                "llm": "аналітик GPT"}
 CHANNEL_LABEL = {"objects": "об'єкти", "motion": "рух", "pose_action": "пози / дії", "smoking": "куріння",
                  "face_identity": "обличчя", "scene_text": "текст у кадрі", "vad": "наявність мови",
                  "asr": "транскрипт", "speaker_identity": "голос", "face_voice_link": "зв'язок голос ↔ обличчя",
                  "gas_class": "тип газу", "gas_concentration": "концентрація", "gas_trend": "динаміка газу",
-                 "person_registry": "реєстр людей"}
+                 "person_registry": "реєстр людей", "risk_assessment": "ескалації GPT"}
 KIND_ALIASES = {"microphone": "mic", "browser": "camera", "rtsp": "camera"}
 DAY = 86400.0
 

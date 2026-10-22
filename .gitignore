@@ -24,6 +24,7 @@ models/
 data/faces/
 data/identity.db*
 data/trust_registry.db*
+data/rule_suggestions.db*
 data/devices.db*
 data/tls/
 data/node_agent/

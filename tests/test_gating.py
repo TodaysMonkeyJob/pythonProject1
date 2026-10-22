@@ -101,10 +101,16 @@ def make_worker(tmp_path, gpt=None, min_interval=300, wall=None):
     return worker, box, clock, wall
 
 
-def published(worker):
+def published(worker, reviews=None):
+    """Published events without F25 escalation_review (collected into ``reviews`` when given)"""
     out = []
     while not worker.event_queue.empty():
-        out.append(Event.from_json(worker.event_queue.get()))
+        event = Event.from_json(worker.event_queue.get())
+        if event.type == "escalation_review":
+            if reviews is not None:
+                reviews.append(event)
+            continue
+        out.append(event)
     return out
 
 

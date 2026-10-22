@@ -144,11 +144,13 @@ def build(cal_dir: str, priors_path: str, thresholds_path: str, out: str) -> str
                   f"scenarios, hash `{ds['hash'][:12]}`.", "",
                   table([row("trust.claim_threshold", "claim_theta"), row("level medium", "level_medium"),
                          row("level high", "level_high"), row("level critical", "level_critical"),
-                         row("gating.threshold", "gating")],
+                         row("gating.threshold", "gating"), row("envelope.lambda (F25)", "lambda"),
+                         row("envelope.h_min (F25)", "h_min")],
                         ["threshold", "value", "expected cost", "P_miss", "P_fa", "pos / neg", "status"]), "",
                   _k_note(th), "",
-                  f"`gating.critical_floor` = level critical = {values['critical_floor']}. Not applicable yet: "
-                  + "; ".join(f"{k} — {v}" for k, v in (th.get("not_applicable") or {}).items()) + ".", ""]
+                  f"`gating.critical_floor` = level critical = {values['critical_floor']}."
+                  + (" Not applicable yet: " + "; ".join(f"{k} — {v}" for k, v in th["not_applicable"].items()) + "."
+                     if th.get("not_applicable") else ""), ""]
     path = os.path.join(out, "calibration.md")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(parts))

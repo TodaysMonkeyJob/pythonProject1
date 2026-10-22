@@ -85,6 +85,8 @@ class TrustEvidence:
         self.silent_since: Dict[str, float] = {}                        # mic → digital silence since
         self.last_correction: Optional[float] = None
         self.quiet_confirmed: Optional[float] = None
+        self.reviews: Dict[str, Dict[str, Any]] = {}                   # F25: open escalation reviews by review_id
+        self.suggestions = None                                         # RuleSuggestionStore (orchestrator)
 
     # --- helpers -------------------------------------------------------------------------------------------------
 
@@ -132,6 +134,14 @@ class TrustEvidence:
             return
         if t == "trust_feedback":
             self._feedback(p, now)
+            return
+        if t == "escalation_review":
+            self.reviews[str(event.payload.get("review_id"))] = {**event.payload, "at": now}
+            if len(self.reviews) > 200:
+                self.reviews.pop(next(iter(self.reviews)))
+            return
+        if t == "escalation_resolved":
+            self._resolved(event.payload, now)
             return
         if t == "trust_evidence":
             cid = p.get("channel_id") or self._channel(event.device_id, p.get("kind") or kind_of_event(event) or "",
@@ -384,6 +394,23 @@ class TrustEvidence:
                           f"{days:g} доби без виправлень", now)
 
     # --- operator ------------------------------------------------------------------------------------------------
+
+    def _resolved(self, p: Dict[str, Any], now: float) -> None:
+        """F25: the operator accepted / rejected GPT's escalation → the llm channel + the rule-suggestion store"""
+        review = self.reviews.pop(str(p.get("review_id")), {})
+        accepted = bool(p.get("accepted"))
+        cid = self._channel("llm", "llm", "risk_assessment", None, now)
+        level = review.get("risk_level_llm") or p.get("risk_level_llm")
+        who = p.get("by") or "operator"
+        if accepted:
+            self._confirm(cid, f"{who} прийняв ескалацію GPT до «{level}»", now, source="operator")
+        else:
+            self._refute(cid, f"{who} відхилив ескалацію GPT до «{level}»", now, source="operator")
+        if self.suggestions is not None:
+            self.suggestions.record_outcome(
+                str(p.get("review_id")), accepted, now, who, review.get("location_id") or p.get("location_id"), level,
+                review.get("risk_level_final"), p.get("reason"),
+                {k: review.get(k) for k in ("summary", "reasons", "U", "h", "risk_llm", "inputs", "snapshot_id")})
 
     def _feedback(self, p: Dict[str, Any], now: float) -> None:
         cid = p.get("channel_id")

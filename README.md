@@ -81,8 +81,10 @@ flowchart TD
   G -->|"needed but interval not over"| WAIT["wait — newer snapshot supersedes"]
   CALL --> R["GPT: risk_level + risk_distribution"]
   R --> K["F18 calibration<br/>r_LLM = centroid Σ p·μ"]
-  K --> P{"F17 corridor<br/>r_final = max(r_LLM, (1 − c)·r_floor)"}
-  P -->|"r_final level > GPT level"| REJ["deescalation_rejected"]
+  K --> P{"F25 two-sided corridor<br/>h = sup min(μ_GPT, μ_K)"}
+  P -->|"GPT below, h < h_min → L"| REJ["deescalation_rejected"]
+  P -->|"GPT above, h < h_min → U"| REV["escalation_review<br/>operator accepts / rejects"]
+  REV --> D
   P --> D["llm_decision → location state,<br/>notifications, dashboard"]
   FZ --> D
   REJ --> D
@@ -95,7 +97,10 @@ flowchart TD
   Corridor -.-> P
 ```
 
-Raising the risk is always allowed; lowering it below the floor needs confirmation (the lower end of an IT2
+F25: the corridor has two active bounds L = (1 − c)·(y_l + λ(y_r − y_l)) and U = y_r. GPT's risk distribution is a
+fuzzy set; where it meets the corridor (agreement h ≥ h_min) GPT refines the risk inside [L, U], otherwise the bound
+holds — below it the lowering is rejected, above it the operator decides on the dashboard. Lowering below L needs
+confirmation (the lower end of an IT2
 confirmation interval, so uncertain sensors cannot confirm safety). Speech and scene text never confirm safety —
 claims below the cost-fitted `trust.claim_threshold` are quoted to GPT as untrusted evidence and listed as ignored.
 

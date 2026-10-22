@@ -2,7 +2,7 @@
 # Each value minimises C_miss * P_miss + C_fa * P_fa on the calibration split; cost_ratio = C_miss / C_fa is the only
 # expert input. config/fuzzy.yaml reads `values` through "@thresholds:values.<name>" references.
 version: 1
-fitted_at: '2026-10-22T20:39:12+00:00'
+fitted_at: '2026-10-22T21:02:12+00:00'
 cost_ratio: 10.0
 c_fa: 1.0
 c_miss: 10.0
@@ -19,7 +19,7 @@ dataset:
   gate_evaluations: 79
 fuzzy_config:
   path: config/fuzzy.yaml
-  sha256: c8a14869b2776730e07bd267d9c5181a3d02173b3524538f36e562ff7a0c9590
+  sha256: db542e50b51837fa8315eeda0a1b4289a2d82eb0a3265aeca2a871970e7160ed
 llm:
   backend: azure
   offline: true
@@ -31,6 +31,7 @@ values:
     medium: 0.24
     high: 0.53
     critical: 0.78
+  h_min: 0.4
   gating: 0.41
   critical_floor: 0.78
   k_var:
@@ -41,13 +42,16 @@ values:
     unknown_share: 0.225
     action_risk: 0.375
     known_present: 0.375
+  lambda: 0.0
 expected_cost:
   claim_theta: 0.027
   level_medium: 0.002
   level_high: 0.0013
   level_critical: 0.0102
   gating: 0.5
+  h_min: 1.0725
   k_var: 0.2084
+  lambda: 0.0
 fits:
   claim_theta:
     threshold: 0.42
@@ -67,7 +71,7 @@ fits:
     empirical_p_fa: 0.0
     n_pos: 12
     n_neg: 12
-    kept_from: '2026-10-22T20:37:22+00:00'
+    kept_from: '2026-10-22T21:00:40+00:00'
     kept_reason: only 3 calibration scenarios with recorded GPT answers
   level_high:
     threshold: 0.53
@@ -78,7 +82,7 @@ fits:
     empirical_p_fa: 0.0
     n_pos: 10
     n_neg: 14
-    kept_from: '2026-10-22T20:37:22+00:00'
+    kept_from: '2026-10-22T21:00:40+00:00'
     kept_reason: only 3 calibration scenarios with recorded GPT answers
   level_critical:
     threshold: 0.78
@@ -89,7 +93,7 @@ fits:
     empirical_p_fa: 0.0
     n_pos: 8
     n_neg: 16
-    kept_from: '2026-10-22T20:37:22+00:00'
+    kept_from: '2026-10-22T21:00:40+00:00'
     kept_reason: only 3 calibration scenarios with recorded GPT answers
   gating:
     threshold: 0.41
@@ -100,6 +104,109 @@ fits:
     empirical_p_fa: 0.5
     n_pos: 2
     n_neg: 20
+  h_min:
+    threshold: 0.4
+    expected_cost: 1.0725
+    p_miss: 0.1014
+    p_fa: 0.058
+    n: 69
+    by_h_min:
+    - h_min: 0.05
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.2059
+    - h_min: 0.1
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.6176
+    - h_min: 0.15
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.6176
+    - h_min: 0.2
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.6176
+    - h_min: 0.25
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.6176
+    - h_min: 0.3
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.6176
+    - h_min: 0.35
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.6176
+    - h_min: 0.4
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.45
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.5
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.55
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.6
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.65
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.7
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.75
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.8
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.7655
+    - h_min: 0.85
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.5992
+    - h_min: 0.9
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.0
+    - h_min: 0.95
+      p_miss: 0.1014
+      p_fa: 0.058
+      expected_cost: 1.0725
+      youden_j: 0.0
+    answers: simulated (cache misses)
   k_var:
     kappa: 1.5
     spans:
@@ -148,6 +255,98 @@ fits:
       mean_width: 0.097
       coverage: 0.1944
     expected_cost: 0.2084
+  lambda:
+    threshold: 0.0
+    expected_cost: 0.0
+    p_miss: 0.0
+    p_fa: 0.0
+    by_lambda:
+    - lambda: 0.0
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.05
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.1
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.15
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.2
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.25
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.3
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.35
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.4
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.45
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.5
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.55
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.6
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.65
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.7
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.75
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.8
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.85
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.9
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 0.95
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    - lambda: 1.0
+      p_miss: 0.0
+      p_fa: 0.0
+      expected_cost: 0.0
+    n_adversarial: 12
+    n_normal: 12
 level_scenarios:
   used: 3
   skipped_without_recorded_gpt: 33
@@ -155,6 +354,4 @@ previous_levels:
   medium: 0.24
   high: 0.53
   critical: 0.78
-not_applicable:
-  lambda: corridor risk attitude — not in the code yet (corridor issue)
-  h_min: agreement threshold — not in the code yet (corridor issue)
+not_applicable: {}

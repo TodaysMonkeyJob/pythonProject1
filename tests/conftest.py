@@ -5,7 +5,8 @@ import os
 import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUARDED = ("data/identity.db*", "data/devices.db*", "data/trust_registry.db*", "data/notifications.db*", "data/tls/*",
+GUARDED = ("data/identity.db*", "data/devices.db*", "data/trust_registry.db*", "data/rule_suggestions.db*",
+           "data/notifications.db*", "data/tls/*",
            "logs/*/*", "reports/identity_metrics.json")
 
 

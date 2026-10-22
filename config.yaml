@@ -320,8 +320,9 @@ trust:                      # F16 (TOD-27): fuzzy trust degree on every evidence
   health: true              # device self-diagnostics in the camera / microphone / gas workers → device_health events
 
 envelope:                   # F17 (TOD-28): fuzzy risk corridor around GPT decisions (LLM worker)
-  enabled: true             # parameters: envelope section of trust.fuzzy_config (θ, levels, confirmation rules)
+  enabled: true             # parameters: envelope section of trust.fuzzy_config (λ, h_min, levels, confirmation rules)
   log: true                 # every decision with all intermediate values → logs/<date>/envelope.jsonl
+  suggestions_db: data/rule_suggestions.db   # F25: operator outcomes of escalation reviews (→ TOD-38 rule suggestions)
 
 calibration:                # F22 (TOD-33): measured trust inputs (config/calibration/, trust_priors.yaml, thresholds.yaml)
   cost_ratio: 10            # C_miss / C_fa — the only expert input of python -m tools.fit_thresholds

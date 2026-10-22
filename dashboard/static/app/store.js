@@ -72,6 +72,12 @@ export async function loadTrust() {
 }
 export const trustHistory = (channelId) => get("/api/trust/history?" + new URLSearchParams({ channel_id: channelId }))
   .then((j) => j.history);
+// F25: the operator's decision on GPT's escalation above the corridor
+export async function resolveEscalation(reviewId, accepted, extra = {}) {
+  return api("POST", `/api/escalation/${encodeURIComponent(reviewId)}`, { accepted, ...extra });
+}
+export const escalationResolution = (reviewId) =>
+  store.events.find((e) => e.type === "escalation_resolved" && e.payload.review_id === reviewId) || null;
 export async function sendTrustFeedback(body) { const r = await api("POST", "/api/trust/feedback", body); setTimeout(loadTrust, 1500); return r; }
 // The weakest channel of a device (tile indicator): {tau, h, explanation} or null
 export function deviceTrust(deviceId) {

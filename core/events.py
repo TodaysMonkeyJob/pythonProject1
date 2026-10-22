@@ -55,6 +55,8 @@ EVENT_TYPES = (
     "device_health",        # F23 (TOD-34): device self-diagnostics — device_id, kind, failing {check: {value, detail}}
     "trust_evidence",       # F23: a worker confirms / refutes a channel (channel, verdict, reason), e.g. vad
     "trust_feedback",       # F23: operator feedback from the dashboard (channel_id, verdict, reason / transcript fix)
+    "escalation_review",    # F25: GPT sees a higher risk than the corridor allows — the operator decides (review_id)
+    "escalation_resolved",  # F25: the operator accepted / rejected GPT's level (review_id, accepted, by)
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"

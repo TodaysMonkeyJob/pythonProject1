@@ -186,6 +186,11 @@ class Orchestrator:
         self._trust_tick = 0.0
         if self.trust is not None:
             self.trust.registry.ensure_device("identity", "identity", None, time.time())
+            self.trust.registry.ensure_device("llm", "llm", None, time.time())
+            from modules.envelope.suggestions import RuleSuggestionStore    # F25 → TOD-38 rule suggestions
+
+            self.trust.evidence.suggestions = RuleSuggestionStore(
+                config.get("envelope", {}).get("suggestions_db", ":memory:"))   # config.yaml: data/…db
 
     # --- setup -----------------------------------------------------------------------------------------------
 

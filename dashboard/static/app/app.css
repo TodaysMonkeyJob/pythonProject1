@@ -233,3 +233,7 @@ dialog pre, .json { white-space: pre-wrap; overflow-wrap: anywhere; background: 
 .row-actions input[type="text"] { flex: 1 1 200px; min-width: 0; }
 @media (max-width: 720px) { .trust-table thead { display: none; } .trust-table td { display: block; border: 0; }
   .trust-table tr { display: block; border-bottom: 1px solid var(--line); } }
+
+/* F25 (TOD-36): escalation review */
+.review { border-left: 4px solid var(--high); padding: 4px 8px; margin: 6px 0; background: var(--panel2); border-radius: 4px; }
+.badge-review { background: var(--high); color: #000; font-size: 11px; padding: 1px 6px; border-radius: 8px; }
