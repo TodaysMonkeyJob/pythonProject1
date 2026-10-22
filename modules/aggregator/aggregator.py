@@ -541,7 +541,7 @@ class Aggregator:
         return snapshot
 
     def _fuzzy_for(self, location_id: str):
-        """:return: (the location's FuzzyEngine or None, trust threshold θ) for the v2 view"""
+        """:return: (the location's FuzzyEngine or None, trust.claim_threshold for speech / scene text) — v2 view"""
         if location_id not in self._fuzzy:
             engine, theta = None, 0.6
             try:
@@ -549,9 +549,7 @@ class Aggregator:
 
                 if self._fuzzy_root is None:
                     self._fuzzy_root = load_yaml(self.fuzzy_path)
-                envelope = self._fuzzy_root.get("envelope") or {}
-                theta = float(((envelope.get("locations") or {}).get(location_id) or {}).get(
-                    "theta", envelope.get("theta", 0.6)))
+                theta = float((self._fuzzy_root.get("trust") or {}).get("claim_threshold", 0.6))
                 engine = FuzzyEngine.from_config(self.fuzzy_path, location_id)
             except (OSError, ValueError, KeyError) as e:
                 logger.warning(f"Fuzzy terms unavailable for {location_id} ({e}); the LLM view keeps labels only")

@@ -138,6 +138,7 @@ locations:
 # Time windows (…_sec / …_min) are operating parameters, not trust degrees or decision thresholds.
 trust:
   registry: trust_registry.yaml   # F23 (TOD-34): μ_source = τ of <device_id>/<channel> (priors, evidence, health)
+  claim_threshold: "@thresholds:values.claim_theta"   # F24: τ a lowering speech / scene-text claim needs (cost-fitted)
   calibration:                # raw score → probability; a missing file → the fallback rule bases asr / identity below
     asr: calibration/asr.yaml           # asr_confidence → P(WER ≤ 10 %)
     speaker: calibration/speaker.yaml   # ECAPA score → P(same speaker)
@@ -240,14 +241,20 @@ trust:
       - {id: I2, rule: "IF face_match IS fair THEN identity IS medium"}
       - {id: I3, rule: "IF face_match IS strong THEN identity IS high"}
 
+# --- F24 (TOD-35): interval type-2 inputs -----------------------------------------------------------------------------
+# δ_var = k_var · u (u = the trust registry's health-discounted uncertainty of the evidence behind the input, 0..1):
+# UMF edges move outwards by δ, LMF inwards; u = 0 → type-1. k_var = κ · span_var fitted by tools/fit_thresholds.py.
+it2:
+  k: "@thresholds:values.k_var"
+
 # --- F17 (TOD-28): fuzzy risk corridor around the LLM (component A) -------------------------------------------------
-# [r_floor, r_ceil] = risk rules above over trusted evidence only (τ ≥ θ); c = trusted safety confirmation;
+# [r_floor, r_ceil] = IT2 interval of the risk rules above over all physical evidence (F24); c = lower end of the
+# safety confirmation interval;
 # r_final = max(r_LLM, (1 − c) · r_floor). Raising is always allowed; lowering below the floor needs confirmation.
 envelope:
-  theta: "@thresholds:values.theta"   # minimum trust degree of evidence the corridor / confirmation may use
-  locations: {}               # per-location θ, e.g. {warehouse: {theta: 0.7}}
-  alpha: 0.5                  # r_ceil = upper end of the aggregated risk set's α-cut (informational)
-  floor: mom                  # r_floor = mean of maxima of the risk set (centroid = diluted by milder co-firing rules)
+  # F24 (TOD-35): no θ cut — all physical evidence enters; its uncertainty u widens the FOU (it2.k below)
+  alpha: 0.5                  # type-1 ablation only (floor: mom): r_ceil = upper end of the α-cut
+  floor: it2_mom              # r_floor = max(KM y_l, centroid of the strongest LOWER firing) | it2 = y_l | mom = type-1
   ack_valid_min: 30           # an operator acknowledgement releases the floor (c = 1) this long / until a new alarm
   llm_levels: {low: 0.1, medium: 0.4, high: 0.7, critical: 0.95}   # FALLBACK only: calibration_path replaces it
   thresholds: "@thresholds:values.levels"                           # number → level (r ≥ threshold), cost-fitted

@@ -14,7 +14,7 @@ risk corridor (TOD-28) and the prompt (TOD-29) use them; this module never lower
 | physical | gas_reading, motion, object_detected, scene_active, action, sound, sensor alerts | registry τ of the device channel (objects / motion / pose_action / smoking / vad / gas_*); gas also P(label right) |
 | identity | person_identified | registry τ of `face_identity` (unsettled: `objects`), known faces also P(known \| similarity) |
 | speech | speech (Whisper + speaker attribution) | `trust.source` rules (known speaker visible, off camera, unknown, playback, overlap) ∧ registry `speaker_identity`; μ_asr ∧ registry `asr`, `vad` |
-| scene_text | scene_text (sign / screen text, optional OCR) | registry τ of `scene_text` (unmeasured → 0.5, below θ) |
+| scene_text | scene_text (sign / screen text, optional OCR) | registry τ of `scene_text` (unmeasured → 0.5, below `trust.claim_threshold` when that is higher) |
 
 * **μ_asr** — `trust.asr` rules over Whisper's confidence `exp(avg_logprob) × (1 − no_speech_prob)` (now carried as
   `asr_confidence` on every speech event; 1 when the backend gave none).
@@ -78,4 +78,7 @@ r_t = γ·r_{t−1} + Δr,   s_t = γ·s_{t−1} + Δs,   τ_t = (r_t + 1)/(r_t 
 * Every change gets a Ukrainian explanation («Довіра 0,30: камера cam-2 — обличчя: кадр майже однорідний — ймовірно,
   закрито об'єктив (σ 1.1); h = 0,30; до цього 0,99.»); scored events carry `trust_source: registry`, `channel_id`
   and `channel_trust`. The dashboard page «Довіра» reads the same file (`/api/trust`, `/api/trust/history`).
+
+Every scored event also carries `trust_u` = 1 − h·(1 − u) of its most uncertain channel (F24 / TOD-35): the interval
+type-2 corridor widens that input's footprint of uncertainty by δ = k_var · trust_u instead of cutting it at a θ.
 

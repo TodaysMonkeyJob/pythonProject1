@@ -134,7 +134,8 @@ class TrustScorer:
     def _result(self, tau: float, provenance: str, reasons: List[str], **extra) -> Dict[str, Any]:
         tau = round(max(0.0, min(1.0, tau)), 3)
         return {"trust": tau, "trust_terms": {t: round(v, 3) for t, v in self.terms.fuzzify(tau).items()},
-                "provenance": provenance, "trust_reasons": reasons, "trust_source": "registry", **extra}
+                "provenance": provenance, "trust_reasons": reasons, "trust_source": "registry",
+                "trust_u": round(getattr(self, "_u", 1.0), 4), **extra}
 
     def channel_trust(self, event: Event, kinds, reasons: List[str]) -> Tuple[float, Dict[str, float], str]:
         """
@@ -144,11 +145,14 @@ class TrustScorer:
         """
         now = epoch(event.timestamp) or 0.0
         values: Dict[str, float] = {}
+        self._u = 1.0
         for kind in kinds:
             cid = f"{event.device_id}/{kind}"
             tau = self.registry.tau(cid, now)
             if tau is not None:
                 values[cid] = round(tau, 4)
+        if values:                                        # F24: the most uncertain channel behind the event
+            self._u = max(self.registry.uncertainty(cid, now) for cid in values)
         if not values:                                    # no device (e.g. a remote / test event): nothing known
             return 0.5, {}, f"{event.device_id}/{kinds[0]}"
         weakest = min(values, key=values.get)

@@ -229,6 +229,18 @@ class TrustRegistry:
                 "u": round(2 / (r + s + 2), 4), "gamma": ch.gamma, "prior": ch.prior, "prior_status": ch.prior_status,
                 "reasons": ch.reasons, "stats": ch.stats, "updated_at": ch.at, "explanation": ch.explanation}
 
+    def uncertainty(self, channel_id: str, now: float) -> Optional[float]:
+        """
+        u of the channel discounted by its health (subjective-logic discounting of the opinion by h):
+        u_eff = 1 − h·(1 − u) — a healthy channel keeps its count uncertainty, a failed one (h = 0) knows nothing.
+        F24: widens the FOU of the inputs this channel feeds.
+        """
+        ch = self.channels.get(channel_id)
+        if ch is None:
+            return None
+        r, s = ch.counts(now)
+        return 1.0 - ch.health(now, self.recovery) * (1.0 - 2 / (r + s + 2))
+
     def tau(self, channel_id: str, now: float) -> Optional[float]:
         ch = self.channels.get(channel_id)
         if ch is None:

@@ -16,9 +16,10 @@ Snapshot v2 for the LLM (F18 / TOD-29): fuzzified, trust-tagged evidence instead
 * Sensor values become linguistic terms with μ via ``FuzzyEngine.fuzzify()`` (TOD-26, the location's terms); zero μ
   are dropped. Seconds in frame / decibels become words. Raw values stay in the snapshot's v1 sections (local debug,
   CSV, incidents) and never reach the LLM.
-* Items with trust ≥ θ (``envelope.theta``, per location) are ``trusted_evidence``, the rest ``untrusted_evidence``
-  (quoted for context, never a reason to lower risk — see the prompt). Speech / scene text without a trust degree
-  is untrusted; physical items without one (trust scoring off) stay trusted.
+* F24: physical items are always ``trusted_evidence`` (with their trust degree — no θ cut; low trust widens the
+  corridor instead). Speech / scene text needs τ ≥ ``trust.claim_threshold`` (cost-fitted) to be trusted, the rest
+  is ``untrusted_evidence`` (quoted for context, never a reason to lower risk — see the prompt); speech / scene text
+  without a trust degree is untrusted.
 * ``risk_floor`` {term, mu} is added by the LLM worker from the live risk corridor (TOD-28) just before sending.
 
 A v1 snapshot (no trust tags) goes through the same function — that is the v1 → v2 adapter.
@@ -51,12 +52,15 @@ def _trusted(item: Dict[str, Any], theta: float, default: bool) -> bool:
     return default if trust is None else float(trust) >= theta
 
 
+LANGUAGE_KINDS = ("speech", "scene_text")
+
+
 def llm_view(snapshot: Dict[str, Any], engine=None, theta: float = 0.6, rules: Optional[Dict[str, Any]] = None,
              local_now: Optional[datetime] = None) -> Dict[str, Any]:
     """
     :param snapshot: A snapshot (schemas/snapshot.schema.json, v1 sections)
     :param engine: ``core.fuzzy.FuzzyEngine`` of the location (None → gas terms are left out, only the label trend)
-    :param theta: Trust threshold for trusted_evidence
+    :param theta: ``trust.claim_threshold`` — the trust speech / scene text needs to be trusted_evidence
     :param rules: Per-location rules (F12) → ``rules`` line
     :return: The v2 view sent to the LLM (no raw sensor numbers)
     """
@@ -79,6 +83,9 @@ def llm_view(snapshot: Dict[str, Any], engine=None, theta: float = 0.6, rules: O
     untrusted: List[Dict[str, Any]] = []
 
     def put(item: Dict[str, Any], default_trusted: bool) -> None:
+        if item.get("kind") not in LANGUAGE_KINDS:     # physical evidence: no cut (F24)
+            trusted.append(item)
+            return
         (trusted if _trusted(item, theta, default_trusted) else untrusted).append(item)
 
     gas = snapshot.get("gas") or {}

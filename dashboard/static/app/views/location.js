@@ -47,6 +47,16 @@ export function corridorBand(d) {
     h("div", { class: "mark final", style: { left: pct(d.risk_final) } }));
 }
 
+// F24: which uncertain inputs widen the IT2 corridor (envelope_reason.widened_by)
+const VAR_UA = { gas_concentration: "газ", gas_trend: "динаміка газу", motion_level: "рух", people_count: "люди",
+                 unknown_share: "незнайомці", action_risk: "дії", time_of_day_risk: "час" };
+function widthNote(d) {
+  const by = (d.envelope_reason || {}).widened_by || [];
+  if (!(d.risk_width > 0.005) || !by.length) return null;
+  return h("div", { class: "muted small width-note", title: "ширина коридору: невизначеність доказів (IT2)" },
+    `ширина ${fmt2(d.risk_width)} — невизначені: ${by.map((w) => `${VAR_UA[w.variable] || w.variable} +${fmt2(w.width)}`).join(", ")}`);
+}
+
 function envelopeReasons(d) {
   const r = d.envelope_reason || {};
   const items = [...(r.fired || []).map((x) => `правило: ${x}`), ...(r.confirmation || []).map((x) => `підтвердження: ${x}`),
@@ -72,6 +82,7 @@ function decisionCard(p, ts) {
       p.source === "fuzzy_only" ? `коридор ${fmt2(p.risk_floor)}–${fmt2(p.risk_ceil)} · ризик = floor ${fmt2(p.risk_final)}`
         : `коридор ${fmt2(p.risk_floor)}–${fmt2(p.risk_ceil)} · GPT ${fmt2(p.risk_llm)} → ${fmt2(p.risk_final)} · c = ${fmt2(p.confirmation)}`,
       p.over_reaction ? " · GPT, можливо, перебільшує" : "") : null,
+    widthNote(p),
     p.envelope_applied ? h("details", { class: "rejected" },
       h("summary", {}, h("span", { class: "badge-rejected" }, "зниження відхилено")), envelopeReasons(p)) : null,
     p.snapshot_id ? h("button", { class: "link", onclick: () => snapshotDialog(p.snapshot_id) }, "знімок, надісланий у GPT") : null);

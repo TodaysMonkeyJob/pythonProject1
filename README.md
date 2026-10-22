@@ -87,16 +87,17 @@ flowchart TD
   FZ --> D
   REJ --> D
 
-  subgraph Corridor["F17 inputs: trusted evidence only, τ ≥ θ"]
-    F1["r_floor = MOM of the risk rules"]
-    F2["r_ceil = α-cut top, informational"]
+  subgraph Corridor["F17 / F24 inputs: all physical evidence, uncertainty u widens the FOU"]
+    F1["r_floor = max(KM y_l, centroid of the strongest lower firing)"]
+    F2["r_ceil = KM y_r — the interval type-2 corridor"]
     F3["c = safety confirmation:<br/>clean gas, normal motion, known person,<br/>no stranger, no risky action · operator ack = 1"]
   end
   Corridor -.-> P
 ```
 
-Raising the risk is always allowed; lowering it below the floor needs trusted confirmation. Speech and scene text
-never confirm safety — low-trust claims are quoted to GPT as untrusted evidence and listed as ignored.
+Raising the risk is always allowed; lowering it below the floor needs confirmation (the lower end of an IT2
+confirmation interval, so uncertain sensors cannot confirm safety). Speech and scene text never confirm safety —
+claims below the cost-fitted `trust.claim_threshold` are quoted to GPT as untrusted evidence and listed as ignored.
 
 ## Privacy
 
