@@ -81,7 +81,11 @@ variables:
       critical: [trap, 0.75, 0.9, 1, 1]
 
 maps:
-  action_risk: {lying: 1.0, possible_smoking: 0.6, sitting: 0.1, standing: 0.1, walking: 0.2}
+  action_risk: {lying: 1.0, possible_smoking: 0.6, sitting: 0.1, standing: 0.1, walking: 0.2,
+                # learned actions (modules/vision/action_classifier.py) — same scale as the rule postures
+                falling: 1.0, distress: 0.8, fighting: 0.9, staggering: 0.6, climbing: 0.5, throwing: 0.4,
+                running: 0.3, picking_up: 0.1, sitting_down: 0.1, standing_up: 0.1, drinking: 0.1, eating: 0.1,
+                phone_call: 0.1, waving: 0.1, hugging: 0.2}
 
 rules:
   # Gas (independent physical sensor)

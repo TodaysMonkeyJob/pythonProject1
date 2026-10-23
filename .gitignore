@@ -41,3 +41,4 @@ data/eval/raw/
 data/eval/scripted/
 data/calibration/speech/
 experiments/cache/llm_sim.sqlite
+data/action_datasets/

@@ -1,11 +1,24 @@
 """
-Action recognition (F2): rules on top of pose keypoints, no trained model.
+Action recognition (F2): rules on top of pose keypoints, plus an optional learned layer.
 
 Per frame a posture is classified (standing / sitting / lying / walking / unknown); an action is confirmed
 when it wins ≥ ``vote_threshold`` of the known frames in the last ``window_sec`` and an ``action`` event is
 published only when the confirmed action of a track changes. ``possible_smoking`` is a separate signal:
 wrist near the mouth ≥ ``smoking_min_count`` times in ``smoking_window_sec``, with ``gas_confirmed`` set when
 the gas module reported a rise in the last ``gas_window_sec``.
+
+Learned layer (``actions.classifier_model`` / ``actions.cigarette_model``, ``modules.vision.action_classifier``): a
+skeleton classifier trained on HMDB51 + NTU RGB+D 60 adds dynamic actions — falling, staggering, fighting, running,
+climbing, throwing, picking_up, sitting_down, standing_up, drinking, eating, phone_call, waving, hugging, distress —
+published as ``action`` events with ``source: classifier`` once ``classifier_votes`` consecutive windows agree with
+p ≥ ``classifier_min_prob`` (the rules keep standing / sitting / walking / lying; a lying person only gets the riskier
+falling / distress / fighting; fighting / hugging also need a second track classified as fighting / hugging).
+Smoking uses three kinds of evidence: hand-to-mouth episodes (rule), the classifier's
+``smoking`` class and a cigarette seen by the detector in the head / hands crop; a confident drinking / eating /
+phone_call without a visible cigarette vetoes the hand-to-mouth rule (fewer false alarms). ``evidence`` lists which
+fired. The cigarette detector checks every tracked person once per ``cigarette_every_sec``; a cigarette seen in
+``cigarette_min_hits`` checks within ``cigarette_window_sec`` is evidence on its own; the classifier's smoking needs a
+hand-to-mouth episode or one sighting as well.
 
 Input comes from the vision shared buffer (raw frame + person boxes with track ids). Gas readings and
 ``object_detected``/``disappeared`` events reach this process through its control queue — the orchestrator
@@ -20,8 +33,9 @@ import numpy as np
 
 from core.events import Event
 from modules.vision.consumer import SharedFrameConsumer
-from modules.vision.pose import (L_ANKLE, R_ANKLE, Pose, PoseEstimator, knee_angle, legs_visible,
-                                 thigh_angle_from_horizontal, torso_angle, visible, wrist_distances)
+from modules.vision.pose import (L_ANKLE, L_WRIST, NOSE, R_ANKLE, R_WRIST, Pose, PoseEstimator, knee_angle,
+                                 legs_visible, thigh_angle_from_horizontal, torso_angle, torso_length, visible,
+                                 wrist_distances)
 from modules.vision.shared_frame import SharedFrameBuffer
 from modules.vision.state import iou
 from system_setup.logger_setup import init_logger
@@ -59,6 +73,14 @@ class ActionConfig:
     smoking_min_count: int = 3
     gas_window_sec: float = 60.0
     gas_rise_pct: float = 0.5               # concentration increase within gas_window_sec
+    classifier_min_prob: float = 0.55       # learned layer: a window counts for its top class at / above this
+    classifier_votes: int = 2               # … and this many consecutive windows must agree
+    classifier_fight_min_prob: float = 0.9  # fighting (risk 0.9) needs a far more confident window
+    classifier_every_sec: float = 1.0       # one prediction per track per second (the training windows' stride)
+    smoking_classifier_prob: float = 0.5    # the classifier's "smoking" counts as smoking evidence at / above this
+    cigarette_every_sec: float = 1.0        # the cigarette detector checks every tracked person this often
+    cigarette_window_sec: float = 10.0      # … and a cigarette seen in ≥ cigarette_min_hits checks within this counts
+    cigarette_min_hits: int = 3
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "ActionConfig":
@@ -203,6 +225,7 @@ class Sample:
     bbox: List[int]
     keypoints: np.ndarray
     label: str
+    others: List[np.ndarray] = field(default_factory=list)   # keypoints of the other persons in the frame
 
 
 @dataclass
@@ -218,6 +241,15 @@ class TrackActions:
     smoking: bool = False
     smoking_gas_confirmed: bool = False
     last_seen: float = 0.0
+    predictions: Deque[Optional[str]] = field(default_factory=lambda: collections.deque(maxlen=8))
+    smoking_probs: Deque[float] = field(default_factory=lambda: collections.deque(maxlen=8))
+    proba: Dict[str, float] = field(default_factory=dict)
+    activity: Optional[str] = None          # the last classifier action published
+    classified_at: float = float("-inf")
+    cigarette_at: float = float("-inf")
+    cigarette_score: float = 0.0
+    cigarette_seen_at: float = float("-inf")
+    cigarette_hits: Deque[Tuple[float, str]] = field(default_factory=collections.deque)   # (t, "mouth" | "hand")
 
 
 class GasEvidence:
@@ -261,10 +293,21 @@ class ActionEngine:
     Pure action logic (no I/O): feed person boxes + poses per frame, get event payloads back.
     """
 
-    def __init__(self, cfg: Optional[ActionConfig] = None):
+    RULE_ACTIONS = ("walking",)                     # the rules decide these; the classifier's are not published
+    LYING_OVERRIDES = ("falling", "distress", "fighting")
+    SMOKE_VETO = ("drinking", "eating", "phone_call")
+    PAIR_ACTIONS = ("fighting", "hugging")          # two-person actions: another track must take part too
+
+    def __init__(self, cfg: Optional[ActionConfig] = None, classifier=None, cigarette=None):
+        """
+        :param classifier: ``action_classifier.ActionClassifier`` or None (rules only)
+        :param cigarette: ``action_classifier.CigaretteDetector`` or None
+        """
         self.cfg = cfg or ActionConfig()
         self.tracks: Dict[int, TrackActions] = {}
         self.gas = GasEvidence(self.cfg.gas_window_sec, self.cfg.gas_rise_pct)
+        self.classifier, self.cigarette = classifier, cigarette
+        self.frame: Optional[np.ndarray] = None
 
     def on_event(self, event: Event, now: float) -> None:
         """Gas events feed the smoking confirmation; ``disappeared`` drops the track's history."""
@@ -273,15 +316,19 @@ class ActionEngine:
             self.tracks.pop(event.payload.get("track_id"), None)
 
     def update(self, now: float, persons: Sequence[Dict[str, Any]], poses: Sequence[Pose],
-               frame_size: Optional[Tuple[int, int]] = None) -> List[Tuple[Dict[str, Any], str, Optional[float]]]:
+               frame_size: Optional[Tuple[int, int]] = None,
+               frame: Optional[np.ndarray] = None) -> List[Tuple[Dict[str, Any], str, Optional[float]]]:
         """
         :param now: Frame time, seconds
         :param persons: [{"track_id", "bbox"}] currently tracked persons
         :param poses: Pose detections of the same frame
         :param frame_size: (width, height) of the frame; lets the rules tell furniture occlusion from the frame edge
+        :param frame: the BGR frame (only the cigarette detector needs it)
         :return: [(payload, severity, confidence)] for the events to publish
         """
         out = []
+        self.frame = frame
+        self._poses = poses
         for track_id, pose in match_poses(persons, poses, self.cfg.match_iou):
             track = self.tracks.setdefault(track_id, TrackActions(since=now))
             track.last_seen = now
@@ -306,7 +353,8 @@ class ActionEngine:
         alternations = ankle_alternations(list(track.samples) + [Sample(now, pose.bbox, pose.keypoints, "")],
                                           cfg.ankle_deadband) if recent else 0
         label = frame_action(posture, speed, alternations, cfg, scale_rate)
-        track.samples.append(Sample(now, list(pose.bbox), pose.keypoints, label))
+        others = [p.keypoints for p in getattr(self, "_poses", []) if p is not pose]
+        track.samples.append(Sample(now, list(pose.bbox), pose.keypoints, label, others))
 
         events = []
         confirmed = vote([s.label for s in track.samples], cfg.vote_threshold, cfg.min_votes)
@@ -317,10 +365,78 @@ class ActionEngine:
                            round(sum(s.label == confirmed for s in track.samples) / len(track.samples), 2)))
             track.action, track.since = confirmed, now
 
+        learned = self._update_classifier(track_id, track, now)
+        if learned:
+            events.append(learned)
         smoking_event = self._update_smoking(track_id, track, pose, now)
         if smoking_event:
             events.append(smoking_event)
         return events
+
+    def _update_classifier(self, track_id: int, track: TrackActions, now: float):
+        """The learned layer: a new dynamic action once ``classifier_votes`` consecutive windows agree."""
+        if self.classifier is None or now - track.classified_at < self.cfg.classifier_every_sec - 1e-6:
+            return None
+        window = [s for s in track.samples if now - s.t <= self.classifier.window_sec]
+        proba = self.classifier.predict([(s.t, s.keypoints) for s in window], [s.others for s in window])
+        if proba is None:
+            return None
+        track.classified_at = now
+        track.proba = proba
+        track.smoking_probs.append(proba.get("smoking", 0.0))
+        top = max(proba, key=proba.get)
+        needed = self.cfg.classifier_fight_min_prob if top == "fighting" else self.cfg.classifier_min_prob
+        track.predictions.append(top if proba[top] >= needed else None)
+        votes = list(track.predictions)[-self.cfg.classifier_votes:]
+        if len(votes) < self.cfg.classifier_votes or len(set(votes)) != 1 or votes[0] is None:
+            return None
+        label = votes[0]
+        if label in ("other", "smoking") or label in self.RULE_ACTIONS or label == track.activity:
+            return None                                # smoking is evidence for possible_smoking (below)
+        if track.action == "lying" and label not in self.LYING_OVERRIDES:
+            return None
+        recent = self.cfg.classifier_votes
+        if label in self.PAIR_ACTIONS and not any(
+                other is not track and set(list(other.predictions)[-recent:]) & set(self.PAIR_ACTIONS)
+                for other in self.tracks.values()):
+            return None                                # one person alone (or next to bystanders) is not a fight / hug
+        previous, track.activity = track.activity, label
+        severity = "warning" if label in ("falling", "fighting", "distress", "staggering") else "info"
+        payload = {"track_id": track_id, "action": label, "previous": previous, "posture": track.action,
+                   "source": "classifier", "probability": round(proba[label], 3), "duration_sec": 0}
+        return payload, severity, round(proba[label], 2)
+
+    def _cigarette(self, track: TrackActions, pose: Pose, now: float) -> float:
+        """Runs the cigarette detector on the head / hands crop (rate-limited per track)"""
+        if self.cigarette is None or self.frame is None or now - track.cigarette_at < self.cfg.cigarette_every_sec:
+            return track.cigarette_score if now - track.cigarette_at < self.cfg.cigarette_every_sec else 0.0
+        track.cigarette_at = now
+        try:
+            track.cigarette_score, centre = self.cigarette.locate(self.frame, pose.keypoints)
+        except Exception as e:  # the detector must never stop the rules
+            logger.error(f"Cigarette detector failed: {e}")
+            track.cigarette_score, centre = 0.0, None
+        place = self._cigarette_place(pose, centre) if track.cigarette_score > 0 else None
+        if place is not None:                    # only at the mouth or in a hand; elsewhere (chair bars, desk) ignored
+            track.cigarette_seen_at = now
+            track.cigarette_hits.append((now, place))
+        while track.cigarette_hits and now - track.cigarette_hits[0][0] > self.cfg.cigarette_window_sec:
+            track.cigarette_hits.popleft()
+        return track.cigarette_score
+
+    def _cigarette_place(self, pose: Pose, centre: Optional[np.ndarray]) -> Optional[str]:
+        """:return: "mouth" / "hand" when the detection is within mouth_radius torso lengths of the nose / a wrist"""
+        if centre is None:
+            return None
+        scale = torso_length(pose.keypoints, pose.bbox)
+        nose = pose.keypoints[NOSE]
+        if visible(nose) and np.linalg.norm(centre - nose) / scale <= self.cfg.mouth_radius:
+            return "mouth"
+        for wrist in (L_WRIST, R_WRIST):
+            point = pose.keypoints[wrist]
+            if visible(point) and np.linalg.norm(centre - point) / scale <= self.cfg.mouth_radius:
+                return "hand"
+        return None
 
     def _update_smoking(self, track_id: int, track: TrackActions, pose: Pose, now: float):
         cfg = self.cfg
@@ -342,16 +458,35 @@ class ActionEngine:
             track.mouth_events.popleft()
 
         count = len(track.mouth_events)
-        if count < cfg.smoking_min_count:
+        proba = track.proba or {}
+        recent = list(track.smoking_probs)[-cfg.classifier_votes:]
+        classifier_smoking = len(recent) >= cfg.classifier_votes and \
+            float(np.mean(recent)) >= cfg.smoking_classifier_prob     # mean of the last windows (short puffs)
+        self._cigarette(track, pose, now)                       # every person, rate-limited (≈ 12 ms per crop)
+        hits = len(track.cigarette_hits)
+        at_mouth = any(place == "mouth" for _, place in track.cigarette_hits)
+        # a cigarette seen repeatedly, at the mouth at least once — or in a hand that went to the mouth
+        cigarette = hits >= cfg.cigarette_min_hits and at_mouth
+        top = max(proba, key=proba.get) if proba else None
+        vetoed = top in self.SMOKE_VETO and proba[top] >= cfg.classifier_min_prob and not cigarette
+        # the classifier alone is not enough (a hand at the face while dozing looks alike): it needs a hand-to-mouth
+        # episode or at least one cigarette sighting
+        evidence = [name for name, ok in (("hand_to_mouth", count >= cfg.smoking_min_count and not vetoed),
+                                          ("classifier", classifier_smoking and (count >= 1 or hits >= 1)),
+                                          ("cigarette", cigarette)) if ok]
+        if not evidence:
             track.smoking = False
             return None
         gas_confirmed = self.gas.confirmed(now)
         if track.smoking and (track.smoking_gas_confirmed or not gas_confirmed):
             return None  # already reported with the same (or stronger) evidence
         track.smoking, track.smoking_gas_confirmed = True, gas_confirmed
-        confidence = min(0.95, 0.5 + 0.05 * (count - cfg.smoking_min_count) + (0.3 if gas_confirmed else 0.0))
+        confidence = min(0.95, 0.4 + 0.15 * len(evidence) + 0.05 * max(0, count - cfg.smoking_min_count)
+                         + (0.3 if gas_confirmed else 0.0))
         payload = {"track_id": track_id, "action": SMOKING, "previous": track.action, "duration_sec": 0,
-                   "gas_confirmed": gas_confirmed, "wrist_to_mouth_count": count}
+                   "gas_confirmed": gas_confirmed, "wrist_to_mouth_count": count, "evidence": evidence,
+                   "cigarette_seen": "cigarette" in evidence,
+                   **({"smoking_probability": round(proba.get("smoking", 0.0), 3)} if proba else {})}
         return payload, "critical" if gas_confirmed else "warning", round(confidence, 2)
 
 
@@ -367,6 +502,7 @@ class ActionRecognizer(SharedFrameConsumer):
                  frame_buffer: Optional[SharedFrameBuffer] = None):
         self.cfg = config.get("actions", {})
         super().__init__(event_queue, control_queue, config, self.cfg.get("action_fps", 5), frame_buffer)
+        self.classifier, self.cigarette = None, None                    # learned layer, loaded in setup()
         self.engine = ActionEngine(ActionConfig.from_dict(self.cfg))   # the first camera's (single camera: the only)
         self.engines: Dict[str, ActionEngine] = {}                     # device_id → per-camera tracks + gas evidence
         self.pose_estimator = pose_estimator
@@ -374,7 +510,8 @@ class ActionRecognizer(SharedFrameConsumer):
     def engine_for(self, device_id: str) -> ActionEngine:
         """Each camera has its own tracks (track ids are per camera); one pose model serves all of them."""
         if device_id not in self.engines:
-            self.engines[device_id] = self.engine if not self.engines else ActionEngine(self.engine.cfg)
+            self.engines[device_id] = self.engine if not self.engines else ActionEngine(
+                self.engine.cfg, self.classifier, self.cigarette)
         return self.engines[device_id]
 
     def on_camera_removed(self, device_id: str) -> None:
@@ -389,6 +526,13 @@ class ActionRecognizer(SharedFrameConsumer):
             from modules.vision.yolo import limit_threads
 
             limit_threads(self.cfg.get("threads", 2))  # after loading: importing ultralytics resets torch's threads
+        from modules.vision.action_classifier import ActionClassifier, CigaretteDetector
+
+        self.classifier = ActionClassifier.from_path(self.cfg.get("classifier_model"))
+        self.cigarette = CigaretteDetector.from_config(self.cfg)
+        self.engine.classifier, self.engine.cigarette = self.classifier, self.cigarette
+        if self.classifier is not None:
+            logger.info(f"Action classifier: {', '.join(self.classifier.classes)}")
 
     def on_event(self, event: Event, now: float) -> None:
         """
@@ -411,7 +555,7 @@ class ActionRecognizer(SharedFrameConsumer):
         poses = self.pose_estimator.estimate(frame) if persons else []
         frame_size = (frame.shape[1], frame.shape[0])
         engine = self.engine_for(self.current.device_id) if self.current else self.engine
-        for payload, severity, confidence in engine.update(timestamp, persons, poses, frame_size):
+        for payload, severity, confidence in engine.update(timestamp, persons, poses, frame_size, frame):
             self.emit("action", payload, severity=severity, confidence=confidence)
 
 

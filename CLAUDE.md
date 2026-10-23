@@ -83,6 +83,18 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     Identified tracks are re-verified every `verify_sec` (a new person can inherit a track id); `identity_*` events
     (or `sync_sec` polling) relabel live tracks. `legacy_faces.py` imports the old `faces.npz` / unknown folders
     into an empty registry. F2/F3 events go to `logs/<date>/actions.jsonl` / `identity.jsonl`.
+  - Learned action layer (`modules/vision/action_features.py` window features, `action_classifier.py`): an sklearn
+    classifier on COCO-17 pose windows (2.5 s at 5 fps) trained by `tools/train_actions.py` on public skeletons
+    (HMDB51 + NTU RGB+D 60 from OpenMMLab, git-ignored `data/action_datasets/`, research licences) → 18 actions
+    (falling, staggering, fighting, distress, running, climbing, throwing, picking_up, sitting_down, standing_up,
+    drinking, eating, phone_call, waving, hugging, smoking, walking, other); `action` events with `source:
+    classifier`, once per second per track, 2 agreeing windows, fighting / hugging need a second participant, lying
+    keeps priority. Smoking evidence: hand-to-mouth rule, classifier, and a yolo11n cigarette detector
+    (`tools/train_cigarette.py` on CigDet, CC BY 4.0, trained on CPU — MPS did not converge) run on a head / hands
+    crop once per second per person, counting only sightings at the mouth / in a hand (`cigarette_min_hits` in
+    10 s, one at the mouth); a confident drinking / eating / phone call vetoes the rule. Models in git-ignored
+    `models/` (absent → rules only); metrics in `reports/action_classifier/`, `reports/cigarette_detector/`;
+    `eval_actions --classifier --cigarette` compares with the rules.
   - F14 (TOD-25) duplicates: `face_quality.assess` (good / usable / reject before embedding), `track_identity`
     (`TrackIdentityResolver`: strong match or voting per track, inherited; unknown only after 3 good faces over 1 s,
     else `unidentified`), `core/gallery.py` (≤ 30 prototypes, top-3 matching, admission: good + non-redundant +

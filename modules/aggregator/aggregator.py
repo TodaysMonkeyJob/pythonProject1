@@ -84,7 +84,7 @@ class Person:
 class AggregatorConfig:
     snapshot_interval_sec: float = 60.0
     max_snapshot_bytes: int = 2048
-    immediate_actions: Tuple[str, ...] = ("possible_smoking", "lying")
+    immediate_actions: Tuple[str, ...] = ("possible_smoking", "lying", "falling", "fighting", "distress")
     unknown_alert_hours: Optional[List[str]] = None
     immediate_cooldown_sec: float = 3.0
     max_text_chars: int = 200

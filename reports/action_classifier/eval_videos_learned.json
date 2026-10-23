@@ -1,0 +1,430 @@
+{
+  "segments": 26,
+  "passed": 11,
+  "posture": {
+    "segments": 19,
+    "passed": 10,
+    "mean_score": 0.658,
+    "mean_coverage": 0.684
+  },
+  "hand_to_mouth": {
+    "segments": 7,
+    "detected": 1,
+    "smoking_raised": 5
+  },
+  "learned_layer": {
+    "classifier": "models/action_classifier.joblib",
+    "cigarette": "models/cigarette_yolo11n.pt"
+  },
+  "non_smoking_videos": {
+    "minutes": 3.8,
+    "counted_mouth_episodes_per_min": 1.59,
+    "possible_smoking_false_alarms": 1,
+    "false_alarm_evidence": {
+      "hand_to_mouth": 1
+    }
+  },
+  "target": 0.8,
+  "results": [
+    {
+      "video": "Business footage diverse team | Footage in office, meeting room | Free download stock footage.mp4",
+      "start": 0.0,
+      "end": 16.5,
+      "expected": "standing",
+      "note": "group around a table (leaning 0-8 s)",
+      "score": 0.658,
+      "passed": false,
+      "coverage": 0.927,
+      "actions": {
+        "standing": 50,
+        "sitting": 26
+      },
+      "activities": {}
+    },
+    {
+      "video": "Hilarious Office Moment - Employee Caught Sleeping After Lunch #funnyvideo #officelife.mp4",
+      "start": 0.0,
+      "end": 7.5,
+      "expected": "sitting",
+      "note": "asleep at the desk with the head on the arms",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 0.947,
+      "actions": {
+        "sitting": 36
+      },
+      "activities": {}
+    },
+    {
+      "video": "Hilarious Office Moment - Employee Caught Sleeping After Lunch #funnyvideo #officelife.mp4",
+      "start": 8.0,
+      "end": 11.8,
+      "expected": "sitting",
+      "note": "woken up; close-up seated at the desk",
+      "score": 0.632,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "sitting": 12,
+        "standing": 7
+      },
+      "activities": {}
+    },
+    {
+      "video": "Hilarious Office Moment - Employee Caught Sleeping After Lunch #funnyvideo #officelife.mp4",
+      "start": 12.0,
+      "end": 15.6,
+      "expected": "standing",
+      "note": "colleague standing next to the desk (largest person)",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 1.0,
+      "actions": {
+        "standing": 18
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 2.0,
+      "end": 13.4,
+      "expected": "sitting",
+      "note": "news anchor behind a desk",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 0.947,
+      "actions": {
+        "sitting": 54
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 13.5,
+      "end": 25.5,
+      "expected": "lying|sitting",
+      "note": "reclined nap chairs",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 0.767,
+      "actions": {
+        "sitting": 42,
+        "lying": 4
+      },
+      "activities": {
+        "sitting_down": 1
+      }
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 66.0,
+      "end": 71.0,
+      "expected": "sitting",
+      "note": "woman asleep at a cafe table",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 0.64,
+      "actions": {
+        "sitting": 16
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 71.0,
+      "end": 75.0,
+      "expected": "walking",
+      "note": "pedestrian crossing",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "sitting": 11,
+        "standing": 9
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 75.0,
+      "end": 82.4,
+      "expected": "walking|standing",
+      "note": "people on the pavement",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 0.811,
+      "actions": {
+        "standing": 22,
+        "walking": 8
+      },
+      "activities": {
+        "eating": 9
+      }
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 91.5,
+      "end": 100.5,
+      "expected": "sitting",
+      "note": "open-plan office",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 0.0,
+      "actions": {},
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 104.0,
+      "end": 112.5,
+      "expected": "sitting",
+      "note": "woman sitting in a capsule bed",
+      "score": 0.533,
+      "passed": false,
+      "coverage": 0.698,
+      "actions": {
+        "walking": 14,
+        "sitting": 16
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 114.5,
+      "end": 117.0,
+      "expected": "lying",
+      "note": "lying in the capsule bed",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 0.0,
+      "actions": {},
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 134.0,
+      "end": 138.4,
+      "expected": "sitting",
+      "note": "open-plan office",
+      "score": 0.722,
+      "passed": false,
+      "coverage": 0.818,
+      "actions": {
+        "sitting": 13,
+        "standing": 5
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 141.5,
+      "end": 147.0,
+      "expected": "sitting",
+      "note": "woman at a desk",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 0.741,
+      "actions": {
+        "sitting": 20
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 155.0,
+      "end": 159.6,
+      "expected": "lying",
+      "note": "lying on a nap chair (top view)",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 0.783,
+      "actions": {
+        "lying": 18
+      },
+      "activities": {}
+    },
+    {
+      "video": "Money Talks_ Napping at work.mp4",
+      "start": 159.6,
+      "end": 164.0,
+      "expected": "lying|sitting",
+      "note": "reclined nap chairs",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 1.0,
+      "actions": {
+        "lying": 22
+      },
+      "activities": {}
+    },
+    {
+      "video": "THOMAS SHELBY SMOKING || PEAKY BLINDERS.mp4",
+      "start": 44.0,
+      "end": 46.0,
+      "expected": "hand_to_mouth",
+      "note": "lighting a cigarette",
+      "score": 1.0,
+      "passed": true,
+      "coverage": 1.0,
+      "actions": {
+        "near_mouth_samples": 2,
+        "samples": 10
+      },
+      "smoking_raised": false,
+      "smoking_evidence": [],
+      "smoking_prob_max": 0.0,
+      "cigarette_max": 0.837
+    },
+    {
+      "video": "THOMAS SHELBY SMOKING || PEAKY BLINDERS.mp4",
+      "start": 50.0,
+      "end": 52.5,
+      "expected": "hand_to_mouth",
+      "note": "hand with cigarette at the mouth",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "near_mouth_samples": 0,
+        "samples": 13
+      },
+      "smoking_raised": true,
+      "smoking_evidence": [
+        "classifier"
+      ],
+      "smoking_prob_max": 0.957,
+      "cigarette_max": 0.7
+    },
+    {
+      "video": "THOMAS SHELBY SMOKING || PEAKY BLINDERS.mp4",
+      "start": 108.0,
+      "end": 111.0,
+      "expected": "hand_to_mouth",
+      "note": "hand with cigarette at the mouth",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "near_mouth_samples": 0,
+        "samples": 15
+      },
+      "smoking_raised": true,
+      "smoking_evidence": [],
+      "smoking_prob_max": 0.24,
+      "cigarette_max": 0.783
+    },
+    {
+      "video": "THOMAS SHELBY SMOKING || PEAKY BLINDERS.mp4",
+      "start": 113.5,
+      "end": 116.5,
+      "expected": "hand_to_mouth",
+      "note": "hand with cigarette at the mouth",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "near_mouth_samples": 0,
+        "samples": 15
+      },
+      "smoking_raised": true,
+      "smoking_evidence": [
+        "cigarette"
+      ],
+      "smoking_prob_max": 0.253,
+      "cigarette_max": 0.664
+    },
+    {
+      "video": "THOMAS SHELBY SMOKING || PEAKY BLINDERS.mp4",
+      "start": 125.7,
+      "end": 128.0,
+      "expected": "hand_to_mouth",
+      "note": "hand with cigarette at the mouth",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "near_mouth_samples": 0,
+        "samples": 12
+      },
+      "smoking_raised": true,
+      "smoking_evidence": [],
+      "smoking_prob_max": 0.124,
+      "cigarette_max": 0.804
+    },
+    {
+      "video": "THOMAS SHELBY SMOKING || PEAKY BLINDERS.mp4",
+      "start": 130.0,
+      "end": 132.5,
+      "expected": "hand_to_mouth",
+      "note": "hand with cigarette at the mouth",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "near_mouth_samples": 0,
+        "samples": 12
+      },
+      "smoking_raised": true,
+      "smoking_evidence": [],
+      "smoking_prob_max": 0.987,
+      "cigarette_max": 0.8
+    },
+    {
+      "video": "THOMAS SHELBY SMOKING || PEAKY BLINDERS.mp4",
+      "start": 146.0,
+      "end": 148.9,
+      "expected": "hand_to_mouth",
+      "note": "hand with cigarette at the mouth",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 1.0,
+      "actions": {
+        "near_mouth_samples": 0,
+        "samples": 14
+      },
+      "smoking_raised": false,
+      "smoking_evidence": [],
+      "smoking_prob_max": 0.196,
+      "cigarette_max": 0.0
+    },
+    {
+      "video": "homeless people sleeping on the streets Bangkok, Thailand.mp4",
+      "start": 0.0,
+      "end": 2.8,
+      "expected": "sitting",
+      "note": "man sitting on the pavement (only person detected)",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 0.0,
+      "actions": {},
+      "activities": {}
+    },
+    {
+      "video": "homeless people sleeping on the streets Bangkok, Thailand.mp4",
+      "start": 3.0,
+      "end": 7.0,
+      "expected": "lying",
+      "note": "people asleep on the pavement",
+      "score": 0.0,
+      "passed": false,
+      "coverage": 0.0,
+      "actions": {},
+      "activities": {}
+    },
+    {
+      "video": "office work - (Copyright free footage HD).mp4",
+      "start": 0.0,
+      "end": 12.8,
+      "expected": "sitting",
+      "note": "people at desks",
+      "score": 0.966,
+      "passed": true,
+      "coverage": 0.922,
+      "actions": {
+        "sitting": 57,
+        "standing": 2
+      },
+      "activities": {}
+    }
+  ]
+}

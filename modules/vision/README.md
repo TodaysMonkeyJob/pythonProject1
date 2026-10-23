@@ -14,7 +14,8 @@ Camera → motion detection on every frame (MOG2) → YOLO + ByteTrack only on m
 | `export.py` | `python -m modules.vision.export` → `models/yolo11n_ncnn_model` |
 | `pose.py` | `PoseEstimator` (yolo11n-pose, 17 COCO keypoints) + skeleton geometry (joint/torso angles) |
 | `actions.py` | F2: `ActionEngine` rules + `ActionRecognizer` module (reads the shared buffer) |
-| `eval_actions.py` | F2 acceptance: labelled videos → `reports/actions_eval.json` |
+| `eval_actions.py` | F2 acceptance: labelled videos → `reports/actions_eval.json` (`--classifier` / `--cigarette`: + learned layer) |
+| `action_features.py`, `action_classifier.py` | learned layer: pose-window features, the skeleton action classifier, the cigarette detector |
 | `identity.py` | F3: `FaceEngine` (YuNet + SFace), `IdentityEngine` / `IdentityRecognizer` on the F9 registry (`core/identity.py`) |
 | `legacy_faces.py` | One-time import of the pre-registry `faces.npz` + `data/faces/unknown/` (`tools/migrate_faces_npz.py`) |
 | `face_models.py` | `python -m modules.vision.face_models` → YuNet / SFace ONNX into `models/` (SHA-256 checked) |
@@ -261,3 +262,27 @@ LFW, frontal press photos (`tools/eval_faces.py`, reports `reports/identity_eval
 F1 frame rate with the identity process running next to it (same video, separate processes): 11.5–11.6 FPS
 without, 11.2–12.2 FPS with — within measurement noise (target: ≤ 20 % drop). Re-check both on the Pi, and with
 the real camera: faces smaller than `quality.min_face_size` (80 px) at the mounting distance are never embedded.
+
+## Learned layer (optional)
+
+Trained on public data, loaded only when the files exist (else the rules alone run):
+
+```bash
+curl -L -o data/action_datasets/hmdb51_2d.pkl https://download.openmmlab.com/mmaction/v1.0/skeleton/data/hmdb51_2d.pkl
+curl -L -o data/action_datasets/ntu60_2d.pkl https://download.openmmlab.com/mmaction/v1.0/skeleton/data/ntu60_2d.pkl
+python -m tools.train_actions          # → models/action_classifier.joblib (HGB, ~10 MB), reports/action_classifier/
+python -m tools.train_cigarette        # CigDet → models/cigarette_yolo11n.pt (5 MB), reports/cigarette_detector/
+python -m modules.vision.eval_actions data/human_behaviour_video/labels.csv \
+    --classifier models/action_classifier.joblib --cigarette models/cigarette_yolo11n.pt
+```
+
+| | result |
+| -- | -- |
+| classifier, official test splits (HMDB51 split 1 + NTU60 xsub, 13.7 k windows) | macro-F1 0.79, accuracy 0.85; walking 0.96, staggering 0.94, standing_up 0.92, distress 0.91, sitting_down 0.91, falling 0.90, fighting 0.84 … smoking 0.61, running 0.43 |
+| cigarette detector, CigDet test (111 photos) | P 0.88, R 0.78, mAP50 0.84; best-F1 confidence 0.48 at 320 px |
+| own labelled videos, smoking segments (7) | rules 0 raised → learned layer 5 |
+| own labelled videos, 3.8 min without smoking | rules 1 false alarm → learned layer 1 (the same rule one) |
+| group scene (office, people close together) | hugging / fighting gone with `classifier_fight_min_prob` 0.9 and the second-participant rule |
+
+Datasets: HMDB51 — CC BY-NC-SA (research); NTU RGB+D — ROSE Lab terms (non-commercial research); CigDet — CC BY 4.0.
+

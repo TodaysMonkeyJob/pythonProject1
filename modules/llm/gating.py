@@ -26,7 +26,7 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 from core.fuzzy import FuzzyEngine, load_yaml, parse_rule
 
 LOWERING = ("deescalation", "instruction_to_system")
-RISKY_ACTIONS = ("lying", "possible_smoking")
+RISKY_ACTIONS = ("lying", "possible_smoking", "falling", "fighting", "distress")   # + learned actions
 NOVELTY_WEIGHTS = {"person": 0.5, "action": 0.35, "risky_action": 1.0, "object": 0.15, "gas": 0.6}
 
 LEVEL_UA = {"low": "низький", "medium": "середній", "high": "високий", "critical": "критичний"}
