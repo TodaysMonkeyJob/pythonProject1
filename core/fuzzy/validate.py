@@ -5,9 +5,13 @@ a silently wrong risk bound later.
 * rules use only declared variables / terms, and conclude on the output variable;
 * every universe is covered: no x where all terms are 0 (that input would be "invisible" to the rules);
 * no duplicate term definitions inside a variable, no duplicate rule ids, no duplicate or conflicting rules (the
-  same antecedent twice, with the same or a different conclusion).
+  same antecedent twice, with the same or a different conclusion — for conjunctions in any clause order).
+
+F26 (TOD-37): ``subsumed()`` lists rules made redundant by a more general rule with the same conclusion (warnings;
+weights may make them intentional); metadata and never-firing rules are checked by ``core.fuzzy.governance`` /
+``tools/rules_gate.py``.
 """
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 import numpy as np
 
@@ -40,6 +44,33 @@ def coverage_gaps(variable: LinguisticVariable, variant: Optional[str] = None) -
     return [f"{a:g}{unit}" if a == b else f"{a:g}–{b:g}{unit}" for a, b in gaps]
 
 
+def conjunction(node) -> Optional[FrozenSet[tuple]]:
+    """:return: the literals (var, term, negated) of a pure conjunction, None for anything with OR"""
+    kind = node[0]
+    if kind == "is":
+        return frozenset({(node[1], node[2], False)})
+    if kind == "not" and node[1][0] == "is":
+        return frozenset({(node[1][1], node[1][2], True)})
+    if kind == "and":
+        parts = [conjunction(child) for child in node[1]]
+        return None if any(p is None for p in parts) else frozenset().union(*parts)
+    return None
+
+
+def subsumed(rules: List[Rule]) -> List[str]:
+    """:return: warnings "B is subsumed by A": A's conditions are a strict subset of B's, same conclusion"""
+    warnings = []
+    literals = [(rule, conjunction(rule.antecedent)) for rule in rules]
+    for a, la in literals:
+        for b, lb in literals:
+            if a is b or la is None or lb is None or a.term != b.term or a.output != b.output:
+                continue
+            if la < lb and a.weight >= b.weight:
+                warnings.append(f"{b.id} is subsumed by {a.id} (same conclusion {a.output} IS {a.term}, "
+                                f"{a.id} needs fewer conditions)")
+    return warnings
+
+
 def check(variables: Dict[str, LinguisticVariable], output: str, rules: List[Rule]) -> List[str]:
     """:return: Error messages (empty = valid)"""
     errors: List[str] = []
@@ -62,7 +93,7 @@ def check(variables: Dict[str, LinguisticVariable], output: str, rules: List[Rul
                     errors.append(f"{label}: terms {seen[key]!r} and {term!r} have the same definition")
                 seen[key] = term
     ids: Dict[str, str] = {}
-    antecedents: Dict[str, Rule] = {}
+    antecedents: Dict[object, Rule] = {}
     for rule in rules:
         if rule.id in ids:
             errors.append(f"rule id {rule.id!r} is used twice")
@@ -79,11 +110,12 @@ def check(variables: Dict[str, LinguisticVariable], output: str, rules: List[Rul
                 errors.append(f"{rule.id}: the output variable {output!r} cannot be an input")
             elif term not in variables[var].terms:
                 errors.append(f"{rule.id}: {var!r} has no term {term!r} (have {sorted(variables[var].terms)})")
-        key = render(rule.antecedent)
+        text = render(rule.antecedent)
+        key = conjunction(rule.antecedent) or text                 # clause order does not matter for AND
         if key in antecedents:
             other = antecedents[key]
             kind = "duplicates" if other.term == rule.term else "conflicts with"
-            errors.append(f"{rule.id} {kind} {other.id}: same condition '{key}' "
+            errors.append(f"{rule.id} {kind} {other.id}: same condition '{text}' "
                           f"(→ {other.term} / {rule.term}); merge them or use a weight")
         antecedents[key] = rule
     return errors

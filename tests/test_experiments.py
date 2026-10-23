@@ -172,6 +172,7 @@ def test_run_cli_end_to_end_and_reproducible(tmp_path, scripted):
     assert manifest["dataset"]["synthetic"] and manifest["kappa"]["kappa"] is not None
     registry = manifest["trust_registry"]                                # F23: the setup every replay starts from
     assert registry["priors"]["gas_class"]["prior_status"] == "measured" and "camera" in registry["device_channels"]
+    assert len(manifest["rules_version"]) == 64                          # F26: which rule base the run used
     for name in ("RESULTS.md", "metrics.md", "mcnemar.md", "per_scenario.csv", "asr.png", "reliability.png",
                  "confusion_proposed.png"):
         assert (tmp_path / "r2" / name).exists(), name

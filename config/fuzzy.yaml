@@ -89,32 +89,101 @@ maps:
 
 rules:
   # Gas (independent physical sensor)
-  - {id: R1, rule: "IF gas_concentration IS dangerous THEN risk IS critical"}
-  - {id: R2, rule: "IF gas_concentration IS elevated AND gas_trend IS sharply_rising THEN risk IS critical"}
-  - {id: R3, rule: "IF gas_concentration IS elevated AND gas_trend IS NOT sharply_rising THEN risk IS high"}
-  - {id: R4, rule: "IF gas_concentration IS slight AND gas_trend IS sharply_rising THEN risk IS high"}
-  - {id: R5, rule: "IF gas_concentration IS slight AND gas_trend IS rising THEN risk IS medium"}
-  - {id: R6, rule: "IF gas_concentration IS slight AND (gas_trend IS stable OR gas_trend IS falling) THEN risk IS low"}
+  - id: R1
+    rule: "IF gas_concentration IS dangerous THEN risk IS critical"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A dangerous gas level is critical on its own, whatever else happens."}
+  - id: R2
+    rule: "IF gas_concentration IS elevated AND gas_trend IS sharply_rising THEN risk IS critical"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "An elevated level that is still rising sharply will reach the dangerous level soon."}
+  - id: R3
+    rule: "IF gas_concentration IS elevated AND gas_trend IS NOT sharply_rising THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "An elevated gas level that is not rising sharply needs attention but is not yet critical."}
+  - id: R4
+    rule: "IF gas_concentration IS slight AND gas_trend IS sharply_rising THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A slight level rising sharply is an early leak signal."}
+  - id: R5
+    rule: "IF gas_concentration IS slight AND gas_trend IS rising THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A slight level that keeps rising deserves a look."}
+  - id: R6
+    rule: "IF gas_concentration IS slight AND (gas_trend IS stable OR gas_trend IS falling) THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A slight, stable or falling level is background (cooking, cleaning products)."}
   # People and actions
-  - {id: R7, rule: "IF action_risk IS high AND motion_level IS none THEN risk IS critical"}      # lying motionless
-  - {id: R8, rule: "IF action_risk IS high AND motion_level IS NOT none THEN risk IS high"}
-  - {id: R9, rule: "IF action_risk IS medium AND gas_concentration IS NOT clean THEN risk IS high"}   # smoking + gas
-  - {id: R10, rule: "IF action_risk IS medium AND gas_concentration IS clean THEN risk IS medium"}
+  - id: R7
+    rule: "IF action_risk IS high AND motion_level IS none THEN risk IS critical"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A high-risk action (lying) without any motion suggests a fall or loss of consciousness."}
+  - id: R8
+    rule: "IF action_risk IS high AND motion_level IS NOT none THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A high-risk action with motion (a person getting up, fighting) is high but not yet critical."}
+  - id: R9
+    rule: "IF action_risk IS medium AND gas_concentration IS NOT clean THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Possible smoking with gas in the air is supported by an independent sensor."}
+  - id: R10
+    rule: "IF action_risk IS medium AND gas_concentration IS clean THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Possible smoking without any gas is only a medium concern (pose rule false positives)."}
   # Strangers and time of day
-  - {id: R11, rule: "IF unknown_share IS all AND time_of_day_risk IS night THEN risk IS high"}
-  - {id: R12, rule: "IF unknown_share IS some AND time_of_day_risk IS night THEN risk IS medium"}
-  - {id: R13, rule: "IF unknown_share IS all AND time_of_day_risk IS off_hours THEN risk IS medium"}
-  - {id: R14, rule: "IF unknown_share IS all AND time_of_day_risk IS normal THEN risk IS medium", weight: 0.5}
-  - {id: R21, rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS medium", weight: 0.6}
-  - {id: R22, rule: "IF unknown_share IS some AND time_of_day_risk IS normal THEN risk IS low"}   # visitors with staff
-  - {id: R15, rule: "IF people_count IS crowd AND time_of_day_risk IS night THEN risk IS high"}
-  - {id: R16, rule: "IF people_count IS crowd AND time_of_day_risk IS NOT night THEN risk IS medium", weight: 0.5}
+  - id: R11
+    rule: "IF unknown_share IS all AND time_of_day_risk IS night THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Only strangers in the room at night is a likely intrusion."}
+  - id: R12
+    rule: "IF unknown_share IS some AND time_of_day_risk IS night THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Some strangers at night (with known people present) is unusual but less alarming."}
+  - id: R13
+    rule: "IF unknown_share IS all AND time_of_day_risk IS off_hours THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Only strangers outside working hours needs a check."}
+  - id: R14
+    rule: "IF unknown_share IS all AND time_of_day_risk IS normal THEN risk IS medium"
+    weight: 0.5
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Only strangers during the day is mostly visitors; half weight keeps it a weak medium."}
+  - id: R21
+    rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS medium"
+    weight: 0.6
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Some strangers outside working hours, with staff present: a weak medium (weight 0.6)."}
+  - id: R22
+    rule: "IF unknown_share IS some AND time_of_day_risk IS normal THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Visitors together with known staff during the day are normal."}
+  - id: R15
+    rule: "IF people_count IS crowd AND time_of_day_risk IS night THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A crowd at night is unusual for an office or warehouse."}
+  - id: R16
+    rule: "IF people_count IS crowd AND time_of_day_risk IS NOT night THEN risk IS medium"
+    weight: 0.5
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A crowd during the day is mostly meetings; half weight keeps it a weak medium."}
   # Motion without anyone identified as a person (occlusion, animal, someone hiding)
-  - {id: R17, rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS night THEN risk IS high"}
-  - {id: R18, rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS NOT night THEN risk IS medium"}
+  - id: R17
+    rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS night THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Strong motion at night with nobody detected may be someone hiding from the camera."}
+  - id: R18
+    rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS NOT night THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Strong motion by day with nobody detected is often occlusion or an animal: medium."}
   # Calm
-  - {id: R19, rule: "IF people_count IS none AND motion_level IS NOT high AND gas_concentration IS clean THEN risk IS low"}
-  - {id: R20, rule: "IF people_count IS NOT none AND unknown_share IS none AND action_risk IS low AND gas_concentration IS clean THEN risk IS low"}
+  - id: R19
+    rule: "IF people_count IS none AND motion_level IS NOT high AND gas_concentration IS clean THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "An empty, quiet room with clean air is the calm baseline."}
+  - id: R20
+    rule: "IF people_count IS NOT none AND unknown_share IS none AND action_risk IS low AND gas_concentration IS clean THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Known people, low-risk actions and clean air are the normal working state."}
 
 # Per-location overrides (ids from config/locations.yaml); also possible as a `fuzzy:` block in locations.yaml
 locations:
@@ -126,8 +195,15 @@ locations:
         night: [[trap, 0, 0, 5, 6], [trap, 19.5, 20.5, 24, 24]]
     remove_rules: [R21]            # replaced by the stricter W1 (same condition → would conflict)
     rules:
-      - {id: W1, rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS high"}
-      - {id: W2, rule: "IF people_count IS NOT none AND time_of_day_risk IS night THEN risk IS high", weight: 0.8}
+      - id: W1
+        rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS high"
+        meta: {source: "location requirement: warehouse, nobody after 19:00 (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "In the warehouse nobody should be there after hours: strangers then are high (replaces R21)."}
+      - id: W2
+        rule: "IF people_count IS NOT none AND time_of_day_risk IS night THEN risk IS high"
+        weight: 0.8
+        meta: {source: "location requirement: warehouse, nobody after 19:00 (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Anyone in the warehouse at night is suspicious there (weight 0.8)."}
 
 # --- F16 (TOD-27): fuzzy trust in evidence (component B) ------------------------------------------------------------
 # τ(e) = min(μ_source, μ_asr, μ_consistency) per event that can reach the LLM (modules/trust). μ_source of speech
@@ -195,15 +271,44 @@ trust:
           medium: [tri, 0.45, 0.6, 0.75]
           high: [trap, 0.7, 0.8, 1, 1]
     rules:
-      - {id: S1, rule: "IF playback IS suspected THEN source IS very_low"}
-      - {id: S2, rule: "IF speaker IS unknown AND playback IS not_suspected THEN source IS low"}
-      - {id: S3, rule: "IF face_voice IS mismatch AND playback IS not_suspected THEN source IS low"}
-      - {id: S4, rule: "IF speaker IS known AND face_voice IS match AND playback IS not_suspected THEN source IS high"}
-      - {id: S5, rule: "IF speaker IS known AND face_voice IS off_camera AND playback IS not_suspected THEN source IS medium"}
-      - {id: S6, rule: "IF speaker IS known AND face_voice IS possible AND playback IS not_suspected THEN source IS medium"}
-      - {id: S7, rule: "IF speaker IS uncertain AND face_voice IS NOT match AND playback IS not_suspected THEN source IS low"}
-      - {id: S8, rule: "IF speaker IS uncertain AND face_voice IS match AND playback IS not_suspected THEN source IS medium", weight: 0.7}
-      - {id: S9, rule: "IF overlap IS present THEN source IS low", weight: 0.5}
+      - id: S1
+        rule: "IF playback IS suspected THEN source IS very_low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Speech while working cameras see nobody is probably a recording or a loudspeaker."}
+      - id: S2
+        rule: "IF speaker IS unknown AND playback IS not_suspected THEN source IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "An unknown voice carries little authority about the situation."}
+      - id: S3
+        rule: "IF face_voice IS mismatch AND playback IS not_suspected THEN source IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A voice that does not belong to the person on camera may be impersonation."}
+      - id: S4
+        rule: "IF speaker IS known AND face_voice IS match AND playback IS not_suspected THEN source IS high"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A known voice matching the visible person is the most trustworthy speech source."}
+      - id: S5
+        rule: "IF speaker IS known AND face_voice IS off_camera AND playback IS not_suspected THEN source IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A known voice off camera is plausible but cannot be confirmed visually."}
+      - id: S6
+        rule: "IF speaker IS known AND face_voice IS possible AND playback IS not_suspected THEN source IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A known voice with unidentified people visible is plausible but unconfirmed."}
+      - id: S7
+        rule: "IF speaker IS uncertain AND face_voice IS NOT match AND playback IS not_suspected THEN source IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "An uncertain voice that is not matched by a visible face is weak evidence."}
+      - id: S8
+        rule: "IF speaker IS uncertain AND face_voice IS match AND playback IS not_suspected THEN source IS medium"
+        weight: 0.7
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "An uncertain voice matched by the visible face is moderately trustworthy (weight 0.7)."}
+      - id: S9
+        rule: "IF overlap IS present THEN source IS low"
+        weight: 0.5
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Overlapping speakers make the attribution unreliable (weight 0.5)."}
 
   asr:                        # FALLBACK only (no calibration/asr.yaml): μ_asr from exp(avg_logprob) × (1 − no_speech_prob)
     output: asr
@@ -221,9 +326,18 @@ trust:
           medium: [tri, 0.3, 0.55, 0.8]
           high: [trap, 0.7, 0.9, 1, 1]
     rules:
-      - {id: A1, rule: "IF asr_confidence IS poor THEN asr IS low"}
-      - {id: A2, rule: "IF asr_confidence IS fair THEN asr IS medium"}
-      - {id: A3, rule: "IF asr_confidence IS good THEN asr IS high"}
+      - id: A1
+        rule: "IF asr_confidence IS poor THEN asr IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only (no ASR calibration): low Whisper confidence means an unreliable transcript."}
+      - id: A2
+        rule: "IF asr_confidence IS fair THEN asr IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: fair Whisper confidence means a partly reliable transcript."}
+      - id: A3
+        rule: "IF asr_confidence IS good THEN asr IS high"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: good Whisper confidence means a reliable transcript."}
 
   identity:                   # FALLBACK only (no calibration/face.yaml): trust in a face identification by similarity
     output: identity
@@ -241,9 +355,18 @@ trust:
           medium: [tri, 0.3, 0.55, 0.8]
           high: [trap, 0.7, 0.9, 1, 1]
     rules:
-      - {id: I1, rule: "IF face_match IS weak THEN identity IS low"}
-      - {id: I2, rule: "IF face_match IS fair THEN identity IS medium"}
-      - {id: I3, rule: "IF face_match IS strong THEN identity IS high"}
+      - id: I1
+        rule: "IF face_match IS weak THEN identity IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only (no face calibration): a weak gallery match is an unreliable identity."}
+      - id: I2
+        rule: "IF face_match IS fair THEN identity IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: a fair gallery match is a partly reliable identity."}
+      - id: I3
+        rule: "IF face_match IS strong THEN identity IS high"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: a strong gallery match is a reliable identity."}
 
 # --- F24 (TOD-35): interval type-2 inputs -----------------------------------------------------------------------------
 # δ_var = k_var · u (u = the trust registry's health-discounted uncertainty of the evidence behind the input, 0..1):
@@ -281,10 +404,24 @@ envelope:
           partial: [tri, 0.15, 0.5, 0.85]
           full: [trap, 0.7, 0.9, 1, 1]
     rules:                    # nothing fires → c = 0 (no "none" rules on purpose); risky actions / strangers never confirm
-      - {id: K1, rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS present AND motion_level IS NOT high AND action_risk IS low AND unknown_share IS none THEN confirmation IS full"}
-      - {id: K2, rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS absent AND action_risk IS low AND unknown_share IS none THEN confirmation IS partial", weight: 0.6}
-      - {id: K3, rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS present AND motion_level IS high AND action_risk IS low THEN confirmation IS partial"}
-      - {id: K4, rule: "IF known_present IS present AND motion_level IS NOT high AND action_risk IS low AND unknown_share IS none THEN confirmation IS partial", weight: 0.5}   # no gas sensor here
+      - id: K1
+        rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS present AND motion_level IS NOT high AND action_risk IS low AND unknown_share IS none THEN confirmation IS full"
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Clean, stable air, a known person, calm motion and no risky action fully confirm safety."}
+      - id: K2
+        rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS absent AND action_risk IS low AND unknown_share IS none THEN confirmation IS partial"
+        weight: 0.6
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Clean, stable air with no stranger and no risky action partly confirms safety (weight 0.6)."}
+      - id: K3
+        rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS present AND motion_level IS high AND action_risk IS low THEN confirmation IS partial"
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Clean air and a known person but strong motion only partly confirm safety."}
+      - id: K4
+        rule: "IF known_present IS present AND motion_level IS NOT high AND action_risk IS low AND unknown_share IS none THEN confirmation IS partial"
+        weight: 0.5
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Without a gas sensor a calm known person can only partly confirm safety (weight 0.5)."}
 
 # --- F19 (TOD-30): fuzzy gating of LLM calls (component E) ----------------------------------------------------------
 # call_llm ≥ threshold → GPT; else a fuzzy-only decision (risk = r_floor, summary from the fired rules). Hard rules in
@@ -335,14 +472,48 @@ gating:
         maybe: [tri, 0.25, 0.5, 0.75]
         call: [trap, 0.7, 0.9, 1, 1]
   rules:
-    - {id: G1, rule: "IF novelty IS high THEN call_llm IS call"}
-    - {id: G2, rule: "IF novelty IS medium AND uncertainty IS NOT low THEN call_llm IS call"}
-    - {id: G3, rule: "IF novelty IS medium AND uncertainty IS low THEN call_llm IS maybe"}
-    - {id: G4, rule: "IF uncertainty IS high THEN call_llm IS call"}
-    - {id: G5, rule: "IF untrusted_claims IS present THEN call_llm IS call"}
-    - {id: G6, rule: "IF untrusted_claims IS some THEN call_llm IS maybe"}
-    - {id: G7, rule: "IF severity IS high OR severity IS critical THEN call_llm IS call"}
-    - {id: G8, rule: "IF severity IS medium AND time_since_last_llm IS NOT recent THEN call_llm IS maybe"}
-    - {id: G9, rule: "IF time_since_last_llm IS long THEN call_llm IS call", weight: 0.8}   # periodic refresh
-    - {id: G10, rule: "IF novelty IS low AND uncertainty IS low AND untrusted_claims IS none AND severity IS low AND time_since_last_llm IS NOT long THEN call_llm IS skip"}
-    - {id: G11, rule: "IF novelty IS low AND uncertainty IS NOT high AND untrusted_claims IS none AND severity IS medium AND time_since_last_llm IS recent THEN call_llm IS skip"}
+    - id: G1
+      rule: "IF novelty IS high THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A situation the location has not shown recently needs the LLM's explanation."}
+    - id: G2
+      rule: "IF novelty IS medium AND uncertainty IS NOT low THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "Moderate novelty with an uncertain corridor is worth an LLM call."}
+    - id: G3
+      rule: "IF novelty IS medium AND uncertainty IS low THEN call_llm IS maybe"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "Moderate novelty with a certain corridor may be handled without the LLM."}
+    - id: G4
+      rule: "IF uncertainty IS high THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A wide corridor (uncertain evidence) needs the LLM to interpret the situation."}
+    - id: G5
+      rule: "IF untrusted_claims IS present THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A low-trust calming claim must be analysed so the attack is reported."}
+    - id: G6
+      rule: "IF untrusted_claims IS some THEN call_llm IS maybe"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "Other low-trust evidence may be worth an LLM look."}
+    - id: G7
+      rule: "IF severity IS high OR severity IS critical THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "High or critical floors always get an LLM explanation."}
+    - id: G8
+      rule: "IF severity IS medium AND time_since_last_llm IS NOT recent THEN call_llm IS maybe"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A medium floor not explained recently may need the LLM."}
+    - id: G9
+      rule: "IF time_since_last_llm IS long THEN call_llm IS call"
+      weight: 0.8
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A periodic refresh keeps the operator summary current (weight 0.8)."}
+    - id: G10
+      rule: "IF novelty IS low AND uncertainty IS low AND untrusted_claims IS none AND severity IS low AND time_since_last_llm IS NOT long THEN call_llm IS skip"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A routine, certain, low-risk scene explained recently needs no LLM call (saves tokens)."}
+    - id: G11
+      rule: "IF novelty IS low AND uncertainty IS NOT high AND untrusted_claims IS none AND severity IS medium AND time_since_last_llm IS recent THEN call_llm IS skip"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A medium scene without change that was just explained needs no new call."}

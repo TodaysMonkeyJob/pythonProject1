@@ -43,6 +43,14 @@ def fit_calibration(scenarios, llm, fuzzy: str, min_interval: float):
     return calibrator, {"fitted": True, "n": len(rows), "fit": metrics, "params": calibrator.params}
 
 
+def rules_version(fuzzy: str) -> str:
+    """F26: sha256 of the normalised rule set the run used (core.fuzzy.governance)"""
+    from core.fuzzy import load_yaml
+    from core.fuzzy.governance import version_hash
+
+    return version_hash(load_yaml(fuzzy))
+
+
 def registry_snapshot(fuzzy: str) -> Dict:
     """F23: the trust registry setup every replay starts from (channels, measured priors, γ, health factors)"""
     from core.fuzzy import load_yaml
@@ -113,7 +121,8 @@ def main(argv=None) -> int:
                 "llm": {"backend": args.llm, "model": llm.backend.model, "temperature": llm.backend.temperature,
                         "calls": llm.calls, "cache_hits": llm.hits, "invalid_json": llm.invalid},
                 "calibration": calibration_info, "configs": {c.name: c.flags() for c in configs},
-                "min_interval_sec": args.min_interval, "trust_registry": registry_snapshot(args.fuzzy)}
+                "min_interval_sec": args.min_interval, "trust_registry": registry_snapshot(args.fuzzy),
+                "rules_version": rules_version(args.fuzzy)}
     write(out, summaries, results, tests, manifest)
     llm.close()
     width = max(len(n) for n in summaries)
