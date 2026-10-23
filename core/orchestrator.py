@@ -187,10 +187,11 @@ class Orchestrator:
         if self.trust is not None:
             self.trust.registry.ensure_device("identity", "identity", None, time.time())
             self.trust.registry.ensure_device("llm", "llm", None, time.time())
-            from modules.envelope.suggestions import RuleSuggestionStore    # F25 → TOD-38 rule suggestions
+            from modules.rules.suggester import SuggestionTriggers, store_from_config   # F27 (TOD-38)
 
-            self.trust.evidence.suggestions = RuleSuggestionStore(
-                config.get("envelope", {}).get("suggestions_db", ":memory:"))   # config.yaml: data/…db
+            self.trust.evidence.suggestions = SuggestionTriggers(
+                store_from_config(config), (config.get("rules") or {}).get("suggestions"),
+                config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml"), self.trust.registry)
 
     # --- setup -----------------------------------------------------------------------------------------------
 

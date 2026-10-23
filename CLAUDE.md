@@ -210,8 +210,8 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   of the risk terms' mean edge width, L = (1 − c)·(y_l + λ(y_r − y_l)), U = y_r; μ_GPT = max_t p_t·μ_t (calibrated
   level sets), μ_D = min, h = sup μ_D, r_D = centroid (kept in [L, U]); policy agree (h ≥ h_min → r_D) /
   deescalation_rejected (L) / escalation_review (U, event + dashboard Accept / Reject → POST /api/escalation/{id} →
-  `escalation_resolved` → trust registry `llm/risk_assessment`, `RuleSuggestionStore` (`modules/envelope/
-  suggestions.py`, `envelope.suggestions_db` = data/rule_suggestions.db, guarded) and the location takes GPT's
+  `escalation_resolved` → trust registry `llm/risk_assessment`, `RuleSuggestionStore` (F27, now
+  `modules/rules/suggestions.py`; `rules.suggestions_db` = data/rule_suggestions.db, guarded) and the location takes GPT's
   level) / clamp / fuzzy_only (no GPT → L, `RiskEnvelope.fallback`). λ, h_min fitted by `tools/fit_thresholds.py`
   (λ: cost of L vs expert level on adversarial / normal scenarios; h_min: end-to-end level cost, Youden J tie-break).
   `llm_decision` carries y_l, y_r, width, L, U, r_llm, r_D, h, policy_branch, c; `envelope_applied` = level raised.
@@ -226,6 +226,19 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `data/rules/versions/<sha>.yaml` + append-only `data/rules/changelog.jsonl`; `rollback <version>`.
   `modules/llm/rule_stats.py` (`rules.stats_db`): fired rules per version + operator outcomes of escalation reviews.
   Never edit `config/fuzzy.yaml` rules by hand (the conftest guard also watches it and `data/rules/*`).
+- F27 (TOD-38) GPT rule suggestions, a separate review store (never on the bus, in logs/ or the live feed):
+  `modules/rules/suggestions.py` (`RuleSuggestionStore`, SQLite `rules.suggestions_db`: outcomes = cases, jobs,
+  suggestions with validator / gate report, status new / rejected / edited / sent_to_approval / approved, dedup by
+  canonical rule + location → `support_count`), `suggester.py` (`SuggestionTriggers` in the router via
+  `modules.trust.evidence`: accepted escalation review, ≥ `repeat_n` escalation_reviews per location in
+  `repeat_window_h`, operator-confirmed physical alarm while the latest decision fired no non-low risk rule;
+  `RuleSuggester`: `prompts/rule_suggester.md` + DSL grammar + risk variables → one GPT call per job, JSON mode,
+  pydantic `Suggestion`, `validate_rule` — invalid DSL stored as is), run by the LLM worker when the outbox is empty
+  (at most every `rules.suggestions.every_sec`) or `python -m tools.suggest_rules --since 7d` (Azure keys).
+  `review.py`: reject / edit (re-validated) / `send_to_approval` = candidate copy with rule `GS<id>` inserted as text
+  (comments kept) + meta → `tools.rules` `RuleStore.propose`; `config/fuzzy.yaml` only changes on `tools.rules
+  approve`. CLI `python -m tools.suggestions list|show|reject|edit|send|export`; dashboard `#/suggestions`
+  «Пропозиції правил» (`/api/suggestions…`, send runs the gate in a thread).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

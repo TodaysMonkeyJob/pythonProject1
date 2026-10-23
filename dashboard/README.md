@@ -48,3 +48,12 @@ sees a higher risk than U the card (and the event dialog of `escalation_review` 
 location to GPT's level, both answers are logged with the operator and feed the trust registry and the
 rule-suggestion store.
 
+## Rule suggestions (F27 / TOD-38)
+
+`#/suggestions` «Пропозиції правил» (own menu item, never in the live feed): GPT's rule suggestions from
+`rules.suggestions_db` with filters (status, confidence, location, support ≥ n). The detail shows the rule (DSL
+editor validated live via `POST /api/suggestions/{id}/validate`), GPT's original, rationale, supporting cases,
+validator and gate reports. Actions: save edit (`/edit`), reject with a reason (`/reject`), send to approval (`/send`:
+checks + regression gate in a background thread → a TOD-37 proposal; approval stays `python -m tools.rules approve`).
+The reviewer is the Basic-auth user.
+

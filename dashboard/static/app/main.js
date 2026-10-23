@@ -8,6 +8,7 @@ import { connectVideo, syncSubscriptions } from "./video.js";
 import { renderDevices, renderLocations, renderPeople } from "./views/admin.js";
 import { renderTrust } from "./views/trust.js";
 import { renderRules } from "./views/rules.js";
+import { renderSuggestions } from "./views/suggestions.js";
 import { PANEL_TABS, leaveLocation, onLocationEvent, redrawCharts, renderLocation } from "./views/location.js";
 import { leaveOverview, notificationFeed, onOverviewEvent, renderOverview } from "./views/overview.js";
 
@@ -17,7 +18,7 @@ let route = { page: "overview" };
 function parse(hash) {
   const parts = (hash || "#/overview").replace(/^#\/?/, "").split("?")[0].split("/").map(decodeURIComponent);
   if (parts[0] === "loc" && parts[1]) return { page: "loc", id: parts[1], tab: PANEL_TABS.includes(parts[2]) ? parts[2] : null };
-  if (["people", "devices", "locations", "trust", "rules"].includes(parts[0])) return { page: parts[0] };
+  if (["people", "devices", "locations", "trust", "rules", "suggestions"].includes(parts[0])) return { page: parts[0] };
   return { page: "overview" };
 }
 
@@ -63,6 +64,7 @@ function draw() {
   else if (route.page === "locations") renderLocations(view);
   else if (route.page === "trust") renderTrust(view);
   else if (route.page === "rules") renderRules(view);
+  else if (route.page === "suggestions") renderSuggestions(view);
   drawTopbar();
   syncSubscriptions();
 }

@@ -79,6 +79,10 @@ class LLMWorker(BaseModule):
         self.gating_enabled = bool(llm.get("gating", True))
         self.gating_log: Optional[JsonlLogger] = None
         self.rule_stats = None                          # F26: modules.llm.rule_stats.RuleStats (rules.stats_db)
+        self.suggester = None                           # F27: modules.rules.suggester.RuleSuggester (idle GPT time)
+        suggest_cfg = (config.get("rules") or {}).get("suggestions") or {}
+        self.suggest_every = float(suggest_cfg.get("every_sec", 60))
+        self._suggested_at = float("-inf")
         self._decided: Dict[str, Any] = {}             # decision event id → (rules version, fired rule ids)
         self._gated: Dict[str, Any] = {}               # row id → GateDecision (each snapshot is judged once)
         self._last_llm_wall: Dict[str, float] = {}     # location → wall time of the last GPT call
@@ -124,6 +128,12 @@ class LLMWorker(BaseModule):
                 self.unavailable = str(e)
                 self.set_status("disabled", error=type(e).__name__, message=str(e)[:200])
                 logger.error(f"GPT analysis disabled: {e}; snapshots stay pending in the outbox")
+        suggest_cfg = (self.config.get("rules") or {}).get("suggestions") or {}
+        if self.suggester is None and suggest_cfg.get("enabled", False) and hasattr(self.gpt, "client"):
+            from modules.rules.suggester import RuleSuggester, store_from_config
+
+            self.suggester = RuleSuggester(store_from_config(self.config), self.gpt,
+                                           self.config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml"))
 
     def teardown(self) -> None:
         if self.outbox is not None:
@@ -132,6 +142,8 @@ class LLMWorker(BaseModule):
             self.envelope_log.close()
         if self.gating_log is not None:
             self.gating_log.close()
+        if self.suggester is not None:
+            self.suggester.store.close()
 
     def handle_control(self, message: Any) -> None:
         """Forwarded (trust-scored) evidence events feed the risk envelope."""
@@ -171,6 +183,18 @@ class LLMWorker(BaseModule):
                 self.heartbeat() # between requests: a backlog must not starve the watchdog (run() beats before step)
             if not self.send(row):
                 break
+        if not rows:
+            self._suggest(now)
+
+    def _suggest(self, now: float) -> None:
+        """F27: with nothing to analyse, one queued rule-suggestion job (one GPT call) every suggestions.every_sec"""
+        if self.suggester is None or now - self._suggested_at < self.suggest_every:
+            return
+        self._suggested_at = now
+        try:
+            self.suggester.process_pending(1)
+        except Exception as e:  # network / quota: the job stays pending for the next turn
+            logger.warning(f"Rule suggester paused: {type(e).__name__}")
 
     def drop_stale(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Skips snapshots older than max_snapshot_age_min: an answer about a scene that long gone helps nobody."""

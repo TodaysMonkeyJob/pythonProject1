@@ -250,3 +250,9 @@ dialog pre, .json { white-space: pre-wrap; overflow-wrap: anywhere; background: 
 @media (max-width: 720px) { .rules-table thead { display: none; } .rules-table td { display: block; border: 0; }
   .rules-table tr { display: block; border-bottom: 1px solid var(--line); } }
 
+
+/* F27 (TOD-38): rule suggestions */
+.suggestion-columns { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
+.suggestion-detail { background: var(--panel); border-radius: 8px; padding: 8px; overflow-y: auto; }
+.suggestion-list tr.selected td { background: var(--panel2); }
+@media (max-width: 900px) { .suggestion-columns { grid-template-columns: 1fr; } }

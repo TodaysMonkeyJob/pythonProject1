@@ -626,6 +626,99 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
                 "registered": os.path.isfile(os.path.join(rules_dir, "versions", f"{version}.yaml")),
                 "rules": rules, "changelog": changelog[::-1][:100]}
 
+    # --- F27 (TOD-38): GPT rule suggestions — a separate review store, not the live feed, no events --------------
+    suggestions_lock = threading.Lock()
+    suggestions_state: Dict[str, Any] = {"store": None, "sending": set()}
+
+    def suggestion_store():
+        with suggestions_lock:
+            if suggestions_state["store"] is None:
+                from modules.rules.suggester import store_from_config
+
+                suggestions_state["store"] = store_from_config(config)
+            return suggestions_state["store"]
+
+    def fuzzy_path() -> str:
+        return config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml")
+
+    def review_call(fn, *args):
+        from modules.rules.review import ReviewError
+
+        try:
+            return fn(*args)
+        except ReviewError as e:
+            raise HTTPException(409, str(e)) from e
+
+    @app.get("/api/suggestions", dependencies=[Depends(auth)])
+    def api_suggestions(status: Optional[str] = None, location: Optional[str] = None,
+                        confidence: Optional[str] = None, min_support: int = 1):
+        from modules.rules.review import mark_approved
+
+        store = suggestion_store()
+        mark_approved(store, rules_cfg.get("dir", "data/rules"))
+        return {"suggestions": store.list(status, location, confidence, min_support),
+                "sending": sorted(suggestions_state["sending"])}
+
+    @app.get("/api/suggestions/{suggestion_id}", dependencies=[Depends(auth)])
+    def api_suggestion(suggestion_id: int):
+        store = suggestion_store()
+        item = store.get(suggestion_id)
+        if item is None:
+            raise HTTPException(404, "no such suggestion")
+        item["cases"] = store.outcomes(ids=item["supporting_cases"] or [-1], limit=50)
+        item["sending"] = suggestion_id in suggestions_state["sending"]
+        return item
+
+    @app.post("/api/suggestions/{suggestion_id}/validate", dependencies=[Depends(auth)])
+    def api_suggestion_validate(suggestion_id: int, body: Dict[str, Any]):
+        from modules.rules.suggester import validate_rule
+
+        item = api_suggestion(suggestion_id)
+        return validate_rule(str(body.get("rule") or ""), str(body.get("location") or item["location"]),
+                             fuzzy_path(), item.get("new_variable_needed"))
+
+    @app.post("/api/suggestions/{suggestion_id}/reject", dependencies=[Depends(auth)])
+    def api_suggestion_reject(suggestion_id: int, body: Dict[str, Any], request: Request):
+        from modules.rules.review import reject
+
+        return review_call(reject, suggestion_store(), suggestion_id, user_of(request),
+                           str(body.get("reason") or ""))
+
+    @app.post("/api/suggestions/{suggestion_id}/edit", dependencies=[Depends(auth)])
+    def api_suggestion_edit(suggestion_id: int, body: Dict[str, Any], request: Request):
+        from modules.rules.review import edit
+
+        if not str(body.get("rule") or "").strip():
+            raise HTTPException(400, "rule required")
+        return review_call(edit, suggestion_store(), suggestion_id, str(body["rule"]), user_of(request),
+                           fuzzy_path(), body.get("location") or None)
+
+    @app.post("/api/suggestions/{suggestion_id}/send", dependencies=[Depends(auth)])
+    def api_suggestion_send(suggestion_id: int, request: Request):
+        """Checks + regression gate take a while: run in a thread, the page polls the suggestion."""
+        from modules.rules.review import send_to_approval
+
+        store, by = suggestion_store(), user_of(request)
+        item = api_suggestion(suggestion_id)
+        if not item["validator_report"].get("valid"):
+            raise HTTPException(409, "the rule does not validate — edit it first")
+        with suggestions_lock:
+            if suggestion_id in suggestions_state["sending"]:
+                return {"started": False, "sending": True}
+            suggestions_state["sending"].add(suggestion_id)
+
+        def work():
+            try:
+                send_to_approval(store, suggestion_id, by, fuzzy_path(), rules_cfg.get("dir", "data/rules"),
+                                 rules_cfg.get("gate_dataset", "data/eval/scripted"), rules_cfg.get("gate"))
+            except Exception as e:  # shown on the page through gate_report
+                store.update(suggestion_id, gate_report={"passed": False, "errors": [str(e)[:500]]})
+            finally:
+                suggestions_state["sending"].discard(suggestion_id)
+
+        threading.Thread(target=work, name=f"suggestion-{suggestion_id}", daemon=True).start()
+        return {"started": True, "sending": True}
+
     # --- F25 (TOD-36): operator decision on GPT's escalation above the corridor -----------------------------------
     @app.post("/api/escalation/{review_id}", dependencies=[Depends(auth)])
     def api_escalation(review_id: str, body: Dict[str, Any], request: Request):
