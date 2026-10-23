@@ -139,7 +139,7 @@ def test_configurations():
     assert [c.name for c in MAIN] == ["rules_only", "llm_only", "llm_pattern", "proposed"]
     assert len(ALL) == 8 and BY_NAME["proposed_no_A"].envelope is False and BY_NAME["proposed_no_E"].gating is False
     assert BY_NAME["proposed"].flags() == {"llm": True, "pattern_filter": False, "trust": True, "envelope": True,
-                                           "view": True, "gating": True}
+                                           "view": True, "gating": True, "snapshot": "v2.1"}
 
 
 def small_copy(scripted, target: Path, per_category: int = 6) -> str:

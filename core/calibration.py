@@ -266,9 +266,12 @@ def _rates(scores: np.ndarray, grid: np.ndarray, bandwidth: float) -> np.ndarray
 def fit_cost_threshold(scores: Sequence[float], positive: Sequence[bool], cost_ratio: float,
                        grid: Optional[Sequence[float]] = None, bandwidth: float = 0.05,
                        positive_above: bool = True, lo: Optional[float] = None,
-                       hi: Optional[float] = None) -> Dict[str, Any]:
+                       hi: Optional[float] = None, flag_cost: float = 0.0) -> Dict[str, Any]:
     """
-    Threshold t minimising C_miss · P_miss + C_fa · P_fa (C_fa = 1, C_miss = cost_ratio).
+    Threshold t minimising C_miss · P_miss + C_fa · P_fa (C_fa = 1, C_miss = cost_ratio) [+ flag_cost · P_flag].
+
+    ``flag_cost`` (F28 / TOD-39, gating): a cost of every flagged case, needed or not (a GPT call costs tokens even
+    when it was worth making), times the share of flagged cases P_flag.
 
     ``positive_above``: a case is flagged when score ≥ t (risk boundaries, gating) — miss = positive below t; otherwise
     flagged when score < t (trust θ: "distrust below θ") — miss = positive at / above t. Rates are kernel-smoothed
@@ -294,6 +297,9 @@ def fit_cost_threshold(scores: Sequence[float], positive: Sequence[bool], cost_r
     if pos.all():
         p_fa = np.zeros(len(grid))
     cost = cost_ratio * p_miss + p_fa
+    if flag_cost:
+        flagged_share = _rates(s, grid, bandwidth) if positive_above else 1 - _rates(s, grid, bandwidth)
+        cost = cost + flag_cost * flagged_share
     best_cost = cost.min()
     candidates = np.flatnonzero(cost <= best_cost + 1e-9)
     i = int(candidates[0] if positive_above else candidates[-1])
@@ -303,7 +309,9 @@ def fit_cost_threshold(scores: Sequence[float], positive: Sequence[bool], cost_r
             "p_miss": round(float(p_miss[i]), 4), "p_fa": round(float(p_fa[i]), 4),
             "empirical_p_miss": round(float(np.mean(~flagged[pos])) if pos.any() else 0.0, 4),
             "empirical_p_fa": round(float(np.mean(flagged[~pos])) if (~pos).any() else 0.0, 4),
-            "n_pos": int(pos.sum()), "n_neg": int((~pos).sum())}
+            "n_pos": int(pos.sum()), "n_neg": int((~pos).sum()),
+            **({"flag_cost": flag_cost, "flagged_share": round(float(np.mean(flagged)) if len(s) else 0.0, 4)}
+               if flag_cost else {})}
 
 
 # --- ASR ------------------------------------------------------------------------------------------------------------

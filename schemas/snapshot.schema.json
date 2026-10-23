@@ -330,7 +330,11 @@
       "description": "F18: the only part sent to GPT (as compact JSON); risk_floor is added by the LLM worker",
       "properties": {
         "v": {
-          "const": 2
+          "enum": [
+            2,
+            2.1
+          ],
+          "description": "2.1 (F28 / TOD-39) adds the numeric core range of the gas terms and the location's gas scale"
         },
         "location": {
           "type": "string",
@@ -512,6 +516,24 @@
                   "type": "string",
                   "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
                 }
+              },
+              "range_pct": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                },
+                "description": "v2.1: [from, to] % where the strongest level term holds fully (μ = 1)"
+              },
+              "trend_range_pct_per_min": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                },
+                "description": "v2.1: the same for the strongest trend term, %/min"
               }
             }
           }
@@ -669,6 +691,24 @@
                   "type": "string",
                   "pattern": "^\\d{2}:\\d{2}:\\d{2}$"
                 }
+              },
+              "range_pct": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                },
+                "description": "v2.1: [from, to] % where the strongest level term holds fully (μ = 1)"
+              },
+              "trend_range_pct_per_min": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "number"
+                },
+                "description": "v2.1: the same for the strongest trend term, %/min"
               }
             }
           }
@@ -701,6 +741,23 @@
               "type": "number",
               "minimum": 0,
               "maximum": 1
+            }
+          }
+        },
+        "gas_scale_pct": {
+          "type": "object",
+          "maxProperties": 8,
+          "description": "v2.1: per gas, this location's level terms with their core ranges in % — what slight / elevated / dangerous mean here",
+          "additionalProperties": {
+            "type": "object",
+            "maxProperties": 6,
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
             }
           }
         }

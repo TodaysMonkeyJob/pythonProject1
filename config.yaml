@@ -301,6 +301,8 @@ aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
 
 llm:                        # F6: GPT analysis of snapshot digests (Azure OpenAI, keys in .env)
   enabled: true
+  snapshot_version: v2.1    # F28 (TOD-39): v1 (text digest) | v2 (terms) | v2.1 (terms + numeric ranges); TOD-40's
+                            # ablation decides the default — overrides aggregator.llm_format
   gpt_deployment: gpt-4.1-mini   # Azure deployment name; "gpt-4" (= gpt-4.1) gives the same decisions at ~5.6× the cost
   whisper_deployment: whisper
   prompt: security_analyst  # prompts/<name>.md
@@ -348,7 +350,8 @@ envelope:                   # F17 (TOD-28): fuzzy risk corridor around GPT decis
   log: true                 # every decision with all intermediate values → logs/<date>/envelope.jsonl
 
 calibration:                # F22 (TOD-33): measured trust inputs (config/calibration/, trust_priors.yaml, thresholds.yaml)
-  cost_ratio: 10            # C_miss / C_fa — the only expert input of python -m tools.fit_thresholds
+  cost_ratio: 10            # C_miss / C_fa — the expert input of python -m tools.fit_thresholds
+  call_cost: 0.2            # F28 (TOD-39): one GPT call vs one false alarm (C_fa = 1) — the gating threshold pays it
 
 dashboard:                  # F7: http://<pi-ip>:8000 (login DASHBOARD_USER / DASHBOARD_PASS from .env)
   enabled: true

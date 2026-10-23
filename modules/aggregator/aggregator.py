@@ -27,6 +27,7 @@ from modules.aggregator.outbox import Outbox
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
+SNAPSHOT_FORMATS = {"v1": "digest", "v2": "v2", "v2.1": "v2.1"}    # llm.snapshot_version → aggregator llm_format
 
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "snapshot.schema.json")
 CSV_FIELDS = ["timestamp", "source", "type", "severity", "track_id", "identity", "action", "text", "gas_ppm",
@@ -424,8 +425,10 @@ class Aggregator:
         self.pending: Dict[str, str] = {}
         self.last_global = clock()
         self.recent: Dict[str, Dict[str, Any]] = {}       # location → summary of its last snapshot (global digest)
-        # F18: what GPT gets — "v2" (fuzzified, trust-tagged JSON view) or "digest" (the v1 text, for ablations)
-        self.llm_format = agg.get("llm_format", "v2")
+        # F18: what GPT gets — "v2" (fuzzified, trust-tagged JSON view) or "digest" (the v1 text, for ablations);
+        # F28: llm.snapshot_version v1 | v2 | v2.1 (v2 + numeric term ranges) wins over aggregator.llm_format
+        version = (config.get("llm") or {}).get("snapshot_version")
+        self.llm_format = SNAPSHOT_FORMATS[version] if version else agg.get("llm_format", "v2")
         self.fuzzy_path = config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml")
         self._fuzzy: Dict[str, Any] = {}
         self._fuzzy_root: Optional[Dict[str, Any]] = None
@@ -525,7 +528,7 @@ class Aggregator:
         else:
             engine, theta = self._fuzzy_for(location_id)
             snapshot["schema_version"] = 2
-            snapshot["llm_view"] = llm_view(snapshot, engine, theta, rules)
+            snapshot["llm_view"] = llm_view(snapshot, engine, theta, rules, version=self.llm_format)
             self.builder.validator.validate(snapshot)
             digest = payload_text(snapshot["llm_view"])
         if incident_id:

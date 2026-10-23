@@ -189,6 +189,21 @@ def _results_md(out_dir: str, summaries, mcnemar, manifest) -> None:
                   f"{p['false_alarm_rate']:.3f}.",
                   f"* Efficiency: {p['llm_calls_per_hour']} LLM calls / h (LLM only: "
                   f"{summaries.get('llm_only', p)['llm_calls_per_hour']}).", ""]
+    calibration = manifest.get("calibration") or {}
+    if calibration.get("fitted"):                      # F28: in-sample vs leave-one-out, constraints, used or not
+        fitted, cv = calibration.get("fit") or {}, calibration.get("cv") or {}
+        check = calibration.get("constraints") or {}
+        lines += ["## Calibration of the LLM levels (C)", "",
+                  f"Fitted on {calibration['n']} of {calibration.get('split', calibration['n'])} calibration scenarios "
+                  f"({calibration.get('rejected_deescalations', 0)} answers rejected by the corridor as manipulated "
+                  f"left out). In-sample Brier {_fmt(fitted.get('brier'))}, "
+                  f"ECE {_fmt(fitted.get('ece'))}; leave-one-out Brier {_fmt(cv.get('brier'))}, ECE "
+                  f"{_fmt(cv.get('ece'))} (fixed mapping: Brier {_fmt((cv.get('fixed') or {}).get('brier'))}, ECE "
+                  f"{_fmt((cv.get('fixed') or {}).get('ece'))}). Constraints "
+                  f"{'hold' if check.get('ok') else 'VIOLATED'}: monotone centres {check.get('centres')}, "
+                  f"min support {check.get('min_support')} ≥ {check.get('min_width')}. "
+                  + ("The fitted sets are used." if calibration.get("used", True) else
+                     "Not used: " + calibration.get("note", "") + "."), ""]
     if os.path.isfile(os.path.join(out_dir, "ablation.md")):
         with open(os.path.join(out_dir, "ablation.md"), encoding="utf-8") as f:
             lines += ["## Ablations", "", f.read()]

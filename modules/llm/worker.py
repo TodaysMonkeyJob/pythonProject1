@@ -281,8 +281,8 @@ class LLMWorker(BaseModule):
             self.gating_log.write(make_event("llm", "llm_gating", {
                 "snapshot_id": row["id"], "location_id": location, "trigger": row["trigger"],
                 "call_llm": decision.call, "score": round(decision.score, 3), "reason": decision.reason,
-                "override": decision.override, "inputs": decision.inputs, "fired": decision.fired,
-                "tokens_saved_est": saved}, location_id=location or None))
+                "override": decision.override, "reasons": decision.reasons, "inputs": decision.inputs,
+                "fired": decision.fired, "tokens_saved_est": saved}, location_id=location or None))
         return decision
 
     def _request_tokens(self, row: Dict[str, Any]) -> int:
@@ -397,6 +397,9 @@ class LLMWorker(BaseModule):
             payload.update(self.envelope.decide(None if row["trigger"] == "global" else location_id, level,
                                                 now=self.wall_clock(), distribution=decision.risk_distribution))
             level = payload["risk_level_final"]
+            if self.gate is not None and row["trigger"] != "global":   # F28: agreement h steers the next gate
+                self.gate.record(location_id or "", payload.get("h"), float(payload.get("y_l") or 0.0),
+                                 self.wall_clock())
         event = self.emit("llm_decision", payload, severity=SEVERITY[level], location_id=location_id)
         self._count_rules(event, payload)
         if self.envelope_log is not None:

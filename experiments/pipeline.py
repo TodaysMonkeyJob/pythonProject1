@@ -140,7 +140,8 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
             verdict = gate.evaluate(row, corridor, ignored, last_call.get(location), now)
             if trace is not None:
                 trace.setdefault("gate", []).append({"t": now, "trigger": row["trigger"], "score": verdict.score,
-                                                     "override": verdict.override, "floor": corridor["floor"]})
+                                                     "override": verdict.override, "floor": corridor["floor"],
+                                                     "call": verdict.call, "reasons": verdict.reasons})
             if not verdict.call:                           # F25: no GPT answer → r_final = L
                 lower = envelope.fallback(location, now)["r_final"]
                 result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", envelope.level(lower), lower))
@@ -172,6 +173,8 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
         if config.envelope and envelope is not None:
             final = envelope.decide(location, decision.risk_level, now=now, distribution=distribution)
             level, risk, applied = final["risk_level_final"], final["risk_final"], final["envelope_applied"]
+            if gate is not None:                           # F28: the agreement of this answer steers the next gate
+                gate.record(location, final.get("h"), corridor["floor"] if corridor else 0.0, now)
             if trace is not None:
                 trace.setdefault("decision", []).append({
                     "t": now, "h": final.get("h"), "level_llm": decision.risk_level,
@@ -182,6 +185,8 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
             level = decision.risk_level
             risk = calibrator.risk(distribution) if (config.view and calibrator and distribution) else FIXED[level]
             applied = False
+            if gate is not None:                           # no corridor applied: agreement unknown
+                gate.record(location, None, corridor["floor"] if corridor else 0.0, now)
         result.decisions.append(Decision(now, row["trigger"], "llm", level, round(float(risk), 4), decision.risk_level,
                                          distribution, applied, usage.get("latency_ms", 0) / 1000,
                                          usage.get("cache_hit")))
@@ -190,7 +195,7 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
         aggregator = Aggregator({"aggregator": {"export_dir": tmp, "incidents": {"enabled": False},
                                                 "write_snapshot_files": False, "export_csv": False,
                                                 "global_snapshot_min": 0,
-                                                "llm_format": "v2" if config.view else "digest"},
+                                                "llm_format": config.snapshot if config.view else "digest"},
                                  "trust": {"fuzzy_config": fuzzy_path}},
                                 clock=lambda: clock[0], local_now=lambda: datetime.fromtimestamp(clock[0]))
 
