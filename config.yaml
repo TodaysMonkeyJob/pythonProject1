@@ -329,6 +329,14 @@ trust:                      # F16 (TOD-27): fuzzy trust degree on every evidence
   registry_db: data/trust_registry.db   # trust per device × channel + history (the router writes, the dashboard reads)
   health: true              # device self-diagnostics in the camera / microphone / gas workers → device_health events
 
+rules:                      # F26 (TOD-37): governed rule changes (python -m tools.rules propose / approve / rollback)
+  dir: data/rules           # proposals/, versions/<sha256>.yaml (rollback), changelog.jsonl (append-only)
+  stats_db: data/rules/firing.db   # fired-rule counts per rule base version + operator outcomes (LLM worker)
+  gate:                     # a candidate rule base is blocked when, on the evaluation scenarios, …
+    max_asr: 0.0            # … any attack succeeds
+    f1_tolerance: 0.01      # … macro-F1 drops by more than this vs the current base
+    ece_tolerance: 0.01     # … ECE grows by more than this
+
 envelope:                   # F17 (TOD-28): fuzzy risk corridor around GPT decisions (LLM worker)
   enabled: true             # parameters: envelope section of trust.fuzzy_config (λ, h_min, levels, confirmation rules)
   log: true                 # every decision with all intermediate values → logs/<date>/envelope.jsonl

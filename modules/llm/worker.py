@@ -78,6 +78,8 @@ class LLMWorker(BaseModule):
         self.gate = gate
         self.gating_enabled = bool(llm.get("gating", True))
         self.gating_log: Optional[JsonlLogger] = None
+        self.rule_stats = None                          # F26: modules.llm.rule_stats.RuleStats (rules.stats_db)
+        self._decided: Dict[str, Any] = {}             # decision event id → (rules version, fired rule ids)
         self._gated: Dict[str, Any] = {}               # row id → GateDecision (each snapshot is judged once)
         self._last_llm_wall: Dict[str, float] = {}     # location → wall time of the last GPT call
         self._prompt_tokens: Optional[int] = None
@@ -91,6 +93,12 @@ class LLMWorker(BaseModule):
                 self.envelope = RiskEnvelope.from_config(path)
             else:
                 logger.warning(f"Risk envelope off: {path} not found — LLM decisions are published unbounded")
+        if self.envelope is not None and self.rule_stats is None:          # F26: fired rules per rule base version
+            stats_db = (self.config.get("rules") or {}).get("stats_db")
+            if stats_db:
+                from modules.llm.rule_stats import RuleStats
+
+                self.rule_stats = RuleStats(stats_db)
         if self.envelope is not None and self.config.get("envelope", {}).get("log", True):
             log_cfg = self.config.get("logging", {})
             self.envelope_log = JsonlLogger("envelope", log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048))
@@ -130,8 +138,23 @@ class LLMWorker(BaseModule):
         if not (isinstance(message, str) and message.startswith("{")):
             super().handle_control(message)
             return
+        event = Event.from_json(message)
         if self.envelope is not None:
-            self.envelope.observe(Event.from_json(message))
+            self.envelope.observe(event)
+        if event.type == "escalation_resolved" and self.rule_stats is not None:
+            decided = self._decided.pop(str(event.payload.get("review_id")), None)
+            if decided:                                    # bound kept = GPT's escalation rejected by the operator
+                self.rule_stats.outcome(decided[0], decided[1], bound_kept=not event.payload.get("accepted"))
+
+    def _count_rules(self, event: Event, payload: Dict[str, Any]) -> None:
+        """F26 monitoring: the fired rules of this decision, per rule base version"""
+        if self.rule_stats is None or not payload.get("rules_version"):
+            return
+        ids = payload.get("fired_ids") or []
+        self.rule_stats.record(payload["rules_version"], ids)
+        self._decided[event.event_id] = (payload["rules_version"], ids)
+        while len(self._decided) > 500:
+            self._decided.pop(next(iter(self._decided)))
 
     def step(self) -> None:
         now = self.clock()
@@ -269,7 +292,8 @@ class LLMWorker(BaseModule):
                    "reasons": [r["explanation"] for r in corridor["fired_rules"][:3]], "follow_up": None,
                    "risk_llm": None, "risk_floor": corridor["floor"], "risk_ceil": corridor["ceil"],
                    "risk_width": corridor.get("width"), "risk_type1": corridor.get("type1"),
-                   **({k: fallback[k] for k in ("y_l", "y_r", "width", "L", "U", "c", "policy_branch")}
+                   **({k: fallback[k] for k in ("y_l", "y_r", "width", "L", "U", "c", "policy_branch", "rules_version",
+                                                "fired_ids")}
                       if fallback else {"policy_branch": "fuzzy_only"}),
                    "envelope_reason": {"widened_by": (corridor.get("widened_by") or [])[:3]},
                    "confirmation": None, "risk_final": round(floor, 3), "risk_level_final": level,
@@ -280,6 +304,7 @@ class LLMWorker(BaseModule):
         self.outbox.mark_handled(row["id"], "fuzzy_only")
         self._gated.pop(row["id"], None)
         event = self.emit("llm_decision", payload, severity=SEVERITY[level], location_id=location_id)
+        self._count_rules(event, payload)
         if self.envelope_log is not None:
             self.envelope_log.write(event)
         return event
@@ -349,6 +374,7 @@ class LLMWorker(BaseModule):
                                                 now=self.wall_clock(), distribution=decision.risk_distribution))
             level = payload["risk_level_final"]
         event = self.emit("llm_decision", payload, severity=SEVERITY[level], location_id=location_id)
+        self._count_rules(event, payload)
         if self.envelope_log is not None:
             self.envelope_log.write(event)
         if payload.get("envelope_applied"):

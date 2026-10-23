@@ -601,6 +601,31 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         state.publish(make_event("system", "trust_feedback", payload))
         return {"accepted": True, **payload}
 
+    # --- F26 (TOD-37): rule governance, read-only (changes go through python -m tools.rules approve) -------------
+    rules_cfg = config.get("rules") or {}
+
+    @app.get("/api/rules", dependencies=[Depends(auth)])
+    def api_rules():
+        from core.fuzzy import load_yaml
+        from core.fuzzy.governance import rules_table, short, version_hash
+        from modules.llm.rule_stats import read_stats
+
+        fuzzy = config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml")
+        data = load_yaml(fuzzy)
+        version = version_hash(data)
+        rules_dir = rules_cfg.get("dir", "data/rules")
+        changelog = []
+        path = os.path.join(rules_dir, "changelog.jsonl")
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                changelog = [json.loads(line) for line in f if line.strip()]
+        stats = {r["rule_id"]: r for r in read_stats(rules_cfg.get("stats_db", "data/rules/firing.db"), short(version))}
+        rules = [{**row, **{k: (stats.get(row["id"]) or {}).get(k, 0) for k in ("fired", "confirmed", "rejected")}}
+                 for row in rules_table(data)]
+        return {"version": version, "short": short(version),
+                "registered": os.path.isfile(os.path.join(rules_dir, "versions", f"{version}.yaml")),
+                "rules": rules, "changelog": changelog[::-1][:100]}
+
     # --- F25 (TOD-36): operator decision on GPT's escalation above the corridor -----------------------------------
     @app.post("/api/escalation/{review_id}", dependencies=[Depends(auth)])
     def api_escalation(review_id: str, body: Dict[str, Any], request: Request):

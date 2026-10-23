@@ -1,0 +1,519 @@
+# Fuzzy inference core (F15 / TOD-26): linguistic variables, membership functions, rule base → crisp risk 0..1.
+# Shared by the fuzzy trust layer (TOD-27) and the fuzzy risk corridor around the LLM (TOD-28). Deterministic,
+# local, never calls the LLM. Explain a case: python -m core.fuzzy gas_concentration=4.2 gas=acetone
+#
+# Terms: [tri, a, b, c] | [trap, a, b, c, d] (a == b / c == d = shoulder) | [gauss, mean, sigma];
+# a list of shapes = their max (wraps around midnight). Every universe must be fully covered (checked on load).
+version: 1
+output: risk
+defuzzification: centroid          # centroid | bisector | mom | som | lom
+operators: {and: min, or: max, implication: min, aggregation: max}
+default_output: 0.0                # crisp risk when no rule fires
+
+variables:
+  gas_concentration:               # TOD-19 classifier, concentration_pct (gas.thresholds: 3–5 %)
+    universe: [0, 10, 0.01]
+    unit: "%"
+    default: 0                     # no gas sensor in this location → clean
+    terms:                         # base = the stricter 3 % limit (ammonia, toluol, unknown gases)
+      clean: [trap, 0, 0, 0.2, 0.5]
+      slight: [trap, 0.2, 0.5, 1.0, 1.8]
+      elevated: [trap, 1.0, 1.8, 2.6, 3.4]
+      dangerous: [trap, 2.6, 3.4, 10, 10]
+    variants_by: gas               # inputs["gas"] picks the gas's own terms
+    variants:
+      ethanol: &limit5             # gas.thresholds 5 %
+        slight: [trap, 0.2, 0.5, 1.5, 2.5]
+        elevated: [trap, 1.5, 2.5, 4.0, 5.0]
+        dangerous: [trap, 4.0, 5.0, 10, 10]
+      acetone: *limit5
+  gas_trend:                       # % per minute (gas.rise_rate_threshold: 2 %/min)
+    universe: [-10, 10, 0.01]
+    unit: "%/min"
+    default: 0
+    terms:
+      falling: [trap, -10, -10, -0.5, -0.1]
+      stable: [trap, -0.5, -0.1, 0.1, 0.5]
+      rising: [trap, 0.1, 0.5, 1.5, 2.5]
+      sharply_rising: [trap, 1.5, 2.5, 10, 10]
+  motion_level:                    # share of the frame / time with motion
+    universe: [0, 1, 0.01]
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0.05, 0.15]
+      low: [trap, 0.05, 0.15, 0.4, 0.6]
+      high: [trap, 0.4, 0.6, 1, 1]
+  people_count:
+    universe: [0, 10, 0.05]
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0.3, 0.8]
+      one: [tri, 0.3, 1, 2]
+      several: [trap, 1, 2, 4, 6]
+      crowd: [trap, 4, 6, 10, 10]
+  unknown_share:                   # unknown persons / persons in view (0 when nobody is there)
+    universe: [0, 1, 0.01]
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0.05, 0.2]
+      some: [trap, 0.05, 0.2, 0.8, 0.95]
+      all: [trap, 0.8, 0.95, 1, 1]
+  action_risk:                     # the riskiest current action, mapped by maps.action_risk
+    universe: [0, 1, 0.01]
+    default: 0
+    terms:
+      low: [trap, 0, 0, 0.2, 0.4]
+      medium: [tri, 0.2, 0.5, 0.8]
+      high: [trap, 0.6, 0.8, 1, 1]
+  time_of_day_risk:                # local hour 0..24 (per-location schedule via overrides)
+    universe: [0, 24, 0.05]
+    unit: h
+    terms:
+      normal: [trap, 7, 8.5, 18, 19.5]
+      off_hours: [[trap, 5, 6, 7, 8.5], [trap, 18, 19.5, 21, 22.5]]
+      night: [[trap, 0, 0, 5, 6], [trap, 21, 22.5, 24, 24]]
+  risk:                            # output
+    universe: [0, 1, 0.01]
+    terms:
+      low: [trap, 0, 0, 0.1, 0.3]
+      medium: [tri, 0.15, 0.4, 0.6]
+      high: [tri, 0.45, 0.7, 0.85]
+      critical: [trap, 0.75, 0.9, 1, 1]
+
+maps:
+  action_risk: {lying: 1.0, possible_smoking: 0.6, sitting: 0.1, standing: 0.1, walking: 0.2,
+                # learned actions (modules/vision/action_classifier.py) — same scale as the rule postures
+                falling: 1.0, distress: 0.8, fighting: 0.9, staggering: 0.6, climbing: 0.5, throwing: 0.4,
+                running: 0.3, picking_up: 0.1, sitting_down: 0.1, standing_up: 0.1, drinking: 0.1, eating: 0.1,
+                phone_call: 0.1, waving: 0.1, hugging: 0.2}
+
+rules:
+  # Gas (independent physical sensor)
+  - id: R1
+    rule: "IF gas_concentration IS dangerous THEN risk IS critical"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A dangerous gas level is critical on its own, whatever else happens."}
+  - id: R2
+    rule: "IF gas_concentration IS elevated AND gas_trend IS sharply_rising THEN risk IS critical"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "An elevated level that is still rising sharply will reach the dangerous level soon."}
+  - id: R3
+    rule: "IF gas_concentration IS elevated AND gas_trend IS NOT sharply_rising THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "An elevated gas level that is not rising sharply needs attention but is not yet critical."}
+  - id: R4
+    rule: "IF gas_concentration IS slight AND gas_trend IS sharply_rising THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A slight level rising sharply is an early leak signal."}
+  - id: R5
+    rule: "IF gas_concentration IS slight AND gas_trend IS rising THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A slight level that keeps rising deserves a look."}
+  - id: R6
+    rule: "IF gas_concentration IS slight AND (gas_trend IS stable OR gas_trend IS falling) THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A slight, stable or falling level is background (cooking, cleaning products)."}
+  # People and actions
+  - id: R7
+    rule: "IF action_risk IS high AND motion_level IS none THEN risk IS critical"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A high-risk action (lying) without any motion suggests a fall or loss of consciousness."}
+  - id: R8
+    rule: "IF action_risk IS high AND motion_level IS NOT none THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A high-risk action with motion (a person getting up, fighting) is high but not yet critical."}
+  - id: R9
+    rule: "IF action_risk IS medium AND gas_concentration IS NOT clean THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Possible smoking with gas in the air is supported by an independent sensor."}
+  - id: R10
+    rule: "IF action_risk IS medium AND gas_concentration IS clean THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Possible smoking without any gas is only a medium concern (pose rule false positives)."}
+  # Strangers and time of day
+  - id: R11
+    rule: "IF unknown_share IS all AND time_of_day_risk IS night THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Only strangers in the room at night is a likely intrusion."}
+  - id: R12
+    rule: "IF unknown_share IS some AND time_of_day_risk IS night THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Some strangers at night (with known people present) is unusual but less alarming."}
+  - id: R13
+    rule: "IF unknown_share IS all AND time_of_day_risk IS off_hours THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Only strangers outside working hours needs a check."}
+  - id: R14
+    rule: "IF unknown_share IS all AND time_of_day_risk IS normal THEN risk IS medium"
+    weight: 0.5
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Only strangers during the day is mostly visitors; half weight keeps it a weak medium."}
+  - id: R21
+    rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS medium"
+    weight: 0.6
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Some strangers outside working hours, with staff present: a weak medium (weight 0.6)."}
+  - id: R22
+    rule: "IF unknown_share IS some AND time_of_day_risk IS normal THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Visitors together with known staff during the day are normal."}
+  - id: R15
+    rule: "IF people_count IS crowd AND time_of_day_risk IS night THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A crowd at night is unusual for an office or warehouse."}
+  - id: R16
+    rule: "IF people_count IS crowd AND time_of_day_risk IS NOT night THEN risk IS medium"
+    weight: 0.5
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "A crowd during the day is mostly meetings; half weight keeps it a weak medium."}
+  # Motion without anyone identified as a person (occlusion, animal, someone hiding)
+  - id: R17
+    rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS night THEN risk IS high"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Strong motion at night with nobody detected may be someone hiding from the camera."}
+  - id: R18
+    rule: "IF people_count IS none AND motion_level IS high AND time_of_day_risk IS NOT night THEN risk IS medium"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Strong motion by day with nobody detected is often occlusion or an animal: medium."}
+  # Calm
+  - id: R19
+    rule: "IF people_count IS none AND motion_level IS NOT high AND gas_concentration IS clean THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "An empty, quiet room with clean air is the calm baseline."}
+  - id: R20
+    rule: "IF people_count IS NOT none AND unknown_share IS none AND action_risk IS low AND gas_concentration IS clean THEN risk IS low"
+    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+           rationale: "Known people, low-risk actions and clean air are the normal working state."}
+
+# Per-location overrides (ids from config/locations.yaml); also possible as a `fuzzy:` block in locations.yaml
+locations:
+  warehouse:                       # nobody should be there after 19:00: night starts earlier, strangers count more
+    terms:
+      time_of_day_risk:
+        normal: [trap, 7, 8.5, 17.5, 19]
+        off_hours: [[trap, 5, 6, 7, 8.5], [trap, 17.5, 19, 19.5, 20.5]]
+        night: [[trap, 0, 0, 5, 6], [trap, 19.5, 20.5, 24, 24]]
+    remove_rules: [R21]            # replaced by the stricter W1 (same condition → would conflict)
+    rules:
+      - id: W1
+        rule: "IF unknown_share IS some AND time_of_day_risk IS off_hours THEN risk IS high"
+        meta: {source: "location requirement: warehouse, nobody after 19:00 (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "In the warehouse nobody should be there after hours: strangers then are high (replaces R21)."}
+      - id: W2
+        rule: "IF people_count IS NOT none AND time_of_day_risk IS night THEN risk IS high"
+        weight: 0.8
+        meta: {source: "location requirement: warehouse, nobody after 19:00 (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Anyone in the warehouse at night is suspicious there (weight 0.8)."}
+
+# --- F16 (TOD-27): fuzzy trust in evidence (component B) ------------------------------------------------------------
+# τ(e) = min(μ_source, μ_asr, μ_consistency) per event that can reach the LLM (modules/trust). μ_source of speech
+# comes from the source rule base below; μ_asr, speaker, face and gas trust from the calibrated maps (F22 / TOD-33);
+# physical sensors and scene text use the base values. trust_terms = τ fuzzified with trust.terms.
+#
+# F22 (TOD-33): no hand-picked trust degree / threshold here — "@<file>:<path>" values are read on load from
+#   trust_priors.yaml  (python -m tools.trust_priors: r0 / s0 per device × channel → τ0; unmeasured channels have
+#                       r0 = s0 = 0; `policy.*` = rules and interim values, measured: false)
+#   thresholds.yaml    (python -m tools.fit_thresholds: minimum expected cost for calibration.cost_ratio)
+#   calibration/*.yaml (python -m tools.calibrate_channels asr | speaker | face | gas)
+# Time windows (…_sec / …_min) are operating parameters, not trust degrees or decision thresholds.
+trust:
+  registry: trust_registry.yaml   # F23 (TOD-34): μ_source = τ of <device_id>/<channel> (priors, evidence, health)
+  claim_threshold: "@thresholds:values.claim_theta"   # F24: τ a lowering speech / scene-text claim needs (cost-fitted)
+  calibration:                # raw score → probability; a missing file → the fallback rule bases asr / identity below
+    asr: calibration/asr.yaml           # asr_confidence → P(WER ≤ 10 %)
+    speaker: calibration/speaker.yaml   # ECAPA score → P(same speaker)
+    face: calibration/face.yaml         # SFace similarity → P(known person)
+    gas: calibration/gas.yaml           # gas_confidence → P(gas label right)
+  presence_grace_sec: 3       # a person seen this close to a speech segment counts as visible during it
+  presence_stale_sec: 600     # person tracks without any update for this long are forgotten
+  alarm_memory_sec: 300       # physical alerts / risky actions this recent make a calming claim contradictory
+  consistency:
+    deescalation_floor: "@trust_priors:policy.deescalation_floor.value"   # calming claim vs fully alarming sensors
+    instruction: "@trust_priors:policy.instruction.value"   # instructions to the system ("report safe") never get trust
+  terms:
+    low: [trap, 0, 0, 0.2, 0.45]
+    medium: [tri, 0.25, 0.5, 0.75]
+    high: [trap, 0.55, 0.8, 1, 1]
+  claims: {}                  # extra patterns: {deescalation: ["regex", …], instruction_to_system: [...], escalation: [...]}
+
+  source:                     # μ_source of a speech segment
+    output: source
+    variables:
+      speaker:                # P(same speaker) from calibration/speaker.yaml (no score: unknown 0.1 / uncertain 0.4)
+        universe: [0, 1, 0.01]
+        terms:
+          unknown: [trap, 0, 0, 0.2, 0.35]
+          uncertain: [tri, 0.2, 0.4, 0.6]
+          known: [trap, 0.5, 0.7, 1, 1]
+      face_voice:             # mismatch 0, off camera 0.35, people visible but not identified 0.65, match 1
+        universe: [0, 1, 0.01]
+        terms:
+          mismatch: [trap, 0, 0, 0.1, 0.25]
+          off_camera: [tri, 0.15, 0.35, 0.5]
+          possible: [tri, 0.45, 0.65, 0.85]
+          match: [trap, 0.8, 0.95, 1, 1]
+      playback:               # 1 = speech in a location with working cameras and nobody visible
+        universe: [0, 1, 0.01]
+        terms:
+          not_suspected: [trap, 0, 0, 0.3, 0.7]
+          suspected: [trap, 0.3, 0.7, 1, 1]
+      overlap:                # 1 = another speaker talked during the segment
+        universe: [0, 1, 0.01]
+        default: 0
+        terms:
+          absent: [trap, 0, 0, 0.3, 0.7]
+          present: [trap, 0.3, 0.7, 1, 1]
+      source:
+        universe: [0, 1, 0.01]
+        terms:
+          very_low: [trap, 0, 0, 0.05, 0.15]
+          low: [tri, 0.1, 0.3, 0.5]
+          medium: [tri, 0.45, 0.6, 0.75]
+          high: [trap, 0.7, 0.8, 1, 1]
+    rules:
+      - id: S1
+        rule: "IF playback IS suspected THEN source IS very_low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Speech while working cameras see nobody is probably a recording or a loudspeaker."}
+      - id: S2
+        rule: "IF speaker IS unknown AND playback IS not_suspected THEN source IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "An unknown voice carries little authority about the situation."}
+      - id: S3
+        rule: "IF face_voice IS mismatch AND playback IS not_suspected THEN source IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A voice that does not belong to the person on camera may be impersonation."}
+      - id: S4
+        rule: "IF speaker IS known AND face_voice IS match AND playback IS not_suspected THEN source IS high"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A known voice matching the visible person is the most trustworthy speech source."}
+      - id: S5
+        rule: "IF speaker IS known AND face_voice IS off_camera AND playback IS not_suspected THEN source IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A known voice off camera is plausible but cannot be confirmed visually."}
+      - id: S6
+        rule: "IF speaker IS known AND face_voice IS possible AND playback IS not_suspected THEN source IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "A known voice with unidentified people visible is plausible but unconfirmed."}
+      - id: S7
+        rule: "IF speaker IS uncertain AND face_voice IS NOT match AND playback IS not_suspected THEN source IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "An uncertain voice that is not matched by a visible face is weak evidence."}
+      - id: S8
+        rule: "IF speaker IS uncertain AND face_voice IS match AND playback IS not_suspected THEN source IS medium"
+        weight: 0.7
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "An uncertain voice matched by the visible face is moderately trustworthy (weight 0.7)."}
+      - id: S9
+        rule: "IF overlap IS present THEN source IS low"
+        weight: 0.5
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Overlapping speakers make the attribution unreliable (weight 0.5)."}
+
+  asr:                        # FALLBACK only (no calibration/asr.yaml): μ_asr from exp(avg_logprob) × (1 − no_speech_prob)
+    output: asr
+    variables:
+      asr_confidence:
+        universe: [0, 1, 0.01]
+        terms:
+          poor: [trap, 0, 0, 0.2, 0.4]
+          fair: [tri, 0.25, 0.5, 0.75]
+          good: [trap, 0.6, 0.8, 1, 1]
+      asr:
+        universe: [0, 1, 0.01]
+        terms:
+          low: [trap, 0, 0, 0.15, 0.35]
+          medium: [tri, 0.3, 0.55, 0.8]
+          high: [trap, 0.7, 0.9, 1, 1]
+    rules:
+      - id: A1
+        rule: "IF asr_confidence IS poor THEN asr IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only (no ASR calibration): low Whisper confidence means an unreliable transcript."}
+      - id: A2
+        rule: "IF asr_confidence IS fair THEN asr IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: fair Whisper confidence means a partly reliable transcript."}
+      - id: A3
+        rule: "IF asr_confidence IS good THEN asr IS high"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: good Whisper confidence means a reliable transcript."}
+
+  identity:                   # FALLBACK only (no calibration/face.yaml): trust in a face identification by similarity
+    output: identity
+    variables:
+      face_match:
+        universe: [0, 1, 0.01]
+        terms:
+          weak: [trap, 0, 0, 0.35, 0.45]
+          fair: [tri, 0.4, 0.5, 0.6]
+          strong: [trap, 0.55, 0.65, 1, 1]
+      identity:
+        universe: [0, 1, 0.01]
+        terms:
+          low: [trap, 0, 0, 0.15, 0.35]
+          medium: [tri, 0.3, 0.55, 0.8]
+          high: [trap, 0.7, 0.9, 1, 1]
+    rules:
+      - id: I1
+        rule: "IF face_match IS weak THEN identity IS low"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only (no face calibration): a weak gallery match is an unreliable identity."}
+      - id: I2
+        rule: "IF face_match IS fair THEN identity IS medium"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: a fair gallery match is a partly reliable identity."}
+      - id: I3
+        rule: "IF face_match IS strong THEN identity IS high"
+        meta: {source: "initial expert base (TOD-27)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Fallback only: a strong gallery match is a reliable identity."}
+
+# --- F24 (TOD-35): interval type-2 inputs -----------------------------------------------------------------------------
+# δ_var = k_var · u (u = the trust registry's health-discounted uncertainty of the evidence behind the input, 0..1):
+# UMF edges move outwards by δ, LMF inwards; u = 0 → type-1. k_var = κ · span_var fitted by tools/fit_thresholds.py.
+it2:
+  k: "@thresholds:values.k_var"
+
+# --- F17 (TOD-28): fuzzy risk corridor around the LLM (component A) -------------------------------------------------
+# [r_floor, r_ceil] = IT2 interval of the risk rules above over all physical evidence (F24); c = lower end of the
+# safety confirmation interval;
+# r_final = max(r_LLM, (1 − c) · r_floor). Raising is always allowed; lowering below the floor needs confirmation.
+envelope:
+  # F24 (TOD-35): no θ cut — all physical evidence enters; its uncertainty u widens the FOU (it2.k below)
+  alpha: 0.5                  # type-1 ablation only (floor: mom): r_ceil = upper end of the α-cut
+  floor: it2_mom              # r_floor = max(KM y_l, centroid of the strongest LOWER firing) | it2 = y_l | mom = type-1
+  lambda: "@thresholds:values.lambda"   # F25 risk attitude: L = (1 − c)·(y_l + λ·(y_r − y_l)), U = y_r
+  h_min: "@thresholds:values.h_min"     # F25 agreement: h = sup min(μ_LLM, μ_K) ≥ h_min → GPT refines inside [L, U]
+  ack_valid_min: 30           # an operator acknowledgement releases the floor (c = 1) this long / until a new alarm
+  llm_levels: {low: 0.1, medium: 0.4, high: 0.7, critical: 0.95}   # FALLBACK only: calibration_path replaces it
+  thresholds: "@thresholds:values.levels"                           # number → level (r ≥ threshold), cost-fitted
+  calibration_path: config/calibration.yaml   # F18: fitted level sets (python -m tools.calibrate_llm_risk); absent → llm_levels
+  confirmation:
+    inherit: [gas_concentration, gas_trend, motion_level, action_risk, unknown_share]   # shared (gas: no default)
+    output: confirmation
+    variables:
+      known_present:          # trust of the best face identification of a known person in view (0 = nobody known)
+        universe: [0, 1, 0.01]
+        terms:
+          absent: [trap, 0, 0, 0.3, 0.55]
+          present: [trap, 0.45, 0.7, 1, 1]
+      confirmation:
+        universe: [0, 1, 0.01]
+        terms:
+          none: [trap, 0, 0, 0.05, 0.25]
+          partial: [tri, 0.15, 0.5, 0.85]
+          full: [trap, 0.7, 0.9, 1, 1]
+    rules:                    # nothing fires → c = 0 (no "none" rules on purpose); risky actions / strangers never confirm
+      - id: K1
+        rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS present AND motion_level IS NOT high AND action_risk IS low AND unknown_share IS none THEN confirmation IS full"
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Clean, stable air, a known person, calm motion and no risky action fully confirm safety."}
+      - id: K2
+        rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS absent AND action_risk IS low AND unknown_share IS none THEN confirmation IS partial"
+        weight: 0.6
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Clean, stable air with no stranger and no risky action partly confirms safety (weight 0.6)."}
+      - id: K3
+        rule: "IF gas_concentration IS clean AND gas_trend IS NOT rising AND gas_trend IS NOT sharply_rising AND known_present IS present AND motion_level IS high AND action_risk IS low THEN confirmation IS partial"
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Clean air and a known person but strong motion only partly confirm safety."}
+      - id: K4
+        rule: "IF known_present IS present AND motion_level IS NOT high AND action_risk IS low AND unknown_share IS none THEN confirmation IS partial"
+        weight: 0.5
+        meta: {source: "initial expert base (TOD-28)", author: TodaysMonkeyJob, added: 2026-10-18,
+               rationale: "Without a gas sensor a calm known person can only partly confirm safety (weight 0.5)."}
+
+# --- F19 (TOD-30): fuzzy gating of LLM calls (component E) ----------------------------------------------------------
+# call_llm ≥ threshold → GPT; else a fuzzy-only decision (risk = r_floor, summary from the fired rules). Hard rules in
+# modules/llm/gating.py: critical_event / critical floor / untrusted lowering claim → always call; otherwise
+# llm.min_llm_interval_sec is respected.
+gating:
+  threshold: "@thresholds:values.gating"          # call_llm ≥ this → GPT (cost-fitted)
+  baseline_minutes: 30        # novelty = what this location has not shown in the last 30 min
+  critical_floor: "@thresholds:values.critical_floor"   # r_floor at / above this → always call (= critical level)
+  output: call_llm
+  variables:
+    novelty:
+      universe: [0, 1, 0.01]
+      terms:
+        low: [trap, 0, 0, 0.1, 0.3]
+        medium: [tri, 0.2, 0.45, 0.7]
+        high: [trap, 0.5, 0.75, 1, 1]
+    uncertainty:              # corridor width + spread of fired output terms
+      universe: [0, 1, 0.01]
+      terms:
+        low: [trap, 0, 0, 0.15, 0.3]
+        medium: [tri, 0.2, 0.4, 0.6]
+        high: [trap, 0.45, 0.65, 1, 1]
+    untrusted_claims:         # 1 = low-trust de-escalation / instruction claim, 0.5 = other untrusted evidence
+      universe: [0, 1, 0.01]
+      terms:
+        none: [trap, 0, 0, 0.2, 0.4]
+        some: [tri, 0.3, 0.5, 0.7]
+        present: [trap, 0.6, 0.8, 1, 1]
+    time_since_last_llm:      # minutes (60 = never / an hour or more)
+      universe: [0, 60, 0.1]
+      unit: min
+      terms:
+        recent: [trap, 0, 0, 5, 10]
+        while: [trap, 5, 10, 20, 30]
+        long: [trap, 20, 30, 60, 60]
+    severity:                 # r_floor, with the risk output terms
+      universe: [0, 1, 0.01]
+      terms:
+        low: [trap, 0, 0, 0.1, 0.3]
+        medium: [tri, 0.15, 0.4, 0.6]
+        high: [tri, 0.45, 0.7, 0.85]
+        critical: [trap, 0.75, 0.9, 1, 1]
+    call_llm:
+      universe: [0, 1, 0.01]
+      terms:
+        skip: [trap, 0, 0, 0.1, 0.3]
+        maybe: [tri, 0.25, 0.5, 0.75]
+        call: [trap, 0.7, 0.9, 1, 1]
+  rules:
+    - id: G1
+      rule: "IF novelty IS high THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A situation the location has not shown recently needs the LLM's explanation."}
+    - id: G2
+      rule: "IF novelty IS medium AND uncertainty IS NOT low THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "Moderate novelty with an uncertain corridor is worth an LLM call."}
+    - id: G3
+      rule: "IF novelty IS medium AND uncertainty IS low THEN call_llm IS maybe"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "Moderate novelty with a certain corridor may be handled without the LLM."}
+    - id: G4
+      rule: "IF uncertainty IS high THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A wide corridor (uncertain evidence) needs the LLM to interpret the situation."}
+    - id: G5
+      rule: "IF untrusted_claims IS present THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A low-trust calming claim must be analysed so the attack is reported."}
+    - id: G6
+      rule: "IF untrusted_claims IS some THEN call_llm IS maybe"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "Other low-trust evidence may be worth an LLM look."}
+    - id: G7
+      rule: "IF severity IS high OR severity IS critical THEN call_llm IS call"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "High or critical floors always get an LLM explanation."}
+    - id: G8
+      rule: "IF severity IS medium AND time_since_last_llm IS NOT recent THEN call_llm IS maybe"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A medium floor not explained recently may need the LLM."}
+    - id: G9
+      rule: "IF time_since_last_llm IS long THEN call_llm IS call"
+      weight: 0.8
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A periodic refresh keeps the operator summary current (weight 0.8)."}
+    - id: G10
+      rule: "IF novelty IS low AND uncertainty IS low AND untrusted_claims IS none AND severity IS low AND time_since_last_llm IS NOT long THEN call_llm IS skip"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A routine, certain, low-risk scene explained recently needs no LLM call (saves tokens)."}
+    - id: G11
+      rule: "IF novelty IS low AND uncertainty IS NOT high AND untrusted_claims IS none AND severity IS medium AND time_since_last_llm IS recent THEN call_llm IS skip"
+      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
+             rationale: "A medium scene without change that was just explained needs no new call."}

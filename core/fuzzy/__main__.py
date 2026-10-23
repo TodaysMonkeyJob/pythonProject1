@@ -10,7 +10,8 @@ import sys
 import time
 
 from core.fuzzy.engine import FuzzyEngine, load_yaml
-from core.fuzzy.validate import FuzzyConfigError
+from core.fuzzy.governance import metadata_errors, normalized, short, version_hash
+from core.fuzzy.validate import FuzzyConfigError, subsumed
 
 
 def main(argv=None) -> int:
@@ -31,6 +32,18 @@ def main(argv=None) -> int:
             for location in [None, *ids]:
                 engine = FuzzyEngine.from_config(args.config, location, args.locations)
                 print(f"ok  {location or 'base':<12} {len(engine.rules)} rules, {len(engine.variables)} variables")
+                for warning in subsumed(engine.rules):
+                    print(f"    warning: {warning}")
+            for section in (("trust", "source"), ("trust", "asr"), ("trust", "identity"), ("gating",)):
+                block = data
+                for key in section:
+                    block = (block or {}).get(key) or {}
+                for warning in subsumed(FuzzyEngine.from_dict(block).rules) if block.get("rules") else []:
+                    print(f"    warning ({'.'.join(section)}): {warning}")
+            missing = metadata_errors(data)                     # F26: every rule needs source / author / rationale
+            if missing:
+                raise FuzzyConfigError(missing, "rule metadata")
+            print(f"ok  metadata     {len(normalized(data))} rules; rule base version {short(version_hash(data))}")
             return 0
         engine = FuzzyEngine.from_config(args.config, args.location, args.locations)
     except FuzzyConfigError as e:

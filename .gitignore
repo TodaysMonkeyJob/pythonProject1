@@ -42,3 +42,5 @@ data/eval/scripted/
 data/calibration/speech/
 experiments/cache/llm_sim.sqlite
 data/action_datasets/
+data/rules/firing.db*
+data/rules/proposals/

@@ -215,6 +215,17 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   level) / clamp / fuzzy_only (no GPT → L, `RiskEnvelope.fallback`). λ, h_min fitted by `tools/fit_thresholds.py`
   (λ: cost of L vs expert level on adversarial / normal scenarios; h_min: end-to-end level cost, Youden J tie-break).
   `llm_decision` carries y_l, y_r, width, L, U, r_llm, r_D, h, policy_branch, c; `envelope_applied` = level raised.
+- F26 (TOD-37) rule governance: every rule entry of `config/fuzzy.yaml` has `meta: {source, author, rationale,
+  added}` (`core.fuzzy.governance.metadata_errors`; `python -m core.fuzzy --check` fails without it and prints the
+  version); `validate.py` catches duplicates / conflicts in any clause order and reports subsumed rules. Version =
+  sha256 of the normalised rule set (metadata excluded) → `llm_decision.rules_version`, experiment manifests,
+  dashboard page `#/rules` «Правила» (`/api/rules`: rules + metadata + firing stats + changelog, read-only).
+  Changes only via `python -m tools.rules propose <file>` (checks + `tools/rules_gate.py`: proposed pipeline on the
+  120 scenarios with the cached GPT read-only, blocks ASR > `rules.gate.max_asr` (failing scenario ids) or macro-F1 /
+  ECE worse than the tolerances; per-scenario diff, never-fired rules) → `approve <id> --by --role --comment` →
+  `data/rules/versions/<sha>.yaml` + append-only `data/rules/changelog.jsonl`; `rollback <version>`.
+  `modules/llm/rule_stats.py` (`rules.stats_db`): fired rules per version + operator outcomes of escalation reviews.
+  Never edit `config/fuzzy.yaml` rules by hand (the conftest guard also watches it and `data/rules/*`).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —
