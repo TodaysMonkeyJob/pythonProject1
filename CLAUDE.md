@@ -162,8 +162,8 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   only once it exists), `tools/snapshot_tokens.py` (v1 JSON / v1 digest / v2 tokens), `tools/test_llm.py --repeat`.
 - F19 (TOD-30) `modules/llm/gating.py` `LLMGate` in the LLM worker (`llm.gating`): novelty vs the location's last
   30 min (`snapshot_features`), corridor uncertainty, untrusted claims, minutes since the last GPT call, severity →
-  `gating` rules in `config/fuzzy.yaml` → call / fuzzy-only. Hard: critical_event, critical floor, an untrusted
-  lowering claim (snapshot or envelope, new since the last call) → GPT at once; else `min_llm_interval_sec`. Fuzzy-only
+  `gating` rules in `config/fuzzy.yaml` → call / fuzzy-only. Hard: critical_event and (F28) a critical floor no
+  GPT answer within the interval saw → GPT at once; everything else (also untrusted claims) `min_llm_interval_sec`. Fuzzy-only
   → `llm_decision` `source: fuzzy_only`, risk = r_floor, `fuzzy_summary` (Ukrainian template), outbox row
   `mark_handled`; works without Azure keys. `gating.jsonl` (inputs, tokens saved). Dashboard badge LLM / без GPT.
   `tools/gating_replay.py` (synthetic routine hour or a real events.jsonl, read only): calls vs every snapshot.
@@ -239,6 +239,19 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   (comments kept) + meta → `tools.rules` `RuleStore.propose`; `config/fuzzy.yaml` only changes on `tools.rules
   approve`. CLI `python -m tools.suggestions list|show|reject|edit|send|export`; dashboard `#/suggestions`
   «Пропозиції правил» (`/api/suggestions…`, send runs the gate in a thread).
+- F28 (TOD-39) fixes of C and E after the ablation. C: snapshot v2.1 (`llm.snapshot_version` v1 | v2 | v2.1, wins
+  over `aggregator.llm_format`; `llm_view(version=)`): gas item `range_pct` / `trend_range_pct_per_min` (core range
+  of the strongest term) + view `gas_scale_pct` (the location's gas terms) — term definitions, never readings;
+  `prompts/security_analyst.md` medium / high rubric with `{risk_scale}` filled from the risk output terms
+  (`gpt_client.risk_scale`); calibration (`modules/llm/calibration.py`) constrained (centres inside their risk term's
+  support, ≥ 0.05 apart, supports ≥ `MIN_WIDTH`, Huber loss), `loo_cv`, `check_constraints`; experiments fit on the
+  whole calibration split minus answers the corridor rejected (`deescalation_rejected`) and use the fit only when its
+  LOO Brier beats the fixed mapping; `tools/calibrate_llm_risk.py --harness` (cache read-only, ≥ 10 recorded answers).
+  E: `LLMGate` inputs `width` (corridor y_r − y_l) and `agreement` (h of GPT's last answer, `gate.record()` from the
+  worker / replay; absent = never asked), novelty of a first snapshot = what it shows; bypass of the interval only
+  for critical_event and a critical floor no answer within the interval saw (claims / disagreement are fuzzy inputs);
+  `reasons` in `gating.jsonl`; `gating.threshold` fitted with `calibration.call_cost` per sent snapshot
+  (`fit_cost_threshold(flag_cost=)`). Gating rules G1–G15 went through `tools.rules` propose / approve.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

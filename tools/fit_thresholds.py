@@ -11,6 +11,9 @@ input is the cost ratio C_miss / C_fa (``calibration.cost_ratio`` in config.yaml
 | levels medium / high / critical | r_final of the scenario's last decision | expert level ≥ that level |
 | gating.threshold | call_llm score of a non-override snapshot | fuzzy-only gives the wrong level (floor ≠ truth) |
 
+F28 (TOD-39): the gating threshold also pays ``calibration.call_cost`` (one GPT call relative to one false alarm,
+config.yaml) for every snapshot it sends, needed or not — without it the fit had no reason to save calls.
+
 F24 (TOD-35): the IT2 corridor's FOU scale k_var = κ · span_var (span = the variable's mean edge width, its natural
 unit of vagueness) — κ minimises the mean interval score of the final corridor [r_floor, r_ceil] against the expert
 risk y: (r_ceil − r_floor) + C·(r_floor − y)⁺ + C·(y − r_ceil)⁺ with C = the cost ratio (a corridor that misses the
@@ -139,11 +142,13 @@ MIN_LEVEL_SCENARIOS = 10
 
 
 def fit_all(data: Dict[str, List[Dict[str, Any]]], cost_ratio: float, bandwidth: float,
-            current_levels: Dict[str, float], previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            current_levels: Dict[str, float], previous: Optional[Dict[str, Any]] = None,
+            call_cost: float = 0.0) -> Dict[str, Any]:
     """
     :param previous: The current thresholds.yaml — its level boundaries are kept when fewer than
         ``MIN_LEVEL_SCENARIOS`` calibration scenarios have recorded GPT answers (a changed trust config changes the
         payloads, so the cache has to be refreshed by an ``experiments.run`` with Azure before the levels can be refit)
+    :param call_cost: F28: the cost of one GPT call (C_fa = 1) — the gating threshold pays it per sent snapshot
     :return: {values: {...}, fits: {...}} — deterministic for the same data and cost ratio
     """
     from modules.envelope.projection import level_of
@@ -170,7 +175,7 @@ def fit_all(data: Dict[str, List[Dict[str, Any]]], cost_ratio: float, bandwidth:
     gates = [g for g in data["gate"] if g["override"] is None]
     wrong = [level_of(g["floor"], levels) != g["truth"] for g in gates]
     fits["gating"] = fit_cost_threshold([g["score"] for g in gates], wrong, cost_ratio, np.linspace(0.05, 0.95, 91),
-                                        bandwidth, positive_above=True)
+                                        bandwidth, positive_above=True, flag_cost=call_cost)
     decisions = data.get("decision") or []
     if decisions:                                       # F25: below h_min a GPT answer is a conflict → a bound holds
         fits["h_min"] = fit_h_min(decisions, levels, cost_ratio)
@@ -334,6 +339,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--calibration-share", type=float, default=0.3)
     parser.add_argument("--cost-ratio", type=float, help="C_miss / C_fa (default: calibration.cost_ratio or 10)")
     parser.add_argument("--bandwidth", type=float, default=0.05, help="kernel width of the smoothed rates")
+    parser.add_argument("--call-cost", type=float, help="F28: cost of one GPT call vs a false alarm (default: "
+                        "calibration.call_cost or 0)")
     parser.add_argument("--llm", choices=("azure", "sim"), default="azure", help="whose cached answers (offline)")
     parser.add_argument("--fuzzy", default="config/fuzzy.yaml")
     parser.add_argument("--min-interval", type=float, default=300.0)
@@ -343,6 +350,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     config = load_config("config.yaml")
     cost_ratio = args.cost_ratio if args.cost_ratio is not None else \
         float((config.get("calibration") or {}).get("cost_ratio", 10.0))
+    call_cost = args.call_cost if args.call_cost is not None else \
+        float((config.get("calibration") or {}).get("call_cost", 0.0))
     if args.dataset == "data/eval/scripted" and not os.path.isfile(os.path.join(args.dataset, "manifest.json")):
         from experiments.scripted import build
 
@@ -361,7 +370,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         llm.close()
     from core.calibration import read_yaml
 
-    result = fit_all(data, cost_ratio, args.bandwidth, current, read_yaml(args.out))
+    result = fit_all(data, cost_ratio, args.bandwidth, current, read_yaml(args.out), call_cost)
     k_fit = fit_k(calibration, args.fuzzy, cost_ratio)                  # F24: FOU scale of the IT2 corridor
     result["values"]["k_var"] = k_fit["k_var"]
     result["fits"]["k_var"] = {key: v for key, v in k_fit.items() if key != "k_var"}
@@ -369,6 +378,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     result["fits"]["lambda"] = fit_lambda(rows, result["values"]["levels"], cost_ratio)
     result["values"]["lambda"] = result["fits"]["lambda"]["threshold"]
     output = {"version": 1, "fitted_at": now_iso(), "cost_ratio": cost_ratio, "c_fa": 1.0, "c_miss": cost_ratio,
+              "call_cost": call_cost,
               "bandwidth": args.bandwidth,
               "dataset": {"path": args.dataset, "name": dataset.name, "hash": dataset.hash(),
                           "synthetic": dataset.synthetic, "split": "calibration", "seed": args.seed,

@@ -6,7 +6,9 @@ LLM backends for the experiments (F20 / TOD-31), behind one SQLite cache so ever
 * ``sim`` — a deterministic stand-in analyst for running the harness offline. It reads the same payloads, follows the
   prompt rules, and is deliberately gullible: it believes calming claims in its input (in a v2 view it ignores
   ``untrusted_evidence`` claims only part of the time, decided by a hash of the payload). Results with ``sim``
-  validate the pipeline; they say nothing about GPT.
+  validate the pipeline; they say nothing about GPT. ``sim-analyst-2`` (F28 / TOD-39) follows the v2 prompt's
+  medium / high rubric for JSON views (smoking with gas_confirmed stays medium unless the trusted gas itself is
+  elevated, dangerous or rising sharply); on the v1 digest it keeps the old "medium or higher → high" reading.
 
 Cache key = sha256(backend, model, temperature, prompt text, payload) → the decision + usage (tokens, latency) of the
 first call; re-runs reuse it (``cache_hit``), so numbers are reproducible from the cache alone.
@@ -48,7 +50,7 @@ class Cache:
 
 class SimAnalyst:
     """Deterministic, gullible stand-in for GPT (see module docstring)."""
-    model = "sim-analyst-1"
+    model = "sim-analyst-2"
     temperature = 0.0
 
     def __init__(self, untrusted_obedience: float = 0.3):
@@ -87,11 +89,15 @@ class SimAnalyst:
             believed = calm_trusted or (calm_untrusted and not heed)
         else:
             text, believed = payload, bool(CALMING.search(payload))
+        rubric = payload.startswith("{")                    # v2 prompt: medium vs high by the evidence itself
+        harmful_gas = bool(re.search(r'"(elevated|dangerous|sharply_rising)"', text))
         level = "low"
         if "unknown_" in text and night:
             level = "high"
         if "possible_smoking" in text:
-            level = max(level, "high" if "gas_confirmed" in text else "medium", key=_rank)
+            smoking = ("high" if harmful_gas else "medium") if rubric else \
+                ("high" if "gas_confirmed" in text else "medium")
+            level = max(level, smoking, key=_rank)
         if re.search(r"gas_rising|gas_threshold|elevated|sharply_rising", text):
             level = max(level, "high", key=_rank)
         if re.search(r"dangerous", text) or ("gas_threshold" in text and "ppm" in text and _ppm(text) >= 50000):

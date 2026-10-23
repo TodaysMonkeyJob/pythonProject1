@@ -67,14 +67,37 @@ class Usage:
     requests: int = 0
 
 
-def load_prompt(name: str, prompts_dir: str = "prompts") -> str:
+def risk_scale(fuzzy_path: str = "config/fuzzy.yaml") -> str:
+    """
+    F28 (TOD-39): the risk output terms of the rule base as one prompt line, e.g.
+    "low 0–0.3 (peak 0–0.1), medium 0.15–0.6 (peak 0.4), …" — so GPT's levels mean what the corridor's levels mean.
+    """
+    from core.fuzzy import FuzzyEngine, load_yaml
+    from modules.aggregator.llm_view import core_range
+
+    engine = FuzzyEngine.from_dict(load_yaml(fuzzy_path))
+    parts = []
+    for term, spec in engine.variables[engine.output].terms.items():
+        lo = min(p[0] if shape != "gauss" else p[0] - 2 * p[1] for shape, p in spec)
+        hi = max(p[-1] if shape != "gauss" else p[0] + 2 * p[1] for shape, p in spec)
+        core = core_range(spec)
+        peak = f"{core[0]:g}" if core[0] == core[1] else f"{core[0]:g}–{core[1]:g}"
+        parts.append(f"{term} {lo:g}–{hi:g} (peak {peak})")
+    return ", ".join(parts)
+
+
+def load_prompt(name: str, prompts_dir: str = "prompts", fuzzy_path: str = "config/fuzzy.yaml") -> str:
     """
     :param name: File name without extension, e.g. "security_analyst"
+    :param fuzzy_path: Rule base whose risk output terms fill a ``{risk_scale}`` placeholder (F28)
     :return: The prompt text
     """
     path = os.path.join(prompts_dir, f"{name}.md")
     with open(path, encoding="utf-8") as f:
-        return f.read().strip()
+        text = f.read().strip()
+    if "{risk_scale}" in text:
+        text = text.replace("{risk_scale}", risk_scale(fuzzy_path))
+    return text
 
 
 def parse_decision(text: str) -> LLMDecision:

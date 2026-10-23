@@ -23,6 +23,12 @@ Snapshot v2 for the LLM (F18 / TOD-29): fuzzified, trust-tagged evidence instead
 * ``risk_floor`` {term, mu} is added by the LLM worker from the live risk corridor (TOD-28) just before sending.
 
 A v1 snapshot (no trust tags) goes through the same function — that is the v1 → v2 adapter.
+
+v2.1 (F28 / TOD-39, ``llm.snapshot_version: v2.1``): with terms alone GPT read "elevated" as "high risk" and rated
+medium scenarios high. v2.1 keeps the terms and adds what they mean in numbers at this location: the gas item gets
+``range_pct`` (the core [from, to] % of its strongest level term, μ = 1) and ``trend_range_pct_per_min``; the view
+gets ``gas_scale_pct`` {gas: {term: [from, to]}} — the location's own level definitions (its gas terms). The
+prompt's rubric (prompts/security_analyst.md) says what separates medium from high.
 """
 import json
 from datetime import datetime, timezone
@@ -55,19 +61,45 @@ def _trusted(item: Dict[str, Any], theta: float, default: bool) -> bool:
 LANGUAGE_KINDS = ("speech", "scene_text")
 
 
+def core_range(parts) -> List[float]:
+    """:return: [from, to] where a parsed term (membership.parse_term) is 1 — trap b..c, tri the peak, gauss m ± σ"""
+    lows, highs = [], []
+    for shape, params in parts:
+        if shape == "trap":
+            lows.append(params[1]), highs.append(params[2])
+        elif shape == "tri":
+            lows.append(params[1]), highs.append(params[1])
+        else:                                       # gauss (mean, sigma)
+            lows.append(params[0] - params[1]), highs.append(params[0] + params[1])
+    return [round(min(lows), 3), round(max(highs), 3)]
+
+
+def term_ranges(engine, variable: str, gas: Optional[str] = None) -> Dict[str, List[float]]:
+    """:return: {term: core range} of a variable of the location's engine (the gas's own terms with ``gas``)"""
+    terms = engine.variables[variable].term_set(gas)
+    return {term: core_range(parts) for term, parts in terms.items()}
+
+
+VERSIONS = ("v2", "v2.1")
+
+
 def llm_view(snapshot: Dict[str, Any], engine=None, theta: float = 0.6, rules: Optional[Dict[str, Any]] = None,
-             local_now: Optional[datetime] = None) -> Dict[str, Any]:
+             local_now: Optional[datetime] = None, version: str = "v2") -> Dict[str, Any]:
     """
     :param snapshot: A snapshot (schemas/snapshot.schema.json, v1 sections)
     :param engine: ``core.fuzzy.FuzzyEngine`` of the location (None → gas terms are left out, only the label trend)
     :param theta: ``trust.claim_threshold`` — the trust speech / scene text needs to be trusted_evidence
     :param rules: Per-location rules (F12) → ``rules`` line
+    :param version: "v2" or "v2.1" (adds the numeric ranges of the gas terms and the location's gas scale)
     :return: The v2 view sent to the LLM (no raw sensor numbers)
     """
+    if version not in VERSIONS:
+        raise ValueError(f"snapshot version must be one of {VERSIONS}, got {version!r}")
+    ranges = version == "v2.1" and engine is not None
     offset = _offset(local_now)
     start = datetime.strptime(snapshot["window"]["from"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     end = datetime.strptime(snapshot["window"]["to"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    view: Dict[str, Any] = {"v": 2}
+    view: Dict[str, Any] = {"v": 2.1 if version == "v2.1" else 2}
     if snapshot.get("location_name"):
         view["location"] = snapshot["location_name"]
     view["window"] = f"{(start + offset):%H:%M:%S}-{(end + offset):%H:%M:%S} {_tz_label(offset)}"
@@ -100,6 +132,15 @@ def llm_view(snapshot: Dict[str, Any], engine=None, theta: float = 0.6, rules: O
             item["trend"] = _terms(engine.fuzzify("gas_trend", gas["rise_rate_pct_per_min"]))
         elif gas.get("trend"):
             item["trend"] = {gas["trend"]: 1.0}
+        if ranges and item.get("level"):
+            scale = term_ranges(engine, "gas_concentration", gas.get("gas"))
+            item["range_pct"] = scale[next(iter(item["level"]))]
+            view["gas_scale_pct"] = {gas.get("gas") or "gas": scale}
+        if ranges and item.get("trend") and "gas_trend" in engine.variables:
+            strongest = next(iter(item["trend"]))
+            trend_scale = term_ranges(engine, "gas_trend")
+            if strongest in trend_scale:
+                item["trend_range_pct_per_min"] = trend_scale[strongest]
         if gas.get("alerts"):
             suffix = f" {gas.get('gas')}" if gas.get("gas") else ""
             item["alerts"] = [a[:-len(suffix)] if suffix and a.endswith(suffix) else a for a in gas["alerts"]]
@@ -174,10 +215,10 @@ def with_risk_floor(text: str, floor: Optional[Dict[str, Any]]) -> str:
         view = json.loads(text)
     except ValueError:
         return text
-    if view.get("v") != 2:
+    if view.get("v") not in (2, 2.1):
         return text
     view["risk_floor"] = floor
     return payload_text(view)
 
 
-__all__ = ["llm_view", "payload_text", "with_risk_floor", "stay_term", "loudness_term"]
+__all__ = ["llm_view", "payload_text", "with_risk_floor", "stay_term", "loudness_term", "term_ranges", "VERSIONS"]

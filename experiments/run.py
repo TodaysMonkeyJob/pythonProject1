@@ -24,23 +24,50 @@ from experiments.pipeline import run_scenario
 from experiments.report import write
 
 
-def fit_calibration(scenarios, llm, fuzzy: str, min_interval: float):
+def calibration_rows(scenarios, llm, fuzzy: str, min_interval: float):
     """
-    C: fit the level output sets on the calibration split (last LLM distribution per scenario vs expert risk).
-    Adversarial scenarios are left out: a manipulated answer is not the model's honest verbal risk, and fitting on it
-    would teach "low" to mean "high" (false alarms everywhere) — defending against manipulation is A / B's job.
-    """
-    from modules.llm.calibration import fit
+    C: (last LLM distribution, expert risk, scenario id) per scenario of the calibration split — F28 (TOD-39): every
+    scenario of the split (36), not only the 21 non-adversarial ones chosen by their label. Left out are only answers
+    the system itself rejected as manipulated: the corridor's ``deescalation_rejected`` branch (GPT below the trusted
+    lower bound L) — a talked-down "low" is not GPT's honest verbal risk and would teach "low" to mean "high".
 
-    rows = []
-    for scenario in [s for s in scenarios if s.category != "adversarial"]:
-        result = run_scenario(scenario, PROPOSED, llm, fuzzy, None, min_interval)
-        if result.distributions:
-            rows.append((result.distributions[-1], scenario.expert_risk))
+    :return: (rows, number of answers left out as rejected de-escalations)
+    """
+    rows, rejected = [], 0
+    for scenario in scenarios:
+        trace: dict = {}
+        result = run_scenario(scenario, PROPOSED, llm, fuzzy, None, min_interval, trace=trace)
+        if not result.distributions:
+            continue
+        last = (trace.get("decision") or [{}])[-1]
+        if last.get("branch") == "deescalation_rejected":
+            rejected += 1
+            continue
+        rows.append((result.distributions[-1], scenario.expert_risk, scenario.scenario_id))
+    return rows, rejected
+
+
+def fit_calibration(scenarios, llm, fuzzy: str, min_interval: float, cv: bool = True):
+    """:return: (calibrator or None, info: n, in-sample fit, LOO CV Brier / ECE, constraint check, params)"""
+    from modules.llm.calibration import check_constraints, fit, loo_cv
+
+    rows, rejected = calibration_rows(scenarios, llm, fuzzy, min_interval)
     if len(rows) < 10:
-        return None, {"fitted": False, "n": len(rows), "note": "fewer than 10 calibration scenarios with an LLM answer"}
-    calibrator, metrics = fit([r[0] for r in rows], [r[1] for r in rows])
-    return calibrator, {"fitted": True, "n": len(rows), "fit": metrics, "params": calibrator.params}
+        return None, {"fitted": False, "n": len(rows), "rejected_deescalations": rejected,
+                      "note": "fewer than 10 calibration scenarios with an LLM answer"}
+    distributions, targets = [r[0] for r in rows], [r[1] for r in rows]
+    calibrator, metrics = fit(distributions, targets)
+    info = {"fitted": True, "n": len(rows), "rejected_deescalations": rejected, "split": len(scenarios), "fit": metrics,
+            "constraints": check_constraints(calibrator.params),
+            "params": calibrator.params}
+    if cv:
+        info["cv"] = {k: v for k, v in loo_cv(distributions, targets).items() if k != "predictions"}
+        if info["cv"]["brier"] > info["cv"]["fixed"]["brier"]:      # decided by data: the fit must beat the fixed map
+            info["used"] = False
+            info["note"] = "leave-one-out Brier worse than the fixed level mapping: the fixed mapping is used"
+            return None, info
+    info["used"] = True
+    return calibrator, info
 
 
 def rules_version(fuzzy: str) -> str:

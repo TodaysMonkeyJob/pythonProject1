@@ -428,9 +428,9 @@ envelope:
 # modules/llm/gating.py: critical_event / critical floor / untrusted lowering claim → always call; otherwise
 # llm.min_llm_interval_sec is respected.
 gating:
-  threshold: "@thresholds:values.gating"          # call_llm ≥ this → GPT (cost-fitted)
+  threshold: "@thresholds:values.gating"          # call_llm ≥ this → GPT (cost-fitted with a per-call cost)
   baseline_minutes: 30        # novelty = what this location has not shown in the last 30 min
-  critical_floor: "@thresholds:values.critical_floor"   # r_floor at / above this → always call (= critical level)
+  critical_floor: "@thresholds:values.critical_floor"   # r_floor at / above this → call (once per interval)
   output: call_llm
   variables:
     novelty:
@@ -439,12 +439,18 @@ gating:
         low: [trap, 0, 0, 0.1, 0.3]
         medium: [tri, 0.2, 0.45, 0.7]
         high: [trap, 0.5, 0.75, 1, 1]
-    uncertainty:              # corridor width + spread of fired output terms
+    width:                    # F28: corridor interval width y_r − y_l (risk units)
       universe: [0, 1, 0.01]
       terms:
-        low: [trap, 0, 0, 0.15, 0.3]
-        medium: [tri, 0.2, 0.4, 0.6]
-        high: [trap, 0.45, 0.65, 1, 1]
+        low: [trap, 0, 0, 0.05, 0.15]
+        medium: [tri, 0.05, 0.2, 0.35]
+        high: [trap, 0.25, 0.4, 1, 1]
+    agreement:                # F28: h of GPT's last answer here with the corridor (0 = never asked)
+      universe: [0, 1, 0.01]
+      terms:
+        low: [trap, 0, 0, 0.2, 0.4]
+        medium: [tri, 0.3, 0.5, 0.7]
+        high: [trap, 0.6, 0.8, 1, 1]
     untrusted_claims:         # 1 = low-trust de-escalation / instruction claim, 0.5 = other untrusted evidence
       universe: [0, 1, 0.01]
       terms:
@@ -473,47 +479,63 @@ gating:
         call: [trap, 0.7, 0.9, 1, 1]
   rules:
     - id: G1
-      rule: "IF novelty IS high THEN call_llm IS call"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "A situation the location has not shown recently needs the LLM's explanation."}
+      rule: "IF novelty IS high AND (width IS NOT low OR severity IS NOT low) THEN call_llm IS call"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "Something new in an uncertain or risky scene needs the LLM's explanation."}
+    - id: G14
+      rule: "IF novelty IS high AND width IS low AND severity IS low AND agreement IS NOT low AND untrusted_claims IS none THEN call_llm IS maybe"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "Something new while the corridor is certain and low, and GPT did not disagree last time, may be left to the rules."}
+    - id: G15
+      rule: "IF novelty IS high AND width IS low AND severity IS low AND time_since_last_llm IS long AND untrusted_claims IS none THEN call_llm IS maybe"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "A first (or long unseen) scene that is certain and low may be left to the rules."}
     - id: G2
-      rule: "IF novelty IS medium AND uncertainty IS NOT low THEN call_llm IS call"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "Moderate novelty with an uncertain corridor is worth an LLM call."}
+      rule: "IF width IS high THEN call_llm IS call"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "A wide corridor means the trusted evidence is uncertain: the LLM should interpret it."}
     - id: G3
-      rule: "IF novelty IS medium AND uncertainty IS low THEN call_llm IS maybe"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "Moderate novelty with a certain corridor may be handled without the LLM."}
+      rule: "IF novelty IS medium AND width IS NOT low THEN call_llm IS call"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "Moderate novelty in an uncertain corridor is worth an LLM call."}
     - id: G4
-      rule: "IF uncertainty IS high THEN call_llm IS call"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "A wide corridor (uncertain evidence) needs the LLM to interpret the situation."}
+      rule: "IF novelty IS medium AND width IS low AND agreement IS NOT high THEN call_llm IS maybe"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "Moderate novelty with a narrow corridor needs the LLM only if it did not agree last time."}
     - id: G5
-      rule: "IF untrusted_claims IS present THEN call_llm IS call"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "A low-trust calming claim must be analysed so the attack is reported."}
+      rule: "IF agreement IS low AND novelty IS NOT low THEN call_llm IS call"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "GPT disagreed with the corridor (or never answered here) and something changed: ask again."}
     - id: G6
-      rule: "IF untrusted_claims IS some THEN call_llm IS maybe"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "Other low-trust evidence may be worth an LLM look."}
+      rule: "IF agreement IS low AND time_since_last_llm IS NOT recent THEN call_llm IS maybe"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "A disagreement not re-checked for a while may be worth a new answer."}
     - id: G7
-      rule: "IF severity IS high OR severity IS critical THEN call_llm IS call"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "High or critical floors always get an LLM explanation."}
+      rule: "IF untrusted_claims IS present THEN call_llm IS call"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "A low-trust calming claim must be analysed so the attack is reported."}
     - id: G8
-      rule: "IF severity IS medium AND time_since_last_llm IS NOT recent THEN call_llm IS maybe"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "A medium floor not explained recently may need the LLM."}
+      rule: "IF untrusted_claims IS some AND agreement IS NOT high THEN call_llm IS maybe"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "Other low-trust evidence is worth a look unless GPT just agreed with the corridor."}
     - id: G9
-      rule: "IF time_since_last_llm IS long THEN call_llm IS call"
-      weight: 0.8
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "A periodic refresh keeps the operator summary current (weight 0.8)."}
+      rule: "IF (severity IS high OR severity IS critical) AND agreement IS NOT high THEN call_llm IS call"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "A high floor GPT has not confirmed yet gets an LLM explanation."}
     - id: G10
-      rule: "IF novelty IS low AND uncertainty IS low AND untrusted_claims IS none AND severity IS low AND time_since_last_llm IS NOT long THEN call_llm IS skip"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "A routine, certain, low-risk scene explained recently needs no LLM call (saves tokens)."}
+      rule: "IF time_since_last_llm IS long AND width IS NOT low THEN call_llm IS call"
+      weight: 0.6
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "An uncertain scene not looked at for long gets a refresh (weight 0.6)."}
     - id: G11
-      rule: "IF novelty IS low AND uncertainty IS NOT high AND untrusted_claims IS none AND severity IS medium AND time_since_last_llm IS recent THEN call_llm IS skip"
-      meta: {source: "initial expert base (TOD-30)", author: TodaysMonkeyJob, added: 2026-10-19,
-             rationale: "A medium scene without change that was just explained needs no new call."}
+      rule: "IF novelty IS low AND width IS low AND agreement IS high AND untrusted_claims IS none THEN call_llm IS skip"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "Nothing new, a narrow corridor and GPT agreed last time: the corridor decides without GPT."}
+    - id: G12
+      rule: "IF novelty IS low AND width IS NOT high AND agreement IS high AND untrusted_claims IS none AND time_since_last_llm IS recent THEN call_llm IS skip"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "An unchanged scene GPT just confirmed needs no new call."}
+    - id: G13
+      rule: "IF novelty IS low AND width IS low AND untrusted_claims IS none AND severity IS low THEN call_llm IS skip"
+      meta: {source: "F28 corridor-driven gating (TOD-39)", author: TodaysMonkeyJob, added: 2026-10-23,
+             rationale: "A routine, certain, low-risk scene needs no LLM call (saves tokens)."}

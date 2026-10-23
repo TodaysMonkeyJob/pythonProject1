@@ -7,15 +7,28 @@ falls back to ``r_floor`` with a deterministic Ukrainian summary of the fired ru
 Inputs (``gating`` rule base in ``config/fuzzy.yaml``):
 
 * ``novelty`` — what is new against this location's recent snapshots (``baseline_minutes``): a person / an action /
-  an object class / a gas regime (strongest level term) not seen there recently; the first snapshot is fully novel;
-* ``uncertainty`` — corridor width ``r_ceil − r_floor`` plus the spread of fired output terms;
+  an object class / a gas regime (strongest level term) not seen there recently; F28: the first snapshot of a location
+  is scored on what it shows (an empty, quiet room is not novel — TOD-30 called it fully novel, so every cold start
+  cost a GPT call);
+* ``width`` — F28 (TOD-39): the corridor interval width ``w = y_r − y_l`` (how uncertain the trusted evidence is);
+* ``agreement`` — F28: the agreement ``h`` of GPT's last answer for this location with its corridor (TOD-36); left
+  out while GPT never answered there (unknown ≠ disagreed: rules needing it are skipped) and 0 when the answer had no
+  corridor to agree with;
+* ``uncertainty`` — (the TOD-30 rule base) corridor width plus the spread of fired output terms;
 * ``untrusted_claims`` — 1 for a low-trust de-escalation / instruction claim (always worth an explanation), 0.5 for
   other untrusted evidence;
 * ``time_since_last_llm`` — minutes since GPT last looked at this location;
 * ``severity`` — ``r_floor``.
 
-Output ``call_llm`` ∈ [0, 1], call if ≥ ``threshold``. Hard rules: a ``critical_event`` snapshot, a critical floor or
-an untrusted lowering claim always call (bypassing ``min_llm_interval_sec``); otherwise the interval is respected.
+Output ``call_llm`` ∈ [0, 1], call if ≥ ``threshold`` (cost-fitted with a per-call cost, ``tools/fit_thresholds``).
+Hard rules (bypass ``min_llm_interval_sec``): a ``critical_event`` snapshot; a critical floor GPT has not looked at
+yet (no GPT answer within ``min_llm_interval_sec`` saw it critical). A disagreement (low h) is a fuzzy input like the
+rest: re-asking a GPT that a claim talked down every minute buys nothing — the corridor already holds L. A low-trust
+lowering claim (new since the last call, or in the snapshot) is a fuzzy input too (``untrusted_claims`` present →
+call) and waits for the interval like any regular call: before F28 every repeated claim and every critical floor
+bypassed it, which is what made gating cost more calls than no gating. A skipped snapshot is safe: its decision is
+the corridor's lower bound L, which no claim can lower. Every decision carries its ``reasons`` (override name or the
+fired rule ids pushing towards a call) for ``gating.jsonl``.
 """
 import time
 from collections import deque
@@ -53,6 +66,7 @@ class GateDecision:
     override: Optional[str] = None              # critical_event / critical_floor / untrusted_claim
     inputs: Dict[str, float] = field(default_factory=dict)
     fired: List[str] = field(default_factory=list)
+    reasons: List[str] = field(default_factory=list)   # F28: why it calls (override / rule ids towards a call)
 
 
 def snapshot_features(snapshot: Dict[str, Any]) -> Set[str]:
@@ -97,6 +111,12 @@ class LLMGate:
         self.min_interval_sec = min_interval_sec
         self.critical_floor = float(cfg.get("critical_floor", 0.8))
         self.history: Dict[str, Deque[Tuple[float, Set[str]]]] = {}
+        self.answers: Dict[str, Dict[str, float]] = {}     # location → last GPT answer {at, h, floor}
+
+    def record(self, location: str, h: Optional[float], floor: float, now: Optional[float] = None) -> None:
+        """F28: GPT answered for ``location`` — its agreement h with the corridor and the floor it saw"""
+        self.answers[location or ""] = {"at": time.time() if now is None else now,
+                                        "h": 0.0 if h is None else float(h), "floor": float(floor)}
 
     @classmethod
     def from_config(cls, path: str = "config/fuzzy.yaml", min_interval_sec: float = 300.0) -> "LLMGate":
@@ -104,9 +124,8 @@ class LLMGate:
 
     def novelty(self, location: str, features: Set[str], now: float) -> Tuple[float, List[str]]:
         history = self.history.get(location)
-        if not history:
-            return 1.0, ["first snapshot of this location"]
-        seen = set().union(*(f for t, f in history if now - t <= self.baseline_sec))
+        recent = [f for t, f in history if now - t <= self.baseline_sec] if history else []
+        seen = set().union(*recent) if recent else set()
         new = sorted(features - seen)
         score = sum(NOVELTY_WEIGHTS.get(token.split(":", 1)[0], 0.2) for token in new)
         return min(1.0, score), new
@@ -133,22 +152,39 @@ class LLMGate:
         self.remember(location, features, now)
         claim, untrusted = lowering_claims(snapshot)
         claim = claim or ignored_claims > 0
+        new_claim = ignored_claims > 0                    # lowering claims the envelope saw since the last call
         terms = {rule["term"] for rule in corridor.get("fired_rules", [])}
-        uncertainty = min(1.0, (corridor["ceil"] - corridor["floor"]) + 0.2 * max(0, len(terms) - 1))
+        width = max(0.0, float(corridor.get("width", corridor["ceil"] - corridor["floor"])))
+        uncertainty = min(1.0, width + 0.2 * max(0, len(terms) - 1))
         minutes = 60.0 if last_llm_at is None else min(60.0, max(0.0, (now - last_llm_at) / 60))
-        inputs = {"novelty": round(novelty, 3), "uncertainty": round(uncertainty, 3),
-                  "untrusted_claims": 1.0 if claim else 0.5 if untrusted else 0.0,
+        answer = self.answers.get(location)
+        inputs = {"novelty": round(novelty, 3), "width": round(min(1.0, width), 3),
+                  "uncertainty": round(uncertainty, 3),
+                  "untrusted_claims": 1.0 if (claim or new_claim) else 0.5 if untrusted else 0.0,
                   "time_since_last_llm": round(minutes, 2), "severity": corridor["floor"]}
+        if answer is not None:
+            inputs["agreement"] = round(answer["h"], 3)
         result = self.engine.infer(inputs)
         score = float(result["crisp"])
         fired = [r["explanation"] for r in result["fired_rules"][:3]]
         if new:
             fired.insert(0, "new: " + ", ".join(new[:5]))
+        towards = [r["id"] for r in result["fired_rules"] if r["term"] != self.skip_term]
+        seen_critical = answer is not None and now - answer["at"] < self.min_interval_sec and \
+            answer["floor"] >= self.critical_floor
+        unseen_critical = corridor["floor"] >= self.critical_floor and not seen_critical
         override = "critical_event" if row["trigger"] == "critical_event" else \
-            "critical_floor" if corridor["floor"] >= self.critical_floor else "untrusted_claim" if claim else None
+            "critical_floor" if unseen_critical else None
         if override:
-            return GateDecision(True, max(score, 1.0), "override", override, inputs, fired)
-        return GateDecision(score >= self.threshold, score, "fuzzy", None, inputs, fired)
+            return GateDecision(True, max(score, 1.0), "override", override, inputs, fired, [override])
+        call = score >= self.threshold
+        return GateDecision(call, score, "fuzzy", None, inputs, fired, towards[:5] if call else [])
+
+    @property
+    def skip_term(self) -> str:
+        """The output term of 'no call' (the lowest one)"""
+        terms = self.engine.variables[self.engine.output].terms
+        return next(iter(terms))
 
 
 def fuzzy_summary(level: str, fired_rules: List[Dict[str, Any]]) -> str:

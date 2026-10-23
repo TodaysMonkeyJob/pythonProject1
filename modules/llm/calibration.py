@@ -13,6 +13,16 @@ until a calibration was actually fitted.
 
 Metrics for a continuous target y ∈ [0, 1]: Brier = mean (r − y)²; ECE = Σ_bins |B|/n · |mean r_B − mean y_B|
 (10 equal-width bins of r); ``reliability()`` returns the per-bin data for a reliability diagram.
+
+F28 (TOD-39): fitted on 21 scenarios the sets overfit (a "high" answer landed just above the high boundary and medium
+scenarios became high). The fit is now constrained and robust:
+
+* every level's centre stays inside the support of its own risk output term (``BOUNDS`` = the risk terms of
+  config/fuzzy.yaml: GPT's "low" can never mean 0.7) and the centres strictly increase (≥ 0.05 apart);
+* every support is at least ``min_width`` wide, slopes at most 0.3;
+* the loss is a Huber loss (δ = 0.1) instead of the squared error — a talked-down answer in an attack scenario ("low"
+  while the expert says critical) is an outlier of the honest verbal risk, its pull grows only linearly;
+* ``loo_cv`` reports leave-one-out Brier / ECE next to the in-sample ones (a fit judged on scenarios it did not see).
 """
 import hashlib
 import os
@@ -30,6 +40,10 @@ DEFAULT_PARAMS: Dict[str, List[float]] = {"low": [0.0, 0.0, 0.1, 0.3], "medium":
                                           "high": [0.45, 0.7, 0.7, 0.85], "critical": [0.75, 0.9, 1.0, 1.0]}
 FIXED = {"low": 0.1, "medium": 0.4, "high": 0.7, "critical": 0.95}     # TOD-28 fixed mapping (baseline)
 GRID = np.linspace(0.0, 1.0, 201)
+MIN_WIDTH = 0.2          # default minimum support width of a fitted level set (risk units)
+MIN_GAP = 0.05           # minimum distance of consecutive centres
+HUBER_DELTA = 0.1
+BOUNDS = {level: (p[0], p[3]) for level, p in DEFAULT_PARAMS.items()}   # a centre stays in its risk term's support
 
 
 class RiskCalibrator:
@@ -83,6 +97,12 @@ def fixed_risk(distribution: Dict[str, float], level: Optional[str] = None) -> f
 
 # --- metrics ----------------------------------------------------------------------------------------------------
 
+def huber(pred: Sequence[float], target: Sequence[float], delta: float = HUBER_DELTA) -> float:
+    """Mean Huber loss (×2, so it equals the squared error below ``delta``)"""
+    r = np.abs(np.asarray(pred, float) - np.asarray(target, float))
+    return float(np.mean(np.where(r <= delta, r ** 2, 2 * delta * r - delta ** 2))) if len(r) else 0.0
+
+
 def brier(pred: Sequence[float], target: Sequence[float]) -> float:
     pred, target = np.asarray(pred, float), np.asarray(target, float)
     return float(np.mean((pred - target) ** 2)) if len(pred) else 0.0
@@ -109,23 +129,56 @@ def ece(pred: Sequence[float], target: Sequence[float], bins: int = 10) -> float
 
 # --- fitting ----------------------------------------------------------------------------------------------------
 
-def _unpack(theta: np.ndarray) -> Dict[str, List[float]]:
-    """Unconstrained vector → ordered trapezoids: centres increase, plateau / slopes ≥ 0, clipped to [0, 1]."""
-    softplus = np.log1p(np.exp(theta))
-    centres = np.cumsum(softplus[:4]) / (1.0 + np.cumsum(softplus[:4])[-1])        # strictly increasing in (0, 1)
+def _sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def _unpack(theta: np.ndarray, min_width: float = MIN_WIDTH) -> Dict[str, List[float]]:
+    """
+    Unconstrained vector → ordered trapezoids: each centre inside its ``BOUNDS`` and ≥ ``MIN_GAP`` above the previous
+    one, plateau / slopes ≥ 0 (slope ≤ 0.3), clipped to [0, 1], every support (d − a) ≥ ``min_width`` (widened away
+    from the universe edge after clipping).
+    """
+    s = _sigmoid(np.asarray(theta, float))
+    centres = []
+    for i, level in enumerate(LEVELS):
+        lo, hi = BOUNDS[level]
+        c = lo + s[i] * (hi - lo)
+        centres.append(max(c, centres[-1] + MIN_GAP) if centres else c)
     params = {}
     for i, level in enumerate(LEVELS):
-        half, slope = 0.15 * softplus[4 + i] / (1 + softplus[4 + i]), 0.02 + softplus[8 + i] * 0.1
-        c = centres[i]
-        params[level] = [float(np.clip(v, 0, 1)) for v in (c - half - slope, c - half, c + half, c + half + slope)]
+        half, slope = 0.15 * s[4 + i], 0.02 + 0.28 * s[8 + i]
+        slope = max(slope, min_width / 2 - half)
+        c = min(1.0, centres[i])
+        a, b, cc, d = (float(np.clip(v, 0, 1)) for v in (c - half - slope, c - half, c + half, c + half + slope))
+        if d - a < min_width:
+            if a <= 0.0:
+                d = min(1.0, max(d, a + min_width))
+            else:
+                a = max(0.0, min(a, d - min_width))
+        params[level] = [a, b, cc, d]
     return params
 
 
+def check_constraints(params: Dict[str, Sequence[float]], min_width: float = MIN_WIDTH) -> Dict[str, Any]:
+    """:return: {"ok", "monotone_centres", "centres", "min_support", "min_width"} of a set of level trapezoids"""
+    centres = [round((float(params[level][1]) + float(params[level][2])) / 2, 4) for level in LEVELS]
+    supports = [float(params[level][3]) - float(params[level][0]) for level in LEVELS]
+    monotone = all(a < b for a, b in zip(centres, centres[1:], strict=False))
+    bounded = all(BOUNDS[level][0] - 1e-6 <= c <= BOUNDS[level][1] + 1e-6
+                  for level, c in zip(LEVELS, centres, strict=True))
+    return {"ok": bool(monotone and bounded and min(supports) >= min_width - 1e-6), "monotone_centres": monotone,
+            "centres_in_bounds": bounded, "centres": dict(zip(LEVELS, centres, strict=True)),
+            "min_support": round(min(supports), 4), "min_width": min_width}
+
+
 def fit(distributions: Sequence[Dict[str, float]], targets: Sequence[float], ece_weight: float = 0.25,
-        seed: int = 0) -> Tuple[RiskCalibrator, Dict[str, float]]:
+        seed: int = 0, min_width: float = MIN_WIDTH, restarts: int = 4) -> Tuple[RiskCalibrator, Dict[str, float]]:
     """
     :param distributions: The LLM's risk distributions on the calibration split
     :param targets: Expert risk per scenario, 0..1
+    :param min_width: Minimum support width of every level set (constraint, with monotone centres)
+    :param restarts: Random Nelder-Mead restarts besides the zero start
     :return: (fitted calibrator, {"loss", "brier", "ece"} on the calibration split)
     """
     from scipy.optimize import minimize
@@ -134,19 +187,39 @@ def fit(distributions: Sequence[Dict[str, float]], targets: Sequence[float], ece
     matrix = np.array([[float(d.get(level, 0.0)) for level in LEVELS] for d in distributions])
 
     def loss(theta):
-        pred = RiskCalibrator(_unpack(theta)).risks(matrix)
-        return brier(pred, targets) + ece_weight * ece(pred, targets)
+        pred = RiskCalibrator(_unpack(theta, min_width)).risks(matrix)
+        return huber(pred, targets) + ece_weight * ece(pred, targets)
 
     rng = np.random.default_rng(seed)
     best = None
-    for start in [np.zeros(12)] + [rng.normal(0, 1, 12) for _ in range(4)]:
+    for start in [np.zeros(12)] + [rng.normal(0, 1, 12) for _ in range(restarts)]:
         result = minimize(loss, start, method="Nelder-Mead", options={"maxiter": 1500, "xatol": 1e-4, "fatol": 1e-6})
         if best is None or result.fun < best.fun:
             best = result
-    calibrator = RiskCalibrator(_unpack(best.x))
+    calibrator = RiskCalibrator(_unpack(best.x, min_width), {"min_width": min_width})
     pred = [calibrator.risk(d) for d in distributions]
     return calibrator, {"loss": round(float(best.fun), 5), "brier": round(brier(pred, targets), 5),
                         "ece": round(ece(pred, targets), 5)}
+
+
+def loo_cv(distributions: Sequence[Dict[str, float]], targets: Sequence[float], ece_weight: float = 0.25,
+           min_width: float = MIN_WIDTH, restarts: int = 1) -> Dict[str, Any]:
+    """
+    Leave-one-out: every scenario is predicted by a fit on all the others (same constraints).
+
+    :return: {"n", "brier", "ece", "fixed": {"brier", "ece"} of the fixed mapping, "predictions"}
+    """
+    targets = list(map(float, targets))
+    predictions = []
+    for i in range(len(distributions)):
+        rest = [d for j, d in enumerate(distributions) if j != i]
+        calibrator, _ = fit(rest, [y for j, y in enumerate(targets) if j != i], ece_weight, i, min_width, restarts)
+        predictions.append(calibrator.risk(distributions[i]))
+    fixed = [fixed_risk(d) for d in distributions]
+    return {"n": len(targets), "brier": round(brier(predictions, targets), 5),
+            "ece": round(ece(predictions, targets), 5),
+            "fixed": {"brier": round(brier(fixed, targets), 5), "ece": round(ece(fixed, targets), 5)},
+            "predictions": [round(p, 4) for p in predictions]}
 
 
 def evaluate(calibrator: RiskCalibrator, distributions: Sequence[Dict[str, float]], targets: Sequence[float],
