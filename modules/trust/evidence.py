@@ -86,7 +86,7 @@ class TrustEvidence:
         self.last_correction: Optional[float] = None
         self.quiet_confirmed: Optional[float] = None
         self.reviews: Dict[str, Dict[str, Any]] = {}                   # F25: open escalation reviews by review_id
-        self.suggestions = None                                         # RuleSuggestionStore (orchestrator)
+        self.suggestions = None                     # modules.rules.suggester.SuggestionTriggers (F27, orchestrator)
 
     # --- helpers -------------------------------------------------------------------------------------------------
 
@@ -115,6 +115,12 @@ class TrustEvidence:
     def observe(self, event: Event, scored: Optional[Dict[str, Any]] = None) -> None:
         now = epoch(event.timestamp) or 0.0
         p, t = event.payload, event.type
+        if self.suggestions is not None and hasattr(self.suggestions, "observe"):
+            if t == "trust_feedback" and not p.get("location_id"):
+                device = str(p.get("channel_id") or "").rpartition("/")[0]
+                p = {**p, "location_id": (self.registry.devices.get(device) or {}).get("location_id")}
+                event = event.model_copy(update={"payload": p})
+            self.suggestions.observe(event, now)                    # F27: rule-suggestion triggers (no bus, no logs)
         if t in ("device_online", "device_updated", "device_offline"):
             device, kind = p.get("device_id") or event.device_id, p.get("kind")
             self.registry.ensure_device(device, kind, p.get("location_id"), now)
