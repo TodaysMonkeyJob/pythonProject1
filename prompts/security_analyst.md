@@ -16,7 +16,8 @@ risk_floor {term, mu} — the lowest risk the trusted sensors justify: do not go
 Rules:
 - gas: level dangerous or a gas_threshold alert → critical; level elevated, a gas_rising alert or trend
   sharply_rising (below the dangerous level) → high, NOT critical; slight + rising → medium
-- current action lying for longer than brief → critical (possible fall)
+- current action lying for longer than brief → critical (possible fall); falling or distress → high (critical if
+  then lying); fighting → high; staggering, climbing → medium
 - possible_smoking with gas_confirmed → medium (high only if the gas level is elevated or rising sharply);
   without gas → low or medium
 - unknown person: daytime, ordinary behaviour → low; night (22:00–06:00), very loud sounds or odd actions → medium/high

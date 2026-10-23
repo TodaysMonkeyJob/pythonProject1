@@ -20,7 +20,7 @@ from core.events import Event
 
 PHYSICAL_TYPES = ("gas_reading", "motion", "object_detected", "scene_active", "action", "sound")
 PHYSICAL_SOURCES = ("gas", "camera", "microphone", "audio")
-RISKY_ACTIONS = ("lying", "possible_smoking")
+RISKY_ACTIONS = ("lying", "possible_smoking", "falling", "fighting", "distress")   # + learned actions
 
 
 def epoch(timestamp: Optional[str]) -> Optional[float]:

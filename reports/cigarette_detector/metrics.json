@@ -1,0 +1,29 @@
+{
+ "dataset": {
+  "name": "CigDet",
+  "doi": "10.17632/6hyrr8typ7.1",
+  "license": "CC BY 4.0",
+  "train_images": 446,
+  "test_images": 111
+ },
+ "base": "yolo11n.pt",
+ "epochs": 50,
+ "imgsz": 416,
+ "device": "cpu",
+ "test": {
+  "precision": 0.8787,
+  "recall": 0.7834,
+  "mAP50": 0.8389,
+  "mAP50_95": 0.4177
+ },
+ "model": "models/cigarette_yolo11n.pt",
+ "model_size_kb": 5351,
+ "trained_at": "2026-10-22T22:20:31+00:00",
+ "live": {
+  "imgsz": 320,
+  "mAP50": 0.831,
+  "best_f1": 0.827,
+  "best_f1_conf": 0.478,
+  "note": "actions.cigarette_conf = best_f1_conf (the CigDet test split, not the eval videos)"
+ }
+}

@@ -108,6 +108,16 @@ actions:
   speed_window_sec: 1.0
   ankle_alternations_min: 2
   ankle_deadband: 0.03
+  # learned layer (python -m tools.train_actions / tools.train_cigarette; absent files → rules only)
+  classifier_model: models/action_classifier.joblib   # HMDB51 + NTU60 skeletons: falling, fighting, smoking, …
+  classifier_min_prob: 0.55
+  classifier_votes: 2
+  classifier_fight_min_prob: 0.9   # fighting raises the risk floor (0.9): only very confident windows count
+  classifier_every_sec: 1.0   # one prediction per track per second (≈ 25 ms on a Mac core, ~0.1 s on the Pi)
+  cigarette_model: models/cigarette_yolo11n.pt        # CigDet; on the Pi: export to NCNN
+  cigarette_imgsz: 320
+  cigarette_min_hits: 3         # sightings at the mouth / in a hand within cigarette_window_sec (10 s)
+  cigarette_conf: 0.48          # best F1 on the CigDet test split at 320 px (tools/train_cigarette.py → metrics.json)
   mouth_radius: 0.35        # wrist-to-mouth distance in torso lengths: hand reaches the mouth
   mouth_release: 0.6        # hand counts as gone above this (hysteresis)
   mouth_episode_max_sec: 5  # longer contact (head resting on the hands) is not a puff
@@ -275,7 +285,7 @@ aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
   snapshot_interval_sec: 60 # regular snapshot, only if the scene is active or something changed
   max_snapshot_bytes: 2048  # token budget: details are dropped until the JSON fits
   max_text_chars: 200       # per transcript
-  immediate_actions: [possible_smoking, lying]   # besides any severity=critical event
+  immediate_actions: [possible_smoking, lying, falling, fighting, distress]   # besides any severity=critical event
   unknown_alert_hours: null # e.g. ["22:00", "06:00"]: an unknown person then triggers a snapshot
   immediate_cooldown_sec: 3 # at most one critical snapshot per this many seconds (later ones are batched)
   # GPT gets only the text digest (outbox.digest, ~100 tokens); nothing below is ever sent.
