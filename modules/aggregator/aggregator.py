@@ -27,6 +27,7 @@ from modules.aggregator.outbox import Outbox
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
+EPISODIC_ACTIONS = ("possible_smoking",)        # events, not states: never carried into the next window
 SNAPSHOT_FORMATS = {"v1": "digest", "v2": "v2", "v2.1": "v2.1"}    # llm.snapshot_version → aggregator llm_format
 
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "snapshot.schema.json")
@@ -193,7 +194,9 @@ class SceneState:
         self.window_start = now
         self.people = {tid: p for tid, p in self.people.items() if p.present}
         for person in self.people.values():
-            person.actions = person.actions[-1:]                          # current action carries over
+            # the current posture carries over; an episode (possible smoking) does not — it is reported once and
+            # must not reappear in every later snapshot (GPT then mentioned smoking in unrelated gas incidents)
+            person.actions = [a for a in person.actions if a not in EPISODIC_ACTIONS][-1:]
         self.objects_seen = sorted(set(self.object_tracks.values()) | ({"person"} if self.people else set()))
         self.speech, self.sounds, self.alerts, self.gas_alerts = [], [], [], []
         self.events, self.changed = 0, False

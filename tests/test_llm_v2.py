@@ -80,8 +80,9 @@ def test_snapshot_v2_validates_and_splits_by_trust(tmp_path):
     gas = next(e for e in view["trusted_evidence"] if e["kind"] == "gas")
     assert gas["level"] == {"slight": 1.0} and gas["trend"] == {"sharply_rising": 1.0} and gas["trust"] == 0.95
     person = next(e for e in view["trusted_evidence"] if e["kind"] == "person")
-    assert person == {"kind": "person", "id": "#4", "name": "unknown_4", "actions": ["possible_smoking"],
-                      "stay": "minutes", "trust": 0.8}
+    assert person == {"kind": "person", "id": "#4", "name": "unknown_4", "stay": "minutes", "trust": 0.8}
+    immediate = [r for r in aggregator.outbox.pending() if r["trigger"] == "critical_event"]
+    assert '"possible_smoking"' in immediate[0]["digest"]       # reported once, at once — not carried over
     (claim,) = view["untrusted_evidence"]
     assert claim["claim_type"] == "deescalation" and claim["trust"] == 0.05 and claim["reasons"][0] == "speaker unknown"
     trusted_speech = [e for e in view["trusted_evidence"] if e["kind"] == "speech"]

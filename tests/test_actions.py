@@ -238,8 +238,17 @@ def smoking_frames(episodes=3, frames_per_episode=10):
     return [standing(hand_at_mouth=(i % frames_per_episode) < 2) for i in range(episodes * frames_per_episode)]
 
 
+RULE_SMOKING = ActionConfig(smoking_requires_cigarette=False)       # the hand-to-mouth rule on its own
+
+
+def test_smoking_needs_a_seen_cigarette_by_default():
+    """Owner review 2026-10-24: hand-to-mouth / the classifier alone fired on everyday movements all the time"""
+    events, _ = run_frames(ActionEngine(), smoking_frames(5))
+    assert "possible_smoking" not in actions_of(events)
+
+
 def test_possible_smoking_without_gas():
-    engine = ActionEngine()
+    engine = ActionEngine(RULE_SMOKING)
     events, _ = run_frames(engine, smoking_frames(3))
     smoking = [e for e in events if e[0]["action"] == "possible_smoking"]
     assert len(smoking) == 1
@@ -249,7 +258,7 @@ def test_possible_smoking_without_gas():
 
 
 def test_resting_head_on_hands_is_not_smoking():
-    engine = ActionEngine()
+    engine = ActionEngine(RULE_SMOKING)
     events, _ = run_frames(engine, [standing(hand_at_mouth=True)] * 150)    # 30 s with the hand at the face
     assert "possible_smoking" not in actions_of(events)
 
@@ -267,14 +276,14 @@ def test_keypoint_dropouts_do_not_create_episodes():
 
 
 def test_two_episodes_are_not_smoking():
-    engine = ActionEngine()
+    engine = ActionEngine(RULE_SMOKING)
     events, _ = run_frames(engine, smoking_frames(2) + [standing()] * 10)
     assert "possible_smoking" not in actions_of(events)
 
 
 def test_gas_never_confirms_smoking():
     """The gas sensor measures solvent / ammonia gases, not smoke: a gas rise changes nothing about smoking"""
-    engine = ActionEngine()
+    engine = ActionEngine(RULE_SMOKING)
     engine.on_event(make_event("gas", "alert", {"reason": "gas_rising", "gas": "ethanol"}, "critical"), 0.0)
     events, t = run_frames(engine, smoking_frames(3))
     smoking = [e for e in events if e[0]["action"] == "possible_smoking"]

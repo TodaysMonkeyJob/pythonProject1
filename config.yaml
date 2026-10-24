@@ -122,7 +122,8 @@ actions:
   mouth_release: 0.6        # hand counts as gone above this (hysteresis)
   mouth_episode_max_sec: 5  # longer contact (head resting on the hands) is not a puff
   smoking_window_sec: 30
-  smoking_min_count: 3      # wrist-near-mouth episodes per window → possible_smoking
+  smoking_min_count: 3      # wrist-near-mouth episodes per window (supporting evidence)
+  smoking_requires_cigarette: true   # possible_smoking only when the cigarette detector saw a cigarette
   log_events: true          # write action events to logs/YYYY-MM-DD/actions.jsonl
 
 identity:                   # F3 faces + F9 unified identity registry (faces and voices of the same person)
