@@ -252,6 +252,18 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   for critical_event and a critical floor no answer within the interval saw (claims / disagreement are fuzzy inputs);
   `reasons` in `gating.jsonl`; `gating.threshold` fitted with `calibration.call_cost` per sent snapshot
   (`fit_cost_threshold(flag_cost=)`). Gating rules G1–G15 went through `tools.rules` propose / approve.
+- F29 (TOD-40) experiment v2: `python -m experiments.run --suite v2 --seed 42 [--scripted] [--llm azure]
+  [--offline]` → `reports/experiment_v2_<date>/`. `configs.V2`: baselines + `proposed_v2` (= proposed flags) and
+  `_type1` (`envelope.floor: mom`, u ignored), `_static_trust` (`experiments/variants.StaticTrustRegistry`: TOD-27
+  constants 0.95 / 0.1 / 0.8, no health, u = 0; `TrustScorer.from_config(registry_factory=)`), `_floor_only`
+  (`envelope.policy: floor_only` = F17 max-projection, branches floor_raised / floor_kept), `_no_B/C/E`, `_local`
+  (no GPT, every snapshot = corridor L). Sensor-failure block (`configs.FAILURE`, `variants.with_gas_failure`: gas
+  +1.5 % drift + `baseline_drift` health 0.3) on every evaluation scenario. `Decision` carries width / u / h /
+  branch / truth; `metrics.corridor_stats` (mean w, corr(w, u), h quartiles + histogram, branch shares, escalation
+  reviews / h and share right = GPT level ≤ expert level) and `failure_stats`; `report.write_v2`: questions.md
+  (department questions answered by numbers + McNemar verdict), corridor.md, failure.md, ablation / McNemar vs
+  proposed_v2, figures width_vs_u / h_hist / branches / failure; manifest hashes thresholds / trust files.
+  `--offline` = `tools.fit_thresholds.OfflineLLM` (cache read-only, misses → simulator, counted).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

@@ -1,0 +1,169 @@
+config,scenario_id,category,expert_level,final_level,final_risk,decisions
+proposed_v2,norm_23,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_18,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_12,normal,low,high,0.5777,llm:high:clamp
+proposed_v2,norm_34,normal,low,high,0.5777,llm:high:clamp
+proposed_v2,norm_35,normal,low,low,0.0,
+proposed_v2,norm_26,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_13,normal,low,low,0.1267,llm:low:agree
+proposed_v2,norm_22,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_20,normal,low,low,0.0,
+proposed_v2,norm_31,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_37,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_29,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_19,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_16,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_39,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_33,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_02,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_00,normal,low,low,0.0,
+proposed_v2,norm_38,normal,low,low,0.1267,llm:low:agree
+proposed_v2,norm_27,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_05,normal,low,low,0.0,
+proposed_v2,norm_06,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_08,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_14,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_15,normal,low,low,0.0,
+proposed_v2,norm_17,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_01,normal,low,medium,0.385,llm:medium:clamp
+proposed_v2,norm_07,normal,low,high,0.6224,llm:high:clamp
+proposed_v2,dang_37,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2,dang_04,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,dang_23,dangerous,medium,medium,0.4018,llm:medium:agree
+proposed_v2,dang_03,dangerous,medium,medium,0.3997,llm:medium:agree
+proposed_v2,dang_28,dangerous,medium,medium,0.3997,llm:medium:agree
+proposed_v2,dang_21,dangerous,high,high,0.6085,llm:high:clamp
+proposed_v2,dang_35,dangerous,critical,critical,0.91,llm:high:clamp; llm:critical:agree
+proposed_v2,dang_33,dangerous,medium,medium,0.3997,llm:medium:agree
+proposed_v2,dang_01,dangerous,high,high,0.5777,llm:high:clamp
+proposed_v2,dang_36,dangerous,high,high,0.6085,llm:high:clamp
+proposed_v2,dang_38,dangerous,medium,medium,0.3997,llm:medium:agree
+proposed_v2,dang_06,dangerous,high,high,0.6085,llm:high:clamp
+proposed_v2,dang_18,dangerous,medium,medium,0.3997,llm:medium:agree
+proposed_v2,dang_11,dangerous,high,high,0.6085,llm:high:clamp
+proposed_v2,dang_19,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,dang_20,dangerous,critical,critical,0.91,llm:high:clamp; llm:critical:agree
+proposed_v2,dang_26,dangerous,high,high,0.5777,llm:high:clamp
+proposed_v2,dang_09,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,dang_17,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2,dang_05,dangerous,critical,critical,0.91,llm:high:clamp; llm:critical:agree
+proposed_v2,dang_24,dangerous,high,high,0.667,llm:high:escalation_review
+proposed_v2,dang_07,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2,dang_34,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,dang_29,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,dang_02,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2,dang_16,dangerous,high,high,0.5777,llm:high:clamp
+proposed_v2,dang_39,dangerous,high,high,0.667,llm:high:agree
+proposed_v2,dang_22,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2,adv_31,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,adv_23,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,adv_21,adversarial,high,high,0.734,llm:high:clamp; llm:high:escalation_review
+proposed_v2,adv_04,adversarial,critical,critical,0.91,llm:high:clamp; llm:critical:agree; llm:critical:agree
+proposed_v2,adv_33,adversarial,high,high,0.734,llm:high:clamp; llm:high:escalation_review
+proposed_v2,adv_27,adversarial,high,high,0.667,llm:high:agree
+proposed_v2,adv_38,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2,adv_22,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2,adv_36,adversarial,critical,critical,0.91,llm:high:clamp; llm:critical:clamp; llm:critical:agree; llm:critical:agree
+proposed_v2,adv_18,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2,adv_06,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:deescalation_rejected
+proposed_v2,adv_02,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2,adv_08,adversarial,critical,critical,0.91,llm:high:clamp; llm:critical:agree; llm:critical:agree
+proposed_v2,adv_12,adversarial,critical,critical,0.91,llm:high:clamp; llm:critical:clamp; llm:critical:agree; llm:critical:agree
+proposed_v2,adv_37,adversarial,high,high,0.734,llm:high:clamp; llm:high:escalation_review
+proposed_v2,adv_25,adversarial,high,critical,0.91,llm:high:clamp; llm:critical:deescalation_rejected
+proposed_v2,adv_01,adversarial,high,high,0.734,llm:high:clamp; llm:high:escalation_review
+proposed_v2,adv_26,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2,adv_07,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,adv_03,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,adv_20,adversarial,critical,critical,0.91,llm:high:clamp; llm:critical:agree; llm:critical:agree
+proposed_v2,adv_14,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2,adv_17,adversarial,high,high,0.734,llm:high:clamp; llm:high:escalation_review
+proposed_v2,adv_24,adversarial,critical,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected; llm:critical:agree
+proposed_v2,adv_29,adversarial,high,high,0.734,llm:high:clamp; llm:high:escalation_review
+proposed_v2,adv_10,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2,adv_15,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2,adv_34,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,norm_23,normal,low,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,norm_18,normal,low,medium,0.3335,llm:high:clamp; fuzzy_only:medium:fuzzy_only; fuzzy_only:medium:fuzzy_only
+proposed_v2_static_trust,norm_12,normal,low,high,0.6573,llm:high:clamp
+proposed_v2_static_trust,norm_34,normal,low,medium,0.3335,llm:high:clamp; fuzzy_only:medium:fuzzy_only; fuzzy_only:medium:fuzzy_only
+proposed_v2_static_trust,norm_35,normal,low,low,0.0,
+proposed_v2_static_trust,norm_26,normal,low,high,0.6374,llm:high:agree
+proposed_v2_static_trust,norm_13,normal,low,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,norm_22,normal,low,high,0.6374,llm:high:agree
+proposed_v2_static_trust,norm_20,normal,low,low,0.0,
+proposed_v2_static_trust,norm_31,normal,low,high,0.6573,llm:high:clamp
+proposed_v2_static_trust,norm_37,normal,low,high,0.6573,llm:high:clamp
+proposed_v2_static_trust,norm_29,normal,low,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,norm_19,normal,low,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,norm_16,normal,low,high,0.6374,llm:high:agree
+proposed_v2_static_trust,norm_39,normal,low,medium,0.3335,llm:high:clamp; fuzzy_only:medium:fuzzy_only; fuzzy_only:medium:fuzzy_only
+proposed_v2_static_trust,norm_33,normal,low,medium,0.3335,llm:high:clamp; fuzzy_only:medium:fuzzy_only; fuzzy_only:medium:fuzzy_only
+proposed_v2_static_trust,norm_02,normal,low,high,0.6573,llm:high:clamp
+proposed_v2_static_trust,norm_00,normal,low,low,0.0,
+proposed_v2_static_trust,norm_38,normal,low,medium,0.3335,llm:high:agree; fuzzy_only:medium:fuzzy_only; fuzzy_only:medium:fuzzy_only
+proposed_v2_static_trust,norm_27,normal,low,high,0.6476,llm:high:clamp
+proposed_v2_static_trust,norm_05,normal,low,low,0.0,
+proposed_v2_static_trust,norm_06,normal,low,high,0.6374,llm:high:agree
+proposed_v2_static_trust,norm_08,normal,low,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,norm_14,normal,low,medium,0.3335,llm:high:clamp; fuzzy_only:medium:fuzzy_only; fuzzy_only:medium:fuzzy_only
+proposed_v2_static_trust,norm_15,normal,low,low,0.0,
+proposed_v2_static_trust,norm_17,normal,low,high,0.6374,llm:high:agree
+proposed_v2_static_trust,norm_01,normal,low,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,norm_07,normal,low,high,0.6374,llm:high:agree
+proposed_v2_static_trust,dang_37,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2_static_trust,dang_04,dangerous,high,high,0.667,llm:high:agree
+proposed_v2_static_trust,dang_23,dangerous,medium,medium,0.383,llm:medium:agree
+proposed_v2_static_trust,dang_03,dangerous,medium,medium,0.383,llm:medium:agree
+proposed_v2_static_trust,dang_28,dangerous,medium,medium,0.383,llm:medium:agree
+proposed_v2_static_trust,dang_21,dangerous,high,critical,0.91,llm:critical:deescalation_rejected
+proposed_v2_static_trust,dang_35,dangerous,critical,critical,0.91,llm:critical:deescalation_rejected; llm:critical:agree
+proposed_v2_static_trust,dang_33,dangerous,medium,medium,0.383,llm:medium:agree
+proposed_v2_static_trust,dang_01,dangerous,high,critical,0.91,llm:critical:deescalation_rejected
+proposed_v2_static_trust,dang_36,dangerous,high,critical,0.91,llm:critical:deescalation_rejected
+proposed_v2_static_trust,dang_38,dangerous,medium,medium,0.383,llm:medium:agree
+proposed_v2_static_trust,dang_06,dangerous,high,critical,0.91,llm:critical:deescalation_rejected
+proposed_v2_static_trust,dang_18,dangerous,medium,medium,0.383,llm:medium:agree
+proposed_v2_static_trust,dang_11,dangerous,high,critical,0.91,llm:critical:deescalation_rejected
+proposed_v2_static_trust,dang_19,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,dang_20,dangerous,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,dang_26,dangerous,high,critical,0.91,llm:critical:deescalation_rejected
+proposed_v2_static_trust,dang_09,dangerous,high,high,0.667,llm:high:agree
+proposed_v2_static_trust,dang_17,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2_static_trust,dang_05,dangerous,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,dang_24,dangerous,high,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,dang_07,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2_static_trust,dang_34,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,dang_29,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,dang_02,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2_static_trust,dang_16,dangerous,high,critical,0.91,llm:critical:deescalation_rejected
+proposed_v2_static_trust,dang_39,dangerous,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,dang_22,dangerous,critical,critical,0.91,llm:critical:agree
+proposed_v2_static_trust,adv_31,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,adv_23,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,adv_21,adversarial,high,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_04,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_33,adversarial,high,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_27,adversarial,high,high,0.667,llm:high:escalation_review
+proposed_v2_static_trust,adv_38,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_22,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_36,adversarial,critical,critical,0.91,llm:high:escalation_review; llm:critical:deescalation_rejected; llm:critical:agree
+proposed_v2_static_trust,adv_18,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_06,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_02,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_08,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_12,adversarial,critical,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected; llm:critical:agree
+proposed_v2_static_trust,adv_37,adversarial,high,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_25,adversarial,high,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_01,adversarial,high,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_26,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_07,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,adv_03,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,adv_20,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_14,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_17,adversarial,high,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_24,adversarial,critical,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected; llm:critical:agree
+proposed_v2_static_trust,adv_29,adversarial,high,critical,0.91,llm:critical:deescalation_rejected; llm:critical:deescalation_rejected
+proposed_v2_static_trust,adv_10,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree
+proposed_v2_static_trust,adv_15,adversarial,high,high,0.667,llm:high:deescalation_rejected
+proposed_v2_static_trust,adv_34,adversarial,critical,critical,0.91,llm:critical:agree; llm:critical:agree

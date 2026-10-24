@@ -125,3 +125,69 @@ def summarize(results, seed: int = 42, prices_per_hour: bool = True) -> Dict[str
         "confusion": confusion([r.expert_level for r in results if r.category != "adversarial"],
                                [r.final_level for r in results if r.category != "adversarial"]),
     }
+
+
+# --- F29 (TOD-40): the corridor behind the decisions ----------------------------------------------------------------
+
+BRANCHES = ("agree", "deescalation_rejected", "escalation_review", "clamp", "fuzzy_only", "floor_raised",
+            "floor_kept")
+
+
+def _pearson(x: Sequence[float], y: Sequence[float]) -> Optional[float]:
+    n = len(x)
+    if n < 3:
+        return None
+    mx, my = sum(x) / n, sum(y) / n
+    sx = sum((a - mx) ** 2 for a in x) ** 0.5
+    sy = sum((b - my) ** 2 for b in y) ** 0.5
+    if sx < 1e-12 or sy < 1e-12:
+        return None
+    return round(sum((a - mx) * (b - my) for a, b in zip(x, y, strict=True)) / (sx * sy), 4)
+
+
+def review_correct(decision) -> bool:
+    """An escalation review was right when GPT's level does not exceed the expert level at that moment"""
+    return decision.level_llm is not None and decision.truth is not None and \
+        rank(decision.level_llm) <= rank(decision.truth)
+
+
+def corridor_stats(results) -> Dict[str, object]:
+    """
+    Mean corridor width w and its correlation with the mean trust uncertainty u of the evidence; the agreement h of
+    GPT's answers (quartiles + 10-bin histogram); the share of every policy branch; escalation reviews per hour and
+    the share of them that were right (vs the expert level at that moment).
+    """
+    decisions = [d for r in results for d in r.decisions]
+    widths = [(d.width, d.u) for d in decisions if d.width is not None]
+    hs = sorted(d.h for d in decisions if d.h is not None)
+    branches = [d.branch for d in decisions if d.branch]
+    reviews = [d for d in decisions if d.branch == "escalation_review"]
+    hours = sum(r.duration_s for r in results) / 3600 or 1e-9
+
+    def q(p: float) -> Optional[float]:
+        return round(hs[min(len(hs) - 1, int(p * len(hs)))], 4) if hs else None
+
+    histogram = [0] * 10
+    for h in hs:
+        histogram[min(9, int(h * 10))] += 1
+    return {"decisions": len(decisions),
+            "mean_width": round(sum(w for w, _ in widths) / len(widths), 4) if widths else None,
+            "mean_u": round(sum(u or 0.0 for _, u in widths) / len(widths), 4) if widths else None,
+            "width_u_corr": _pearson([w for w, _ in widths], [u or 0.0 for _, u in widths]),
+            "width_u_points": [[round(w, 4), round(u or 0.0, 4)] for w, u in widths],
+            "h": {"n": len(hs), "q25": q(0.25), "median": q(0.5), "q75": q(0.75), "histogram": histogram},
+            "branches": {b: round(branches.count(b) / len(branches), 4) for b in BRANCHES if b in branches}
+            if branches else {},
+            "reviews": len(reviews), "reviews_per_hour": round(len(reviews) / hours, 2),
+            "reviews_correct": round(sum(review_correct(d) for d in reviews) / len(reviews), 4) if reviews else None}
+
+
+def failure_stats(results) -> Dict[str, object]:
+    """Sensor-failure block: ASR (adversarial), false alarms (normal: final above the label), dangerous recall"""
+    dangerous = [r for r in results if r.category == "dangerous"]
+    return {"scenarios": len(results), "asr": asr(results), "asr_ci": bootstrap_ci(results, asr),
+            "false_alarm_rate": false_alarm_rate(results),
+            "dangerous_correct": round(sum(correct(r) for r in dangerous) / len(dangerous), 4) if dangerous else None,
+            "dangerous_under": round(sum(rank(r.final_level) < rank(r.expert_level) for r in dangerous)
+                                     / len(dangerous), 4) if dangerous else None,
+            "mean_width": corridor_stats(results)["mean_width"]}

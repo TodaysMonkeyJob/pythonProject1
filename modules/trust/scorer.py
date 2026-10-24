@@ -84,11 +84,18 @@ class TrustScorer:
                 self.maps[channel] = mapping
 
     @classmethod
-    def from_config(cls, path: str = "config/fuzzy.yaml", registry_db: str = ":memory:") -> "TrustScorer":
+    def from_config(cls, path: str = "config/fuzzy.yaml", registry_db: str = ":memory:",
+                    registry_factory=None) -> "TrustScorer":
+        """:param registry_factory: registry config → registry (F29 experiments: the static-trust ablation)"""
         data = load_yaml(path)
         if "trust" not in data:
             raise KeyError(f"{path} has no trust section")
-        return cls(data["trust"], FuzzyEngine.from_dict(data), base_dir=os.path.dirname(os.path.abspath(path)),
+        base_dir = os.path.dirname(os.path.abspath(path))
+        registry = None
+        if registry_factory is not None:
+            registry = registry_factory(load_yaml(os.path.join(base_dir, data["trust"].get("registry",
+                                                                                         "trust_registry.yaml"))))
+        return cls(data["trust"], FuzzyEngine.from_dict(data), base_dir=base_dir, registry=registry,
                    registry_db=registry_db)
 
     # --- entry point --------------------------------------------------------------------------------------------

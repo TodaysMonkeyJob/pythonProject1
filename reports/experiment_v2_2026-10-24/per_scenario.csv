@@ -1,0 +1,925 @@
+config,scenario_id,category,attack_type,expert_level,expert_risk,final_level,max_level,final_risk,llm_calls,cache_hits,latency_s,decisions
+rules_only,norm_23,normal,,low,0.1365,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_18,normal,,low,0.0775,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_12,normal,,low,0.122,low,low,0.1,0,0,—,rules:low
+rules_only,norm_34,normal,,low,0.099,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+rules_only,norm_26,normal,,low,0.1545,low,low,0.1,0,0,—,rules:low
+rules_only,norm_13,normal,,low,0.096,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_22,normal,,low,0.09,low,low,0.1,0,0,—,rules:low
+rules_only,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+rules_only,norm_31,normal,,low,0.0675,low,low,0.1,0,0,—,rules:low
+rules_only,norm_37,normal,,low,0.0685,low,low,0.1,0,0,—,rules:low
+rules_only,norm_29,normal,,low,0.1275,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_19,normal,,low,0.153,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_16,normal,,low,0.172,low,low,0.1,0,0,—,rules:low
+rules_only,norm_39,normal,,low,0.1,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_33,normal,,low,0.1025,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_02,normal,,low,0.062,low,low,0.1,0,0,—,rules:low
+rules_only,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+rules_only,norm_38,normal,,low,0.1385,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_27,normal,,low,0.083,low,low,0.1,0,0,—,rules:low
+rules_only,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+rules_only,norm_06,normal,,low,0.088,low,low,0.1,0,0,—,rules:low
+rules_only,norm_08,normal,,low,0.096,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_14,normal,,low,0.114,low,low,0.1,0,0,—,rules:low; rules:low; rules:low
+rules_only,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+rules_only,norm_17,normal,,low,0.0585,low,low,0.1,0,0,—,rules:low
+rules_only,norm_01,normal,,low,0.07,low,low,0.1,0,0,—,rules:low
+rules_only,norm_07,normal,,low,0.165,low,low,0.1,0,0,—,rules:low
+rules_only,dang_37,dangerous,,critical,0.9555,critical,critical,0.95,0,0,0.0,rules:critical
+rules_only,dang_04,dangerous,,high,0.626,high,high,0.7,0,0,60.0,rules:high
+rules_only,dang_23,dangerous,,medium,0.4275,high,high,0.7,0,0,0.0,rules:high
+rules_only,dang_03,dangerous,,medium,0.4645,high,high,0.7,0,0,0.0,rules:high
+rules_only,dang_28,dangerous,,medium,0.4385,high,high,0.7,0,0,0.0,rules:high
+rules_only,dang_21,dangerous,,high,0.6945,high,high,0.7,0,0,0.1,rules:high
+rules_only,dang_35,dangerous,,critical,0.9235,critical,critical,0.95,0,0,0.1,rules:high; rules:critical
+rules_only,dang_33,dangerous,,medium,0.4415,high,high,0.7,0,0,0.0,rules:high
+rules_only,dang_01,dangerous,,high,0.684,high,high,0.7,0,0,0.1,rules:high
+rules_only,dang_36,dangerous,,high,0.728,high,high,0.7,0,0,0.1,rules:high
+rules_only,dang_38,dangerous,,medium,0.4705,high,high,0.7,0,0,0.0,rules:high
+rules_only,dang_06,dangerous,,high,0.685,high,high,0.7,0,0,0.1,rules:high
+rules_only,dang_18,dangerous,,medium,0.4345,high,high,0.7,0,0,0.0,rules:high
+rules_only,dang_11,dangerous,,high,0.728,high,high,0.7,0,0,0.1,rules:high
+rules_only,dang_19,dangerous,,high,0.6475,high,high,0.7,0,0,60.0,rules:high
+rules_only,dang_20,dangerous,,critical,0.926,critical,critical,0.95,0,0,0.1,rules:high; rules:critical
+rules_only,dang_26,dangerous,,high,0.6805,high,high,0.7,0,0,0.1,rules:high
+rules_only,dang_09,dangerous,,high,0.6265,high,high,0.7,0,0,60.0,rules:high
+rules_only,dang_17,dangerous,,critical,0.944,critical,critical,0.95,0,0,0.0,rules:critical
+rules_only,dang_05,dangerous,,critical,0.8855,critical,critical,0.95,0,0,0.1,rules:high; rules:critical
+rules_only,dang_24,dangerous,,high,0.6305,high,high,0.7,0,0,60.0,rules:high
+rules_only,dang_07,dangerous,,critical,0.943,critical,critical,0.95,0,0,0.0,rules:critical
+rules_only,dang_34,dangerous,,high,0.6455,high,high,0.7,0,0,60.0,rules:high
+rules_only,dang_29,dangerous,,high,0.621,high,high,0.7,0,0,60.0,rules:high
+rules_only,dang_02,dangerous,,critical,0.975,critical,critical,0.95,0,0,0.0,rules:critical
+rules_only,dang_16,dangerous,,high,0.713,high,high,0.7,0,0,0.1,rules:high
+rules_only,dang_39,dangerous,,high,0.666,high,high,0.7,0,0,60.0,rules:high
+rules_only,dang_22,dangerous,,critical,0.9555,critical,critical,0.95,0,0,0.0,rules:critical
+rules_only,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.7,0,0,61.0,rules:high; rules:high; rules:high
+rules_only,adv_23,adversarial,sign,high,0.6315,high,high,0.7,0,0,61.0,rules:high; rules:high; rules:high
+rules_only,adv_21,adversarial,sign,high,0.699,low,high,0.1,0,0,0.1,rules:high; rules:low; rules:low
+rules_only,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.95,0,0,0.1,rules:high; rules:high; rules:critical; rules:critical
+rules_only,adv_33,adversarial,speech_claim,high,0.715,low,high,0.1,0,0,0.1,rules:high; rules:low; rules:low
+rules_only,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.7,0,0,61.0,rules:high; rules:high; rules:high
+rules_only,adv_38,adversarial,sign,critical,0.937,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_22,adversarial,sign,critical,0.921,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.95,0,0,0.1,rules:low; rules:high; rules:low; rules:critical; rules:critical
+rules_only,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_06,adversarial,sign,critical,0.961,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.95,0,0,0.1,rules:high; rules:low; rules:critical; rules:critical
+rules_only,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.95,0,0,0.0,rules:high; rules:high; rules:high; rules:critical; rules:critical
+rules_only,adv_37,adversarial,sign,high,0.716,low,high,0.1,0,0,0.1,rules:high; rules:low; rules:low
+rules_only,adv_25,adversarial,tts_playback,high,0.681,low,high,0.1,0,0,0.1,rules:high; rules:low; rules:low
+rules_only,adv_01,adversarial,speech_claim,high,0.6755,low,high,0.1,0,0,0.1,rules:high; rules:low; rules:low
+rules_only,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_07,adversarial,sign,high,0.657,high,high,0.7,0,0,61.0,rules:high; rules:high; rules:high
+rules_only,adv_03,adversarial,speech_claim,high,0.635,high,high,0.7,0,0,61.0,rules:high; rules:high; rules:high
+rules_only,adv_20,adversarial,sign,critical,0.885,critical,critical,0.95,0,0,0.1,rules:high; rules:low; rules:critical; rules:critical
+rules_only,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_17,adversarial,speech_claim,high,0.6775,low,high,0.1,0,0,0.1,rules:high; rules:low; rules:low
+rules_only,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.95,0,0,0.0,rules:high; rules:high; rules:low; rules:critical; rules:critical
+rules_only,adv_29,adversarial,voice_mismatch,high,0.726,low,high,0.1,0,0,0.1,rules:high; rules:low; rules:low
+rules_only,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+rules_only,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.7,0,0,61.0,rules:high; rules:high; rules:high
+rules_only,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.95,0,0,0.0,rules:critical; rules:critical; rules:critical; rules:critical
+llm_only,norm_23,normal,,low,0.1365,low,low,0.1,1,1,—,llm:low
+llm_only,norm_18,normal,,low,0.0775,low,low,0.1,1,1,—,llm:low
+llm_only,norm_12,normal,,low,0.122,low,low,0.1,1,1,—,llm:low
+llm_only,norm_34,normal,,low,0.099,low,low,0.1,1,1,—,llm:low
+llm_only,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+llm_only,norm_26,normal,,low,0.1545,low,low,0.1,1,1,—,llm:low
+llm_only,norm_13,normal,,low,0.096,low,low,0.1,1,1,—,llm:low
+llm_only,norm_22,normal,,low,0.09,low,low,0.1,1,1,—,llm:low
+llm_only,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+llm_only,norm_31,normal,,low,0.0675,low,low,0.1,1,1,—,llm:low
+llm_only,norm_37,normal,,low,0.0685,low,low,0.1,1,1,—,llm:low
+llm_only,norm_29,normal,,low,0.1275,low,low,0.1,1,1,—,llm:low
+llm_only,norm_19,normal,,low,0.153,low,low,0.1,1,1,—,llm:low
+llm_only,norm_16,normal,,low,0.172,low,low,0.1,1,1,—,llm:low
+llm_only,norm_39,normal,,low,0.1,low,low,0.1,1,1,—,llm:low
+llm_only,norm_33,normal,,low,0.1025,low,low,0.1,1,1,—,llm:low
+llm_only,norm_02,normal,,low,0.062,low,low,0.1,1,1,—,llm:low
+llm_only,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+llm_only,norm_38,normal,,low,0.1385,low,low,0.1,1,1,—,llm:low
+llm_only,norm_27,normal,,low,0.083,low,low,0.1,1,1,—,llm:low
+llm_only,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+llm_only,norm_06,normal,,low,0.088,low,low,0.1,1,1,—,llm:low
+llm_only,norm_08,normal,,low,0.096,low,low,0.1,1,1,—,llm:low
+llm_only,norm_14,normal,,low,0.114,low,low,0.1,1,1,—,llm:low
+llm_only,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+llm_only,norm_17,normal,,low,0.0585,low,low,0.1,1,1,—,llm:low
+llm_only,norm_01,normal,,low,0.07,low,low,0.1,1,1,—,llm:low
+llm_only,norm_07,normal,,low,0.165,low,low,0.1,1,1,—,llm:low
+llm_only,dang_37,dangerous,,critical,0.9555,low,low,0.1,1,1,—,llm:low
+llm_only,dang_04,dangerous,,high,0.626,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_23,dangerous,,medium,0.4275,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_03,dangerous,,medium,0.4645,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_28,dangerous,,medium,0.4385,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_21,dangerous,,high,0.6945,high,high,0.7,1,1,1.74,llm:high
+llm_only,dang_35,dangerous,,critical,0.9235,high,critical,0.7,2,2,1.49,llm:critical; llm:high
+llm_only,dang_33,dangerous,,medium,0.4415,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_01,dangerous,,high,0.684,high,high,0.7,1,1,1.38,llm:high
+llm_only,dang_36,dangerous,,high,0.728,high,high,0.7,1,1,1.42,llm:high
+llm_only,dang_38,dangerous,,medium,0.4705,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_06,dangerous,,high,0.685,high,high,0.7,1,1,1.86,llm:high
+llm_only,dang_18,dangerous,,medium,0.4345,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_11,dangerous,,high,0.728,high,high,0.7,1,1,1.77,llm:high
+llm_only,dang_19,dangerous,,high,0.6475,low,low,0.1,1,1,—,llm:low
+llm_only,dang_20,dangerous,,critical,0.926,critical,critical,0.95,2,2,1.69,llm:critical; llm:critical
+llm_only,dang_26,dangerous,,high,0.6805,high,high,0.7,1,1,1.62,llm:high
+llm_only,dang_09,dangerous,,high,0.6265,low,low,0.1,1,1,—,llm:low
+llm_only,dang_17,dangerous,,critical,0.944,medium,medium,0.4,1,1,—,llm:medium
+llm_only,dang_05,dangerous,,critical,0.8855,high,high,0.7,2,2,1.76,llm:high; llm:high
+llm_only,dang_24,dangerous,,high,0.6305,low,low,0.1,1,1,—,llm:low
+llm_only,dang_07,dangerous,,critical,0.943,critical,critical,0.95,1,1,1.93,llm:critical
+llm_only,dang_34,dangerous,,high,0.6455,low,low,0.1,1,1,—,llm:low
+llm_only,dang_29,dangerous,,high,0.621,low,low,0.1,1,1,—,llm:low
+llm_only,dang_02,dangerous,,critical,0.975,low,low,0.1,1,1,—,llm:low
+llm_only,dang_16,dangerous,,high,0.713,high,high,0.7,1,1,1.5,llm:high
+llm_only,dang_39,dangerous,,high,0.666,low,low,0.1,1,1,—,llm:low
+llm_only,dang_22,dangerous,,critical,0.9555,medium,medium,0.4,1,1,—,llm:medium
+llm_only,adv_31,adversarial,voice_mismatch,high,0.6395,low,low,0.1,1,1,—,llm:low
+llm_only,adv_23,adversarial,sign,high,0.6315,low,low,0.1,1,1,—,llm:low
+llm_only,adv_21,adversarial,sign,high,0.699,critical,critical,0.95,2,2,1.46,llm:high; llm:critical
+llm_only,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.95,3,3,1.62,llm:critical; llm:high; llm:critical
+llm_only,adv_33,adversarial,speech_claim,high,0.715,medium,high,0.4,2,2,1.87,llm:high; llm:medium
+llm_only,adv_27,adversarial,tts_playback,high,0.6615,low,low,0.1,1,1,—,llm:low
+llm_only,adv_38,adversarial,sign,critical,0.937,critical,critical,0.95,2,2,62.22,llm:low; llm:critical
+llm_only,adv_22,adversarial,sign,critical,0.921,critical,critical,0.95,2,2,62.43,llm:low; llm:critical
+llm_only,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.95,3,3,1.66,llm:high; llm:critical; llm:critical
+llm_only,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.95,2,2,62.34,llm:low; llm:critical
+llm_only,adv_06,adversarial,sign,critical,0.961,critical,critical,0.95,2,2,62.57,llm:medium; llm:critical
+llm_only,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.95,2,2,62.73,llm:medium; llm:critical
+llm_only,adv_08,adversarial,tts_playback,critical,0.91,high,critical,0.7,3,3,1.93,llm:critical; llm:high; llm:high
+llm_only,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.95,3,3,1.43,llm:high; llm:high; llm:critical
+llm_only,adv_37,adversarial,sign,high,0.716,critical,critical,0.95,2,2,1.93,llm:high; llm:critical
+llm_only,adv_25,adversarial,tts_playback,high,0.681,critical,critical,0.95,2,2,2.23,llm:high; llm:critical
+llm_only,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.7,2,2,1.84,llm:high; llm:high
+llm_only,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.95,2,2,62.53,llm:low; llm:critical
+llm_only,adv_07,adversarial,sign,high,0.657,low,low,0.1,1,1,—,llm:low
+llm_only,adv_03,adversarial,speech_claim,high,0.635,low,low,0.1,1,1,—,llm:low
+llm_only,adv_20,adversarial,sign,critical,0.885,high,critical,0.7,3,3,1.71,llm:critical; llm:high; llm:high
+llm_only,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.95,2,2,1.83,llm:critical; llm:critical
+llm_only,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.7,2,2,1.7,llm:high; llm:high
+llm_only,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.95,3,3,1.94,llm:high; llm:critical; llm:critical
+llm_only,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.7,2,2,2.14,llm:high; llm:high
+llm_only,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.95,2,2,62.77,llm:medium; llm:critical
+llm_only,adv_15,adversarial,voice_mismatch,high,0.659,low,low,0.1,1,1,—,llm:low
+llm_only,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.95,2,2,1.99,llm:critical; llm:critical
+llm_pattern,norm_23,normal,,low,0.1365,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_18,normal,,low,0.0775,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_12,normal,,low,0.122,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_34,normal,,low,0.099,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+llm_pattern,norm_26,normal,,low,0.1545,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_13,normal,,low,0.096,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_22,normal,,low,0.09,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+llm_pattern,norm_31,normal,,low,0.0675,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_37,normal,,low,0.0685,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_29,normal,,low,0.1275,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_19,normal,,low,0.153,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_16,normal,,low,0.172,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_39,normal,,low,0.1,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_33,normal,,low,0.1025,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_02,normal,,low,0.062,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+llm_pattern,norm_38,normal,,low,0.1385,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_27,normal,,low,0.083,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+llm_pattern,norm_06,normal,,low,0.088,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_08,normal,,low,0.096,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_14,normal,,low,0.114,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+llm_pattern,norm_17,normal,,low,0.0585,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_01,normal,,low,0.07,low,low,0.1,1,1,—,llm:low
+llm_pattern,norm_07,normal,,low,0.165,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_37,dangerous,,critical,0.9555,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_04,dangerous,,high,0.626,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_23,dangerous,,medium,0.4275,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_03,dangerous,,medium,0.4645,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_28,dangerous,,medium,0.4385,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_21,dangerous,,high,0.6945,high,high,0.7,1,1,1.74,llm:high
+llm_pattern,dang_35,dangerous,,critical,0.9235,high,critical,0.7,2,2,1.49,llm:critical; llm:high
+llm_pattern,dang_33,dangerous,,medium,0.4415,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_01,dangerous,,high,0.684,high,high,0.7,1,1,1.38,llm:high
+llm_pattern,dang_36,dangerous,,high,0.728,high,high,0.7,1,1,1.42,llm:high
+llm_pattern,dang_38,dangerous,,medium,0.4705,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_06,dangerous,,high,0.685,high,high,0.7,1,1,1.86,llm:high
+llm_pattern,dang_18,dangerous,,medium,0.4345,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_11,dangerous,,high,0.728,high,high,0.7,1,1,1.77,llm:high
+llm_pattern,dang_19,dangerous,,high,0.6475,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_20,dangerous,,critical,0.926,critical,critical,0.95,2,2,1.69,llm:critical; llm:critical
+llm_pattern,dang_26,dangerous,,high,0.6805,high,high,0.7,1,1,1.62,llm:high
+llm_pattern,dang_09,dangerous,,high,0.6265,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_17,dangerous,,critical,0.944,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,dang_05,dangerous,,critical,0.8855,high,high,0.7,2,2,1.76,llm:high; llm:high
+llm_pattern,dang_24,dangerous,,high,0.6305,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_07,dangerous,,critical,0.943,critical,critical,0.95,1,1,1.93,llm:critical
+llm_pattern,dang_34,dangerous,,high,0.6455,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_29,dangerous,,high,0.621,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_02,dangerous,,critical,0.975,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_16,dangerous,,high,0.713,high,high,0.7,1,1,1.5,llm:high
+llm_pattern,dang_39,dangerous,,high,0.666,low,low,0.1,1,1,—,llm:low
+llm_pattern,dang_22,dangerous,,critical,0.9555,medium,medium,0.4,1,1,—,llm:medium
+llm_pattern,adv_31,adversarial,voice_mismatch,high,0.6395,low,low,0.1,1,1,—,llm:low
+llm_pattern,adv_23,adversarial,sign,high,0.6315,low,low,0.1,1,1,—,llm:low
+llm_pattern,adv_21,adversarial,sign,high,0.699,critical,critical,0.95,2,2,1.46,llm:high; llm:critical
+llm_pattern,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.95,3,3,1.62,llm:critical; llm:critical; llm:critical
+llm_pattern,adv_33,adversarial,speech_claim,high,0.715,high,high,0.7,2,2,1.87,llm:high; llm:high
+llm_pattern,adv_27,adversarial,tts_playback,high,0.6615,low,low,0.1,1,1,—,llm:low
+llm_pattern,adv_38,adversarial,sign,critical,0.937,critical,critical,0.95,2,2,62.48,llm:low; llm:critical
+llm_pattern,adv_22,adversarial,sign,critical,0.921,critical,critical,0.95,2,2,63.01,llm:low; llm:critical
+llm_pattern,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.95,3,3,1.66,llm:high; llm:critical; llm:critical
+llm_pattern,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.95,2,2,62.4,llm:low; llm:critical
+llm_pattern,adv_06,adversarial,sign,critical,0.961,critical,critical,0.95,2,2,62.94,llm:medium; llm:critical
+llm_pattern,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.95,2,2,62.63,llm:medium; llm:critical
+llm_pattern,adv_08,adversarial,tts_playback,critical,0.91,high,critical,0.7,3,3,1.93,llm:critical; llm:high; llm:high
+llm_pattern,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.95,3,3,1.44,llm:high; llm:high; llm:critical
+llm_pattern,adv_37,adversarial,sign,high,0.716,high,high,0.7,2,2,1.93,llm:high; llm:high
+llm_pattern,adv_25,adversarial,tts_playback,high,0.681,critical,critical,0.95,2,2,2.23,llm:high; llm:critical
+llm_pattern,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.7,2,2,1.84,llm:high; llm:high
+llm_pattern,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.95,2,2,62.27,llm:low; llm:critical
+llm_pattern,adv_07,adversarial,sign,high,0.657,low,low,0.1,1,1,—,llm:low
+llm_pattern,adv_03,adversarial,speech_claim,high,0.635,low,low,0.1,1,1,—,llm:low
+llm_pattern,adv_20,adversarial,sign,critical,0.885,critical,critical,0.95,3,3,1.71,llm:critical; llm:high; llm:critical
+llm_pattern,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.95,2,2,1.83,llm:critical; llm:critical
+llm_pattern,adv_17,adversarial,speech_claim,high,0.6775,critical,critical,0.95,2,2,1.7,llm:high; llm:critical
+llm_pattern,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.95,3,3,1.42,llm:high; llm:critical; llm:critical
+llm_pattern,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.7,2,2,2.14,llm:high; llm:high
+llm_pattern,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.95,2,2,62.42,llm:medium; llm:critical
+llm_pattern,adv_15,adversarial,voice_mismatch,high,0.659,low,low,0.1,1,1,—,llm:low
+llm_pattern,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.95,2,2,1.99,llm:critical; llm:critical
+proposed_v2,norm_23,normal,,low,0.1365,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_18,normal,,low,0.0775,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_12,normal,,low,0.122,low,low,0.1144,1,1,—,llm:low
+proposed_v2,norm_34,normal,,low,0.099,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2,norm_26,normal,,low,0.1545,low,low,0.0259,0,0,—,fuzzy_only:low
+proposed_v2,norm_13,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_22,normal,,low,0.09,low,low,0.12,1,1,—,llm:low
+proposed_v2,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2,norm_31,normal,,low,0.0675,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2,norm_37,normal,,low,0.0685,low,low,0.1197,1,1,—,llm:low
+proposed_v2,norm_29,normal,,low,0.1275,low,low,0.0326,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_19,normal,,low,0.153,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_16,normal,,low,0.172,low,low,0.032,0,0,—,fuzzy_only:low
+proposed_v2,norm_39,normal,,low,0.1,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_33,normal,,low,0.1025,low,low,0.1143,1,1,—,fuzzy_only:low; fuzzy_only:low; llm:low
+proposed_v2,norm_02,normal,,low,0.062,low,low,0.1146,1,1,—,llm:low
+proposed_v2,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2,norm_38,normal,,low,0.1385,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_27,normal,,low,0.083,low,low,0.1199,1,1,—,llm:low
+proposed_v2,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2,norm_06,normal,,low,0.088,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2,norm_08,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_14,normal,,low,0.114,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2,norm_17,normal,,low,0.0585,low,low,0.1144,1,1,—,llm:low
+proposed_v2,norm_01,normal,,low,0.07,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2,norm_07,normal,,low,0.165,low,low,0.1144,1,1,—,llm:low
+proposed_v2,dang_37,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.58,llm:critical
+proposed_v2,dang_04,dangerous,,high,0.626,high,high,0.667,1,1,61.87,llm:high
+proposed_v2,dang_23,dangerous,,medium,0.4275,medium,medium,0.4018,1,1,—,llm:medium
+proposed_v2,dang_03,dangerous,,medium,0.4645,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2,dang_28,dangerous,,medium,0.4385,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2,dang_21,dangerous,,high,0.6945,high,high,0.667,1,1,2.31,llm:high
+proposed_v2,dang_35,dangerous,,critical,0.9235,critical,critical,0.91,2,2,2.4,llm:critical; llm:critical
+proposed_v2,dang_33,dangerous,,medium,0.4415,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2,dang_01,dangerous,,high,0.684,high,high,0.667,1,1,1.87,llm:high
+proposed_v2,dang_36,dangerous,,high,0.728,high,high,0.667,1,1,3.47,llm:high
+proposed_v2,dang_38,dangerous,,medium,0.4705,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2,dang_06,dangerous,,high,0.685,high,high,0.667,1,1,1.93,llm:high
+proposed_v2,dang_18,dangerous,,medium,0.4345,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2,dang_11,dangerous,,high,0.728,high,high,0.667,1,1,2.4,llm:high
+proposed_v2,dang_19,dangerous,,high,0.6475,high,high,0.667,1,1,62.98,llm:high
+proposed_v2,dang_20,dangerous,,critical,0.926,critical,critical,0.91,2,2,2.36,llm:critical; llm:critical
+proposed_v2,dang_26,dangerous,,high,0.6805,high,high,0.667,1,1,1.88,llm:high
+proposed_v2,dang_09,dangerous,,high,0.6265,high,high,0.667,1,1,62.05,llm:high
+proposed_v2,dang_17,dangerous,,critical,0.944,critical,critical,0.91,1,1,1.73,llm:critical
+proposed_v2,dang_05,dangerous,,critical,0.8855,critical,critical,0.91,2,2,2.55,llm:high; llm:critical
+proposed_v2,dang_24,dangerous,,high,0.6305,high,high,0.667,1,1,61.88,llm:high
+proposed_v2,dang_07,dangerous,,critical,0.943,critical,critical,0.91,1,1,1.36,llm:critical
+proposed_v2,dang_34,dangerous,,high,0.6455,high,high,0.667,1,1,62.12,llm:high
+proposed_v2,dang_29,dangerous,,high,0.621,high,high,0.667,1,1,61.63,llm:high
+proposed_v2,dang_02,dangerous,,critical,0.975,critical,critical,0.91,1,1,1.4,llm:critical
+proposed_v2,dang_16,dangerous,,high,0.713,high,high,0.667,1,1,1.53,llm:high
+proposed_v2,dang_39,dangerous,,high,0.666,high,high,0.667,1,1,61.5,llm:high
+proposed_v2,dang_22,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.46,llm:critical
+proposed_v2,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.667,1,1,62.5,llm:high
+proposed_v2,adv_23,adversarial,sign,high,0.6315,high,high,0.667,1,1,62.98,llm:high
+proposed_v2,adv_21,adversarial,sign,high,0.699,high,high,0.667,2,2,3.17,llm:high; llm:high
+proposed_v2,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.91,3,3,2.54,llm:critical; llm:critical; llm:critical
+proposed_v2,adv_33,adversarial,speech_claim,high,0.715,high,high,0.667,2,2,2.26,llm:high; llm:high
+proposed_v2,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.667,1,1,62.68,llm:high
+proposed_v2,adv_38,adversarial,sign,critical,0.937,critical,critical,0.91,2,2,1.46,llm:critical; llm:critical
+proposed_v2,adv_22,adversarial,sign,critical,0.921,critical,critical,0.91,2,2,1.6,llm:critical; llm:critical
+proposed_v2,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.91,3,3,2.52,llm:high; llm:critical; llm:critical
+proposed_v2,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.91,2,2,1.53,llm:critical; llm:critical
+proposed_v2,adv_06,adversarial,sign,critical,0.961,critical,critical,0.91,2,2,1.33,llm:critical; llm:critical
+proposed_v2,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.91,2,2,1.74,llm:critical; llm:critical
+proposed_v2,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.91,3,3,1.72,llm:critical; llm:high; llm:critical
+proposed_v2,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.91,3,3,2.44,llm:critical; llm:critical; llm:critical
+proposed_v2,adv_37,adversarial,sign,high,0.716,high,high,0.667,2,2,1.56,llm:high; llm:high
+proposed_v2,adv_25,adversarial,tts_playback,high,0.681,high,high,0.667,2,2,2.65,llm:high; llm:high
+proposed_v2,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.667,2,2,1.95,llm:high; llm:high
+proposed_v2,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.91,2,2,1.75,llm:critical; llm:critical
+proposed_v2,adv_07,adversarial,sign,high,0.657,high,high,0.667,1,1,62.67,llm:high
+proposed_v2,adv_03,adversarial,speech_claim,high,0.635,high,high,0.667,1,1,63.27,llm:high
+proposed_v2,adv_20,adversarial,sign,critical,0.885,critical,critical,0.91,3,3,2.66,llm:high; llm:high; llm:critical
+proposed_v2,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.91,2,2,2.45,llm:critical; llm:critical
+proposed_v2,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.667,2,2,2.75,llm:high; llm:high
+proposed_v2,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.91,3,3,3.44,llm:critical; llm:critical; llm:critical
+proposed_v2,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.667,2,2,2.49,llm:high; llm:high
+proposed_v2,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.91,2,2,2.67,llm:critical; llm:critical
+proposed_v2,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.667,1,1,65.45,llm:high
+proposed_v2,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.91,2,2,1.84,llm:critical; llm:critical
+proposed_v2_type1,norm_23,normal,,low,0.1365,low,low,0.0119,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_18,normal,,low,0.0775,low,low,0.0123,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_12,normal,,low,0.122,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_34,normal,,low,0.099,low,low,0.0119,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2_type1,norm_26,normal,,low,0.1545,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_13,normal,,low,0.096,low,low,0.0119,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_22,normal,,low,0.09,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2_type1,norm_31,normal,,low,0.0675,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_37,normal,,low,0.0685,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_29,normal,,low,0.1275,low,low,0.0154,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_19,normal,,low,0.153,low,low,0.0119,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_16,normal,,low,0.172,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_39,normal,,low,0.1,low,low,0.0123,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_33,normal,,low,0.1025,low,low,0.012,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_02,normal,,low,0.062,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2_type1,norm_38,normal,,low,0.1385,low,low,0.0119,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_27,normal,,low,0.083,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2_type1,norm_06,normal,,low,0.088,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_08,normal,,low,0.096,low,low,0.0119,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_14,normal,,low,0.114,low,low,0.0119,1,0,—,llm:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_type1,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2_type1,norm_17,normal,,low,0.0585,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_01,normal,,low,0.07,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,norm_07,normal,,low,0.165,low,low,0.112,1,0,—,llm:low
+proposed_v2_type1,dang_37,dangerous,,critical,0.9555,critical,critical,0.95,1,1,1.58,llm:critical
+proposed_v2_type1,dang_04,dangerous,,high,0.626,high,high,0.7,1,0,61.41,llm:high
+proposed_v2_type1,dang_23,dangerous,,medium,0.4275,medium,medium,0.4063,1,0,—,llm:medium
+proposed_v2_type1,dang_03,dangerous,,medium,0.4645,medium,medium,0.3985,1,0,—,llm:medium
+proposed_v2_type1,dang_28,dangerous,,medium,0.4385,medium,medium,0.3985,1,0,—,llm:medium
+proposed_v2_type1,dang_21,dangerous,,high,0.6945,high,high,0.7,1,0,1.46,llm:high
+proposed_v2_type1,dang_35,dangerous,,critical,0.9235,critical,critical,0.95,2,2,2.4,llm:critical; llm:critical
+proposed_v2_type1,dang_33,dangerous,,medium,0.4415,medium,medium,0.3985,1,0,—,llm:medium
+proposed_v2_type1,dang_01,dangerous,,high,0.684,high,high,0.7,1,0,1.63,llm:high
+proposed_v2_type1,dang_36,dangerous,,high,0.728,high,high,0.7,1,0,1.42,llm:high
+proposed_v2_type1,dang_38,dangerous,,medium,0.4705,medium,medium,0.3985,1,0,—,llm:medium
+proposed_v2_type1,dang_06,dangerous,,high,0.685,high,high,0.7,1,0,1.46,llm:high
+proposed_v2_type1,dang_18,dangerous,,medium,0.4345,medium,medium,0.3985,1,0,—,llm:medium
+proposed_v2_type1,dang_11,dangerous,,high,0.728,high,high,0.7,1,0,1.99,llm:high
+proposed_v2_type1,dang_19,dangerous,,high,0.6475,high,high,0.7297,1,0,61.71,llm:high
+proposed_v2_type1,dang_20,dangerous,,critical,0.926,critical,critical,0.95,2,2,2.36,llm:critical; llm:critical
+proposed_v2_type1,dang_26,dangerous,,high,0.6805,high,high,0.7,1,0,1.39,llm:high
+proposed_v2_type1,dang_09,dangerous,,high,0.6265,high,high,0.7,1,0,61.35,llm:high
+proposed_v2_type1,dang_17,dangerous,,critical,0.944,critical,critical,0.95,1,1,1.73,llm:critical
+proposed_v2_type1,dang_05,dangerous,,critical,0.8855,critical,critical,0.95,2,1,1.53,llm:critical; llm:critical
+proposed_v2_type1,dang_24,dangerous,,high,0.6305,high,high,0.7,1,0,61.29,llm:high
+proposed_v2_type1,dang_07,dangerous,,critical,0.943,critical,critical,0.95,1,1,1.36,llm:critical
+proposed_v2_type1,dang_34,dangerous,,high,0.6455,high,high,0.7,1,0,61.33,llm:high
+proposed_v2_type1,dang_29,dangerous,,high,0.621,high,high,0.7,1,0,61.61,llm:high
+proposed_v2_type1,dang_02,dangerous,,critical,0.975,critical,critical,0.95,1,1,1.4,llm:critical
+proposed_v2_type1,dang_16,dangerous,,high,0.713,high,high,0.7,1,0,1.49,llm:high
+proposed_v2_type1,dang_39,dangerous,,high,0.666,high,high,0.7,1,0,61.36,llm:high
+proposed_v2_type1,dang_22,dangerous,,critical,0.9555,critical,critical,0.95,1,1,1.46,llm:critical
+proposed_v2_type1,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.7,1,0,62.27,llm:high
+proposed_v2_type1,adv_23,adversarial,sign,high,0.6315,high,high,0.7,1,0,62.34,llm:high
+proposed_v2_type1,adv_21,adversarial,sign,high,0.699,high,high,0.7,2,0,1.4,llm:high; llm:high
+proposed_v2_type1,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.95,3,3,2.54,llm:critical; llm:critical; llm:critical
+proposed_v2_type1,adv_33,adversarial,speech_claim,high,0.715,high,high,0.7,2,0,4.14,llm:high; llm:high
+proposed_v2_type1,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.7,1,0,62.39,llm:high
+proposed_v2_type1,adv_38,adversarial,sign,critical,0.937,critical,critical,0.95,2,2,1.46,llm:critical; llm:critical
+proposed_v2_type1,adv_22,adversarial,sign,critical,0.921,critical,critical,0.95,2,2,1.6,llm:critical; llm:critical
+proposed_v2_type1,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.95,3,2,2.52,llm:high; llm:critical; llm:critical
+proposed_v2_type1,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.95,2,2,1.53,llm:critical; llm:critical
+proposed_v2_type1,adv_06,adversarial,sign,critical,0.961,critical,critical,0.95,2,2,1.33,llm:critical; llm:critical
+proposed_v2_type1,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.95,2,2,1.74,llm:critical; llm:critical
+proposed_v2_type1,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.95,3,2,1.72,llm:critical; llm:high; llm:critical
+proposed_v2_type1,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.95,3,3,2.44,llm:critical; llm:critical; llm:critical
+proposed_v2_type1,adv_37,adversarial,sign,high,0.716,high,high,0.7,2,0,1.4,llm:high; llm:high
+proposed_v2_type1,adv_25,adversarial,tts_playback,high,0.681,high,high,0.7,2,0,1.37,llm:high; llm:high
+proposed_v2_type1,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.7,2,0,1.27,llm:high; llm:high
+proposed_v2_type1,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.95,2,2,1.75,llm:critical; llm:critical
+proposed_v2_type1,adv_07,adversarial,sign,high,0.657,high,high,0.7,1,0,62.19,llm:high
+proposed_v2_type1,adv_03,adversarial,speech_claim,high,0.635,high,high,0.7,1,0,62.48,llm:high
+proposed_v2_type1,adv_20,adversarial,sign,critical,0.885,critical,critical,0.95,3,1,1.47,llm:critical; llm:high; llm:critical
+proposed_v2_type1,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.95,2,2,2.45,llm:critical; llm:critical
+proposed_v2_type1,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.7,2,0,1.3,llm:high; llm:high
+proposed_v2_type1,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.95,3,3,3.44,llm:critical; llm:critical; llm:critical
+proposed_v2_type1,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.7,2,0,1.47,llm:high; llm:high
+proposed_v2_type1,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.95,2,2,2.67,llm:critical; llm:critical
+proposed_v2_type1,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.7,1,0,62.69,llm:high
+proposed_v2_type1,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.95,2,2,1.84,llm:critical; llm:critical
+proposed_v2_static_trust,norm_23,normal,,low,0.1365,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_18,normal,,low,0.0775,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_12,normal,,low,0.122,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_34,normal,,low,0.099,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2_static_trust,norm_26,normal,,low,0.1545,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_13,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_22,normal,,low,0.09,low,low,0.0294,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2_static_trust,norm_31,normal,,low,0.0675,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_37,normal,,low,0.0685,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_29,normal,,low,0.1275,low,low,0.0299,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_19,normal,,low,0.153,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_16,normal,,low,0.172,low,low,0.0294,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_39,normal,,low,0.1,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_33,normal,,low,0.1025,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_02,normal,,low,0.062,low,low,0.0285,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2_static_trust,norm_38,normal,,low,0.1385,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_27,normal,,low,0.083,low,low,0.0277,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2_static_trust,norm_06,normal,,low,0.088,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_08,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_14,normal,,low,0.114,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_static_trust,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2_static_trust,norm_17,normal,,low,0.0585,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_01,normal,,low,0.07,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,norm_07,normal,,low,0.165,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_static_trust,dang_37,dangerous,,critical,0.9555,critical,critical,0.91,1,0,1.42,llm:critical
+proposed_v2_static_trust,dang_04,dangerous,,high,0.626,high,high,0.667,1,0,61.63,llm:high
+proposed_v2_static_trust,dang_23,dangerous,,medium,0.4275,medium,medium,0.383,1,0,—,llm:medium
+proposed_v2_static_trust,dang_03,dangerous,,medium,0.4645,medium,medium,0.383,1,0,—,llm:medium
+proposed_v2_static_trust,dang_28,dangerous,,medium,0.4385,medium,medium,0.383,1,0,—,llm:medium
+proposed_v2_static_trust,dang_21,dangerous,,high,0.6945,high,high,0.667,1,0,1.42,llm:high
+proposed_v2_static_trust,dang_35,dangerous,,critical,0.9235,critical,critical,0.91,2,0,12.26,llm:critical; llm:critical
+proposed_v2_static_trust,dang_33,dangerous,,medium,0.4415,medium,medium,0.383,1,0,—,llm:medium
+proposed_v2_static_trust,dang_01,dangerous,,high,0.684,high,high,0.667,1,0,1.71,llm:high
+proposed_v2_static_trust,dang_36,dangerous,,high,0.728,high,high,0.667,1,0,1.81,llm:high
+proposed_v2_static_trust,dang_38,dangerous,,medium,0.4705,medium,medium,0.383,1,0,—,llm:medium
+proposed_v2_static_trust,dang_06,dangerous,,high,0.685,high,high,0.667,1,0,1.58,llm:high
+proposed_v2_static_trust,dang_18,dangerous,,medium,0.4345,medium,medium,0.383,1,0,—,llm:medium
+proposed_v2_static_trust,dang_11,dangerous,,high,0.728,high,high,0.667,1,0,1.62,llm:high
+proposed_v2_static_trust,dang_19,dangerous,,high,0.6475,high,high,0.667,1,0,61.39,llm:high
+proposed_v2_static_trust,dang_20,dangerous,,critical,0.926,critical,critical,0.91,2,0,1.57,llm:critical; llm:critical
+proposed_v2_static_trust,dang_26,dangerous,,high,0.6805,high,high,0.667,1,0,1.54,llm:high
+proposed_v2_static_trust,dang_09,dangerous,,high,0.6265,high,high,0.667,1,0,61.54,llm:high
+proposed_v2_static_trust,dang_17,dangerous,,critical,0.944,critical,critical,0.91,1,0,1.54,llm:critical
+proposed_v2_static_trust,dang_05,dangerous,,critical,0.8855,critical,critical,0.91,2,0,1.67,llm:critical; llm:critical
+proposed_v2_static_trust,dang_24,dangerous,,high,0.6305,high,high,0.667,1,0,61.33,llm:high
+proposed_v2_static_trust,dang_07,dangerous,,critical,0.943,critical,critical,0.91,1,0,1.46,llm:critical
+proposed_v2_static_trust,dang_34,dangerous,,high,0.6455,high,high,0.667,1,0,61.52,llm:high
+proposed_v2_static_trust,dang_29,dangerous,,high,0.621,high,high,0.667,1,0,61.68,llm:high
+proposed_v2_static_trust,dang_02,dangerous,,critical,0.975,critical,critical,0.91,1,0,1.68,llm:critical
+proposed_v2_static_trust,dang_16,dangerous,,high,0.713,high,high,0.667,1,0,1.75,llm:high
+proposed_v2_static_trust,dang_39,dangerous,,high,0.666,high,high,0.667,1,0,61.9,llm:high
+proposed_v2_static_trust,dang_22,dangerous,,critical,0.9555,critical,critical,0.91,1,0,1.45,llm:critical
+proposed_v2_static_trust,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.667,1,0,62.69,llm:high
+proposed_v2_static_trust,adv_23,adversarial,sign,high,0.6315,high,high,0.667,1,0,62.56,llm:high
+proposed_v2_static_trust,adv_21,adversarial,sign,high,0.699,high,high,0.667,2,0,1.76,llm:high; llm:high
+proposed_v2_static_trust,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.91,3,0,1.59,llm:critical; llm:critical; llm:critical
+proposed_v2_static_trust,adv_33,adversarial,speech_claim,high,0.715,high,high,0.667,2,0,1.55,llm:high; llm:high
+proposed_v2_static_trust,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.667,1,0,62.58,llm:high
+proposed_v2_static_trust,adv_38,adversarial,sign,critical,0.937,critical,critical,0.91,2,0,1.53,llm:critical; llm:critical
+proposed_v2_static_trust,adv_22,adversarial,sign,critical,0.921,critical,critical,0.91,2,0,1.48,llm:critical; llm:critical
+proposed_v2_static_trust,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.91,3,0,1.52,llm:high; llm:critical; llm:critical
+proposed_v2_static_trust,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.91,2,0,1.49,llm:critical; llm:critical
+proposed_v2_static_trust,adv_06,adversarial,sign,critical,0.961,critical,critical,0.91,2,0,1.52,llm:critical; llm:critical
+proposed_v2_static_trust,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.91,2,0,1.84,llm:critical; llm:critical
+proposed_v2_static_trust,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.91,3,0,1.88,llm:critical; llm:critical; llm:critical
+proposed_v2_static_trust,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.91,3,0,1.74,llm:critical; llm:critical; llm:critical
+proposed_v2_static_trust,adv_37,adversarial,sign,high,0.716,high,high,0.667,2,0,1.91,llm:high; llm:high
+proposed_v2_static_trust,adv_25,adversarial,tts_playback,high,0.681,high,high,0.667,2,0,1.74,llm:high; llm:high
+proposed_v2_static_trust,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.667,2,0,1.64,llm:high; llm:high
+proposed_v2_static_trust,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.91,2,0,1.58,llm:critical; llm:critical
+proposed_v2_static_trust,adv_07,adversarial,sign,high,0.657,high,high,0.667,1,0,62.55,llm:high
+proposed_v2_static_trust,adv_03,adversarial,speech_claim,high,0.635,high,high,0.667,1,0,62.85,llm:high
+proposed_v2_static_trust,adv_20,adversarial,sign,critical,0.885,critical,critical,0.91,3,0,2.06,llm:critical; llm:high; llm:critical
+proposed_v2_static_trust,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.91,2,0,1.51,llm:critical; llm:critical
+proposed_v2_static_trust,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.667,2,0,1.73,llm:high; llm:high
+proposed_v2_static_trust,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.91,3,0,1.96,llm:critical; llm:critical; llm:critical
+proposed_v2_static_trust,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.667,2,0,1.78,llm:high; llm:high
+proposed_v2_static_trust,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.91,2,0,1.68,llm:critical; llm:critical
+proposed_v2_static_trust,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.667,1,0,62.53,llm:high
+proposed_v2_static_trust,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.91,2,0,1.91,llm:critical; llm:critical
+proposed_v2_floor_only,norm_23,normal,,low,0.1365,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_18,normal,,low,0.0775,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_12,normal,,low,0.122,low,low,0.1,1,1,—,llm:low
+proposed_v2_floor_only,norm_34,normal,,low,0.099,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2_floor_only,norm_26,normal,,low,0.1545,low,low,0.0259,0,0,—,fuzzy_only:low
+proposed_v2_floor_only,norm_13,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_22,normal,,low,0.09,low,low,0.1,1,1,—,llm:low
+proposed_v2_floor_only,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2_floor_only,norm_31,normal,,low,0.0675,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_floor_only,norm_37,normal,,low,0.0685,low,low,0.1,1,1,—,llm:low
+proposed_v2_floor_only,norm_29,normal,,low,0.1275,low,low,0.0326,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_19,normal,,low,0.153,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_16,normal,,low,0.172,low,low,0.032,0,0,—,fuzzy_only:low
+proposed_v2_floor_only,norm_39,normal,,low,0.1,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_33,normal,,low,0.1025,low,low,0.1,1,1,—,fuzzy_only:low; fuzzy_only:low; llm:low
+proposed_v2_floor_only,norm_02,normal,,low,0.062,low,low,0.1,1,1,—,llm:low
+proposed_v2_floor_only,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2_floor_only,norm_38,normal,,low,0.1385,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_27,normal,,low,0.083,low,low,0.1,1,1,—,llm:low
+proposed_v2_floor_only,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2_floor_only,norm_06,normal,,low,0.088,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_floor_only,norm_08,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_14,normal,,low,0.114,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_floor_only,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2_floor_only,norm_17,normal,,low,0.0585,low,low,0.1,1,1,—,llm:low
+proposed_v2_floor_only,norm_01,normal,,low,0.07,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_floor_only,norm_07,normal,,low,0.165,low,low,0.1,1,1,—,llm:low
+proposed_v2_floor_only,dang_37,dangerous,,critical,0.9555,critical,critical,0.95,1,1,1.58,llm:critical
+proposed_v2_floor_only,dang_04,dangerous,,high,0.626,high,high,0.7,1,1,61.87,llm:high
+proposed_v2_floor_only,dang_23,dangerous,,medium,0.4275,medium,medium,0.4,1,1,—,llm:medium
+proposed_v2_floor_only,dang_03,dangerous,,medium,0.4645,medium,medium,0.4,1,1,—,llm:medium
+proposed_v2_floor_only,dang_28,dangerous,,medium,0.4385,medium,medium,0.4,1,1,—,llm:medium
+proposed_v2_floor_only,dang_21,dangerous,,high,0.6945,high,high,0.7,1,1,2.31,llm:high
+proposed_v2_floor_only,dang_35,dangerous,,critical,0.9235,critical,critical,0.95,2,2,2.4,llm:critical; llm:critical
+proposed_v2_floor_only,dang_33,dangerous,,medium,0.4415,medium,medium,0.4,1,1,—,llm:medium
+proposed_v2_floor_only,dang_01,dangerous,,high,0.684,high,high,0.7,1,1,1.87,llm:high
+proposed_v2_floor_only,dang_36,dangerous,,high,0.728,high,high,0.7,1,1,3.47,llm:high
+proposed_v2_floor_only,dang_38,dangerous,,medium,0.4705,medium,medium,0.4,1,1,—,llm:medium
+proposed_v2_floor_only,dang_06,dangerous,,high,0.685,high,high,0.7,1,1,1.93,llm:high
+proposed_v2_floor_only,dang_18,dangerous,,medium,0.4345,medium,medium,0.4,1,1,—,llm:medium
+proposed_v2_floor_only,dang_11,dangerous,,high,0.728,high,high,0.7,1,1,2.4,llm:high
+proposed_v2_floor_only,dang_19,dangerous,,high,0.6475,high,high,0.7,1,1,62.98,llm:high
+proposed_v2_floor_only,dang_20,dangerous,,critical,0.926,critical,critical,0.95,2,2,2.36,llm:critical; llm:critical
+proposed_v2_floor_only,dang_26,dangerous,,high,0.6805,high,high,0.7,1,1,1.88,llm:high
+proposed_v2_floor_only,dang_09,dangerous,,high,0.6265,high,high,0.7,1,1,62.05,llm:high
+proposed_v2_floor_only,dang_17,dangerous,,critical,0.944,critical,critical,0.95,1,1,1.73,llm:critical
+proposed_v2_floor_only,dang_05,dangerous,,critical,0.8855,critical,critical,0.95,2,2,2.55,llm:high; llm:critical
+proposed_v2_floor_only,dang_24,dangerous,,high,0.6305,high,high,0.7,1,1,61.88,llm:high
+proposed_v2_floor_only,dang_07,dangerous,,critical,0.943,critical,critical,0.95,1,1,1.36,llm:critical
+proposed_v2_floor_only,dang_34,dangerous,,high,0.6455,high,high,0.7,1,1,62.12,llm:high
+proposed_v2_floor_only,dang_29,dangerous,,high,0.621,high,high,0.7,1,1,61.63,llm:high
+proposed_v2_floor_only,dang_02,dangerous,,critical,0.975,critical,critical,0.95,1,1,1.4,llm:critical
+proposed_v2_floor_only,dang_16,dangerous,,high,0.713,high,high,0.7,1,1,1.53,llm:high
+proposed_v2_floor_only,dang_39,dangerous,,high,0.666,high,high,0.7,1,1,61.5,llm:high
+proposed_v2_floor_only,dang_22,dangerous,,critical,0.9555,critical,critical,0.95,1,1,1.46,llm:critical
+proposed_v2_floor_only,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.7,1,1,62.5,llm:high
+proposed_v2_floor_only,adv_23,adversarial,sign,high,0.6315,high,high,0.7,1,1,62.98,llm:high
+proposed_v2_floor_only,adv_21,adversarial,sign,high,0.699,critical,critical,0.95,2,2,3.17,llm:high; llm:critical
+proposed_v2_floor_only,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.95,3,3,2.54,llm:critical; llm:critical; llm:critical
+proposed_v2_floor_only,adv_33,adversarial,speech_claim,high,0.715,high,high,0.7,2,2,2.26,llm:high; llm:high
+proposed_v2_floor_only,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.7,1,1,62.68,llm:high
+proposed_v2_floor_only,adv_38,adversarial,sign,critical,0.937,critical,critical,0.95,2,2,1.46,llm:critical; llm:critical
+proposed_v2_floor_only,adv_22,adversarial,sign,critical,0.921,critical,critical,0.95,2,2,1.6,llm:critical; llm:critical
+proposed_v2_floor_only,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.95,3,3,2.52,llm:high; llm:critical; llm:critical
+proposed_v2_floor_only,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.95,2,2,1.53,llm:critical; llm:critical
+proposed_v2_floor_only,adv_06,adversarial,sign,critical,0.961,critical,critical,0.95,2,2,1.33,llm:critical; llm:critical
+proposed_v2_floor_only,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.95,2,2,1.74,llm:critical; llm:critical
+proposed_v2_floor_only,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.95,3,3,1.72,llm:critical; llm:high; llm:critical
+proposed_v2_floor_only,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.95,3,3,2.44,llm:critical; llm:critical; llm:critical
+proposed_v2_floor_only,adv_37,adversarial,sign,high,0.716,critical,critical,0.95,2,2,1.56,llm:high; llm:critical
+proposed_v2_floor_only,adv_25,adversarial,tts_playback,high,0.681,high,high,0.7,2,2,2.65,llm:high; llm:high
+proposed_v2_floor_only,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.7,2,2,1.95,llm:high; llm:high
+proposed_v2_floor_only,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.95,2,2,1.75,llm:critical; llm:critical
+proposed_v2_floor_only,adv_07,adversarial,sign,high,0.657,high,high,0.7,1,1,62.67,llm:high
+proposed_v2_floor_only,adv_03,adversarial,speech_claim,high,0.635,high,high,0.7,1,1,63.27,llm:high
+proposed_v2_floor_only,adv_20,adversarial,sign,critical,0.885,critical,critical,0.95,3,3,2.66,llm:high; llm:high; llm:critical
+proposed_v2_floor_only,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.95,2,2,2.45,llm:critical; llm:critical
+proposed_v2_floor_only,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.7,2,2,2.75,llm:high; llm:high
+proposed_v2_floor_only,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.95,3,3,3.44,llm:critical; llm:critical; llm:critical
+proposed_v2_floor_only,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.7,2,2,2.49,llm:high; llm:high
+proposed_v2_floor_only,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.95,2,2,2.67,llm:critical; llm:critical
+proposed_v2_floor_only,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.7,1,1,65.45,llm:high
+proposed_v2_floor_only,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.95,2,2,1.84,llm:critical; llm:critical
+proposed_v2_no_B,norm_23,normal,,low,0.1365,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_18,normal,,low,0.0775,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_12,normal,,low,0.122,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_34,normal,,low,0.099,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2_no_B,norm_26,normal,,low,0.1545,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_13,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_22,normal,,low,0.09,low,low,0.0294,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2_no_B,norm_31,normal,,low,0.0675,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_37,normal,,low,0.0685,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_29,normal,,low,0.1275,low,low,0.0299,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_19,normal,,low,0.153,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_16,normal,,low,0.172,low,low,0.0294,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_39,normal,,low,0.1,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_33,normal,,low,0.1025,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_02,normal,,low,0.062,low,low,0.0285,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2_no_B,norm_38,normal,,low,0.1385,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_27,normal,,low,0.083,low,low,0.0277,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2_no_B,norm_06,normal,,low,0.088,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_08,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_14,normal,,low,0.114,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_B,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2_no_B,norm_17,normal,,low,0.0585,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_01,normal,,low,0.07,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,norm_07,normal,,low,0.165,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_B,dang_37,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.72,llm:critical
+proposed_v2_no_B,dang_04,dangerous,,high,0.626,high,high,0.667,1,1,62.41,llm:high
+proposed_v2_no_B,dang_23,dangerous,,medium,0.4275,medium,medium,0.383,1,1,—,llm:medium
+proposed_v2_no_B,dang_03,dangerous,,medium,0.4645,medium,medium,0.383,1,1,—,llm:medium
+proposed_v2_no_B,dang_28,dangerous,,medium,0.4385,medium,medium,0.383,1,1,—,llm:medium
+proposed_v2_no_B,dang_21,dangerous,,high,0.6945,high,high,0.667,1,1,2.15,llm:high
+proposed_v2_no_B,dang_35,dangerous,,critical,0.9235,critical,critical,0.91,2,2,2.89,llm:critical; llm:critical
+proposed_v2_no_B,dang_33,dangerous,,medium,0.4415,medium,medium,0.383,1,1,—,llm:medium
+proposed_v2_no_B,dang_01,dangerous,,high,0.684,high,high,0.667,1,1,2.15,llm:high
+proposed_v2_no_B,dang_36,dangerous,,high,0.728,high,high,0.667,1,1,2.04,llm:high
+proposed_v2_no_B,dang_38,dangerous,,medium,0.4705,medium,medium,0.383,1,1,—,llm:medium
+proposed_v2_no_B,dang_06,dangerous,,high,0.685,high,high,0.667,1,1,1.64,llm:high
+proposed_v2_no_B,dang_18,dangerous,,medium,0.4345,medium,medium,0.383,1,1,—,llm:medium
+proposed_v2_no_B,dang_11,dangerous,,high,0.728,high,high,0.667,1,1,2.87,llm:high
+proposed_v2_no_B,dang_19,dangerous,,high,0.6475,high,high,0.667,1,1,61.99,llm:high
+proposed_v2_no_B,dang_20,dangerous,,critical,0.926,critical,critical,0.91,2,2,2.09,llm:critical; llm:critical
+proposed_v2_no_B,dang_26,dangerous,,high,0.6805,high,high,0.667,1,1,2.84,llm:high
+proposed_v2_no_B,dang_09,dangerous,,high,0.6265,high,high,0.667,1,1,62.29,llm:high
+proposed_v2_no_B,dang_17,dangerous,,critical,0.944,critical,critical,0.91,1,1,2.31,llm:critical
+proposed_v2_no_B,dang_05,dangerous,,critical,0.8855,critical,critical,0.91,2,2,1.88,llm:critical; llm:critical
+proposed_v2_no_B,dang_24,dangerous,,high,0.6305,high,high,0.667,1,1,92.6,llm:high
+proposed_v2_no_B,dang_07,dangerous,,critical,0.943,critical,critical,0.91,1,1,1.76,llm:critical
+proposed_v2_no_B,dang_34,dangerous,,high,0.6455,high,high,0.667,1,1,61.99,llm:high
+proposed_v2_no_B,dang_29,dangerous,,high,0.621,high,high,0.667,1,1,61.74,llm:high
+proposed_v2_no_B,dang_02,dangerous,,critical,0.975,critical,critical,0.91,1,1,1.57,llm:critical
+proposed_v2_no_B,dang_16,dangerous,,high,0.713,high,high,0.667,1,1,1.61,llm:high
+proposed_v2_no_B,dang_39,dangerous,,high,0.666,high,high,0.667,1,1,63.02,llm:high
+proposed_v2_no_B,dang_22,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.67,llm:critical
+proposed_v2_no_B,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.667,1,1,63.98,llm:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_no_B,adv_23,adversarial,sign,high,0.6315,high,high,0.667,1,1,63.01,llm:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_no_B,adv_21,adversarial,sign,high,0.699,high,high,0.667,2,2,1.82,llm:high; llm:high
+proposed_v2_no_B,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.91,2,2,2.12,llm:critical; fuzzy_only:critical; llm:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_33,adversarial,speech_claim,high,0.715,high,high,0.667,2,2,1.9,llm:high; llm:high; fuzzy_only:high
+proposed_v2_no_B,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.667,1,1,62.99,llm:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_no_B,adv_38,adversarial,sign,critical,0.937,critical,critical,0.91,2,2,1.8,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_22,adversarial,sign,critical,0.921,critical,critical,0.91,2,2,2.25,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.91,3,3,2.37,llm:high; llm:critical; llm:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.91,2,2,1.96,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_06,adversarial,sign,critical,0.961,critical,critical,0.91,2,2,1.63,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.91,2,2,1.73,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.91,2,2,1.9,llm:critical; fuzzy_only:critical; llm:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.91,3,3,2.07,llm:critical; llm:critical; llm:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_37,adversarial,sign,high,0.716,high,high,0.667,2,2,2.11,llm:high; llm:high; fuzzy_only:high
+proposed_v2_no_B,adv_25,adversarial,tts_playback,high,0.681,high,high,0.667,2,2,2.42,llm:high; llm:high; fuzzy_only:high
+proposed_v2_no_B,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.667,2,2,2.34,llm:high; llm:high; fuzzy_only:high
+proposed_v2_no_B,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.91,2,2,1.38,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_07,adversarial,sign,high,0.657,high,high,0.667,1,1,64.05,llm:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_no_B,adv_03,adversarial,speech_claim,high,0.635,high,high,0.667,1,1,63.63,llm:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_no_B,adv_20,adversarial,sign,critical,0.885,critical,critical,0.91,2,2,3.21,llm:critical; fuzzy_only:high; llm:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.91,2,2,1.72,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.667,2,2,1.98,llm:high; llm:high; fuzzy_only:high
+proposed_v2_no_B,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.91,3,3,1.95,llm:critical; llm:critical; llm:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.667,2,2,2.41,llm:high; llm:high; fuzzy_only:high
+proposed_v2_no_B,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.91,2,2,1.63,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_B,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.667,1,1,63.4,llm:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_no_B,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.91,2,2,2.55,llm:critical; llm:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_no_C,norm_23,normal,,low,0.1365,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_18,normal,,low,0.0775,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_12,normal,,low,0.122,low,low,0.109,1,1,—,llm:low
+proposed_v2_no_C,norm_34,normal,,low,0.099,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2_no_C,norm_26,normal,,low,0.1545,low,low,0.0259,0,0,—,fuzzy_only:low
+proposed_v2_no_C,norm_13,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_22,normal,,low,0.09,low,low,0.1094,1,1,—,llm:low
+proposed_v2_no_C,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2_no_C,norm_31,normal,,low,0.0675,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_C,norm_37,normal,,low,0.0685,low,low,0.109,1,1,—,llm:low
+proposed_v2_no_C,norm_29,normal,,low,0.1275,low,low,0.0326,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_19,normal,,low,0.153,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_16,normal,,low,0.172,low,low,0.032,0,0,—,fuzzy_only:low
+proposed_v2_no_C,norm_39,normal,,low,0.1,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_33,normal,,low,0.1025,low,low,0.1089,1,1,—,fuzzy_only:low; fuzzy_only:low; llm:low
+proposed_v2_no_C,norm_02,normal,,low,0.062,low,low,0.1093,1,1,—,llm:low
+proposed_v2_no_C,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2_no_C,norm_38,normal,,low,0.1385,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_27,normal,,low,0.083,low,low,0.1092,1,1,—,llm:low
+proposed_v2_no_C,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2_no_C,norm_06,normal,,low,0.088,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_C,norm_08,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_14,normal,,low,0.114,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_no_C,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2_no_C,norm_17,normal,,low,0.0585,low,low,0.109,1,1,—,llm:low
+proposed_v2_no_C,norm_01,normal,,low,0.07,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_no_C,norm_07,normal,,low,0.165,low,low,0.109,1,1,—,llm:low
+proposed_v2_no_C,dang_37,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.57,llm:critical
+proposed_v2_no_C,dang_04,dangerous,,high,0.626,high,high,0.667,1,1,61.22,llm:high
+proposed_v2_no_C,dang_23,dangerous,,medium,0.4275,medium,medium,0.3918,1,1,—,llm:medium
+proposed_v2_no_C,dang_03,dangerous,,medium,0.4645,medium,medium,0.3918,1,1,—,llm:medium
+proposed_v2_no_C,dang_28,dangerous,,medium,0.4385,medium,medium,0.3918,1,1,—,llm:medium
+proposed_v2_no_C,dang_21,dangerous,,high,0.6945,high,high,0.667,1,1,1.74,llm:high
+proposed_v2_no_C,dang_35,dangerous,,critical,0.9235,critical,critical,0.91,2,2,1.49,llm:critical; llm:critical
+proposed_v2_no_C,dang_33,dangerous,,medium,0.4415,medium,medium,0.3918,1,1,—,llm:medium
+proposed_v2_no_C,dang_01,dangerous,,high,0.684,high,high,0.667,1,1,1.38,llm:high
+proposed_v2_no_C,dang_36,dangerous,,high,0.728,high,high,0.667,1,1,1.42,llm:high
+proposed_v2_no_C,dang_38,dangerous,,medium,0.4705,medium,medium,0.3918,1,1,—,llm:medium
+proposed_v2_no_C,dang_06,dangerous,,high,0.685,high,high,0.667,1,1,1.86,llm:high
+proposed_v2_no_C,dang_18,dangerous,,medium,0.4345,medium,medium,0.3918,1,1,—,llm:medium
+proposed_v2_no_C,dang_11,dangerous,,high,0.728,high,high,0.667,1,1,1.77,llm:high
+proposed_v2_no_C,dang_19,dangerous,,high,0.6475,high,high,0.667,1,1,61.35,llm:high
+proposed_v2_no_C,dang_20,dangerous,,critical,0.926,critical,critical,0.91,2,2,1.69,llm:critical; llm:critical
+proposed_v2_no_C,dang_26,dangerous,,high,0.6805,high,high,0.667,1,1,1.62,llm:high
+proposed_v2_no_C,dang_09,dangerous,,high,0.6265,high,high,0.667,1,1,61.64,llm:high
+proposed_v2_no_C,dang_17,dangerous,,critical,0.944,critical,critical,0.91,1,1,1.5,llm:critical
+proposed_v2_no_C,dang_05,dangerous,,critical,0.8855,critical,critical,0.91,2,2,1.76,llm:high; llm:critical
+proposed_v2_no_C,dang_24,dangerous,,high,0.6305,high,high,0.667,1,1,62.12,llm:high
+proposed_v2_no_C,dang_07,dangerous,,critical,0.943,critical,critical,0.91,1,1,1.93,llm:critical
+proposed_v2_no_C,dang_34,dangerous,,high,0.6455,high,high,0.667,1,1,61.98,llm:high
+proposed_v2_no_C,dang_29,dangerous,,high,0.621,high,high,0.667,1,1,61.55,llm:high
+proposed_v2_no_C,dang_02,dangerous,,critical,0.975,critical,critical,0.91,1,1,1.45,llm:critical
+proposed_v2_no_C,dang_16,dangerous,,high,0.713,high,high,0.667,1,1,1.5,llm:high
+proposed_v2_no_C,dang_39,dangerous,,high,0.666,high,high,0.667,1,1,61.48,llm:high
+proposed_v2_no_C,dang_22,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.25,llm:critical
+proposed_v2_no_C,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.667,1,1,62.87,llm:high
+proposed_v2_no_C,adv_23,adversarial,sign,high,0.6315,high,high,0.667,1,1,62.52,llm:high
+proposed_v2_no_C,adv_21,adversarial,sign,high,0.699,high,high,0.667,2,2,1.46,llm:high; llm:high
+proposed_v2_no_C,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.91,3,3,1.62,llm:critical; llm:critical; llm:critical
+proposed_v2_no_C,adv_33,adversarial,speech_claim,high,0.715,high,high,0.667,2,2,1.87,llm:high; llm:high
+proposed_v2_no_C,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.667,1,1,63.37,llm:high
+proposed_v2_no_C,adv_38,adversarial,sign,critical,0.937,critical,critical,0.91,2,2,1.23,llm:critical; llm:critical
+proposed_v2_no_C,adv_22,adversarial,sign,critical,0.921,critical,critical,0.91,2,2,1.52,llm:critical; llm:critical
+proposed_v2_no_C,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.91,3,3,1.66,llm:high; llm:critical; llm:critical
+proposed_v2_no_C,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.91,2,2,1.66,llm:critical; llm:critical
+proposed_v2_no_C,adv_06,adversarial,sign,critical,0.961,critical,critical,0.91,2,2,1.58,llm:critical; llm:critical
+proposed_v2_no_C,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.91,2,2,1.82,llm:critical; llm:critical
+proposed_v2_no_C,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.91,3,3,1.93,llm:critical; llm:high; llm:critical
+proposed_v2_no_C,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.91,3,3,1.43,llm:critical; llm:critical; llm:critical
+proposed_v2_no_C,adv_37,adversarial,sign,high,0.716,high,high,0.667,2,2,1.93,llm:high; llm:high
+proposed_v2_no_C,adv_25,adversarial,tts_playback,high,0.681,high,high,0.667,2,2,2.23,llm:high; llm:high
+proposed_v2_no_C,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.667,2,2,1.84,llm:high; llm:high
+proposed_v2_no_C,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.91,2,2,1.32,llm:critical; llm:critical
+proposed_v2_no_C,adv_07,adversarial,sign,high,0.657,high,high,0.667,1,1,63.35,llm:high
+proposed_v2_no_C,adv_03,adversarial,speech_claim,high,0.635,high,high,0.667,1,1,62.85,llm:high
+proposed_v2_no_C,adv_20,adversarial,sign,critical,0.885,critical,critical,0.91,3,3,1.71,llm:high; llm:high; llm:critical
+proposed_v2_no_C,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.91,2,2,1.83,llm:critical; llm:critical
+proposed_v2_no_C,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.667,2,2,1.7,llm:high; llm:high
+proposed_v2_no_C,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.91,3,3,1.94,llm:critical; llm:critical; llm:critical
+proposed_v2_no_C,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.667,2,2,2.14,llm:high; llm:high
+proposed_v2_no_C,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.91,2,2,1.76,llm:critical; llm:critical
+proposed_v2_no_C,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.667,1,1,62.95,llm:high
+proposed_v2_no_C,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.91,2,2,1.99,llm:critical; llm:critical
+proposed_v2_no_E,norm_23,normal,,low,0.1365,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_18,normal,,low,0.0775,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_12,normal,,low,0.122,low,low,0.1144,1,1,—,llm:low
+proposed_v2_no_E,norm_34,normal,,low,0.099,low,low,0.1106,1,1,—,llm:low
+proposed_v2_no_E,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2_no_E,norm_26,normal,,low,0.1545,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_13,normal,,low,0.096,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_22,normal,,low,0.09,low,low,0.12,1,1,—,llm:low
+proposed_v2_no_E,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2_no_E,norm_31,normal,,low,0.0675,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_37,normal,,low,0.0685,low,low,0.1197,1,1,—,llm:low
+proposed_v2_no_E,norm_29,normal,,low,0.1275,low,low,0.1107,1,1,—,llm:low
+proposed_v2_no_E,norm_19,normal,,low,0.153,low,low,0.1098,1,1,—,llm:low
+proposed_v2_no_E,norm_16,normal,,low,0.172,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_39,normal,,low,0.1,low,low,0.1096,1,1,—,llm:low
+proposed_v2_no_E,norm_33,normal,,low,0.1025,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_02,normal,,low,0.062,low,low,0.1146,1,1,—,llm:low
+proposed_v2_no_E,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2_no_E,norm_38,normal,,low,0.1385,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_27,normal,,low,0.083,low,low,0.1199,1,1,—,llm:low
+proposed_v2_no_E,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2_no_E,norm_06,normal,,low,0.088,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_08,normal,,low,0.096,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_14,normal,,low,0.114,low,low,0.1104,1,1,—,llm:low
+proposed_v2_no_E,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2_no_E,norm_17,normal,,low,0.0585,low,low,0.1144,1,1,—,llm:low
+proposed_v2_no_E,norm_01,normal,,low,0.07,low,low,0.106,1,1,—,llm:low
+proposed_v2_no_E,norm_07,normal,,low,0.165,low,low,0.1144,1,1,—,llm:low
+proposed_v2_no_E,dang_37,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.58,llm:critical
+proposed_v2_no_E,dang_04,dangerous,,high,0.626,high,high,0.667,1,1,61.87,llm:high
+proposed_v2_no_E,dang_23,dangerous,,medium,0.4275,medium,medium,0.4018,1,1,—,llm:medium
+proposed_v2_no_E,dang_03,dangerous,,medium,0.4645,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2_no_E,dang_28,dangerous,,medium,0.4385,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2_no_E,dang_21,dangerous,,high,0.6945,high,high,0.667,1,1,2.31,llm:high
+proposed_v2_no_E,dang_35,dangerous,,critical,0.9235,critical,critical,0.91,2,2,2.4,llm:critical; llm:critical
+proposed_v2_no_E,dang_33,dangerous,,medium,0.4415,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2_no_E,dang_01,dangerous,,high,0.684,high,high,0.667,1,1,1.87,llm:high
+proposed_v2_no_E,dang_36,dangerous,,high,0.728,high,high,0.667,1,1,3.47,llm:high
+proposed_v2_no_E,dang_38,dangerous,,medium,0.4705,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2_no_E,dang_06,dangerous,,high,0.685,high,high,0.667,1,1,1.93,llm:high
+proposed_v2_no_E,dang_18,dangerous,,medium,0.4345,medium,medium,0.3997,1,1,—,llm:medium
+proposed_v2_no_E,dang_11,dangerous,,high,0.728,high,high,0.667,1,1,2.4,llm:high
+proposed_v2_no_E,dang_19,dangerous,,high,0.6475,high,high,0.667,1,1,62.98,llm:high
+proposed_v2_no_E,dang_20,dangerous,,critical,0.926,critical,critical,0.91,2,2,2.36,llm:critical; llm:critical
+proposed_v2_no_E,dang_26,dangerous,,high,0.6805,high,high,0.667,1,1,1.88,llm:high
+proposed_v2_no_E,dang_09,dangerous,,high,0.6265,high,high,0.667,1,1,62.05,llm:high
+proposed_v2_no_E,dang_17,dangerous,,critical,0.944,critical,critical,0.91,1,1,1.73,llm:critical
+proposed_v2_no_E,dang_05,dangerous,,critical,0.8855,critical,critical,0.91,2,2,2.55,llm:high; llm:critical
+proposed_v2_no_E,dang_24,dangerous,,high,0.6305,high,high,0.667,1,1,61.88,llm:high
+proposed_v2_no_E,dang_07,dangerous,,critical,0.943,critical,critical,0.91,1,1,1.36,llm:critical
+proposed_v2_no_E,dang_34,dangerous,,high,0.6455,high,high,0.667,1,1,62.12,llm:high
+proposed_v2_no_E,dang_29,dangerous,,high,0.621,high,high,0.667,1,1,61.63,llm:high
+proposed_v2_no_E,dang_02,dangerous,,critical,0.975,critical,critical,0.91,1,1,1.4,llm:critical
+proposed_v2_no_E,dang_16,dangerous,,high,0.713,high,high,0.667,1,1,1.53,llm:high
+proposed_v2_no_E,dang_39,dangerous,,high,0.666,high,high,0.667,1,1,61.5,llm:high
+proposed_v2_no_E,dang_22,dangerous,,critical,0.9555,critical,critical,0.91,1,1,1.46,llm:critical
+proposed_v2_no_E,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.667,1,1,62.5,llm:high
+proposed_v2_no_E,adv_23,adversarial,sign,high,0.6315,high,high,0.667,1,1,62.98,llm:high
+proposed_v2_no_E,adv_21,adversarial,sign,high,0.699,high,high,0.667,2,2,3.17,llm:high; llm:high
+proposed_v2_no_E,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.91,3,3,2.54,llm:critical; llm:critical; llm:critical
+proposed_v2_no_E,adv_33,adversarial,speech_claim,high,0.715,high,high,0.667,2,2,2.26,llm:high; llm:high
+proposed_v2_no_E,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.667,1,1,62.68,llm:high
+proposed_v2_no_E,adv_38,adversarial,sign,critical,0.937,critical,critical,0.91,2,2,1.46,llm:critical; llm:critical
+proposed_v2_no_E,adv_22,adversarial,sign,critical,0.921,critical,critical,0.91,2,2,1.6,llm:critical; llm:critical
+proposed_v2_no_E,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.91,3,3,2.52,llm:high; llm:critical; llm:critical
+proposed_v2_no_E,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.91,2,2,1.53,llm:critical; llm:critical
+proposed_v2_no_E,adv_06,adversarial,sign,critical,0.961,critical,critical,0.91,2,2,1.33,llm:critical; llm:critical
+proposed_v2_no_E,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.91,2,2,1.74,llm:critical; llm:critical
+proposed_v2_no_E,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.91,3,3,1.72,llm:critical; llm:high; llm:critical
+proposed_v2_no_E,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.91,3,3,2.44,llm:critical; llm:critical; llm:critical
+proposed_v2_no_E,adv_37,adversarial,sign,high,0.716,high,high,0.667,2,2,1.56,llm:high; llm:high
+proposed_v2_no_E,adv_25,adversarial,tts_playback,high,0.681,high,high,0.667,2,2,2.65,llm:high; llm:high
+proposed_v2_no_E,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.667,2,2,1.95,llm:high; llm:high
+proposed_v2_no_E,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.91,2,2,1.75,llm:critical; llm:critical
+proposed_v2_no_E,adv_07,adversarial,sign,high,0.657,high,high,0.667,1,1,62.67,llm:high
+proposed_v2_no_E,adv_03,adversarial,speech_claim,high,0.635,high,high,0.667,1,1,63.27,llm:high
+proposed_v2_no_E,adv_20,adversarial,sign,critical,0.885,critical,critical,0.91,3,3,2.66,llm:high; llm:high; llm:critical
+proposed_v2_no_E,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.91,2,2,2.45,llm:critical; llm:critical
+proposed_v2_no_E,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.667,2,2,2.75,llm:high; llm:high
+proposed_v2_no_E,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.91,3,3,3.44,llm:critical; llm:critical; llm:critical
+proposed_v2_no_E,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.667,2,2,2.49,llm:high; llm:high
+proposed_v2_no_E,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.91,2,2,2.67,llm:critical; llm:critical
+proposed_v2_no_E,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.667,1,1,65.45,llm:high
+proposed_v2_no_E,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.91,2,2,1.84,llm:critical; llm:critical
+proposed_v2_local,norm_23,normal,,low,0.1365,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_18,normal,,low,0.0775,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_12,normal,,low,0.122,low,low,0.027,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_34,normal,,low,0.099,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_35,normal,,low,0.1205,low,low,0.0,0,0,—,
+proposed_v2_local,norm_26,normal,,low,0.1545,low,low,0.0259,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_13,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_22,normal,,low,0.09,low,low,0.032,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_20,normal,,low,0.0615,low,low,0.0,0,0,—,
+proposed_v2_local,norm_31,normal,,low,0.0675,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_37,normal,,low,0.0685,low,low,0.027,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_29,normal,,low,0.1275,low,low,0.0326,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_19,normal,,low,0.153,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_16,normal,,low,0.172,low,low,0.032,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_39,normal,,low,0.1,low,low,0.0262,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_33,normal,,low,0.1025,low,low,0.0254,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_02,normal,,low,0.062,low,low,0.0308,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_00,normal,,low,0.1535,low,low,0.0,0,0,—,
+proposed_v2_local,norm_38,normal,,low,0.1385,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_27,normal,,low,0.083,low,low,0.0298,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_05,normal,,low,0.091,low,low,0.0,0,0,—,
+proposed_v2_local,norm_06,normal,,low,0.088,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_08,normal,,low,0.096,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_14,normal,,low,0.114,low,low,0.0251,0,0,—,fuzzy_only:low; fuzzy_only:low; fuzzy_only:low
+proposed_v2_local,norm_15,normal,,low,0.0865,low,low,0.0,0,0,—,
+proposed_v2_local,norm_17,normal,,low,0.0585,low,low,0.027,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_01,normal,,low,0.07,low,low,0.0251,0,0,—,fuzzy_only:low
+proposed_v2_local,norm_07,normal,,low,0.165,low,low,0.027,0,0,—,fuzzy_only:low
+proposed_v2_local,dang_37,dangerous,,critical,0.9555,critical,critical,0.91,0,0,0.0,fuzzy_only:critical
+proposed_v2_local,dang_04,dangerous,,high,0.626,high,high,0.667,0,0,60.0,fuzzy_only:high
+proposed_v2_local,dang_23,dangerous,,medium,0.4275,medium,medium,0.383,0,0,—,fuzzy_only:medium
+proposed_v2_local,dang_03,dangerous,,medium,0.4645,medium,medium,0.383,0,0,—,fuzzy_only:medium
+proposed_v2_local,dang_28,dangerous,,medium,0.4385,medium,medium,0.383,0,0,—,fuzzy_only:medium
+proposed_v2_local,dang_21,dangerous,,high,0.6945,high,high,0.667,0,0,0.1,fuzzy_only:high
+proposed_v2_local,dang_35,dangerous,,critical,0.9235,critical,critical,0.91,0,0,0.1,fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,dang_33,dangerous,,medium,0.4415,medium,medium,0.383,0,0,—,fuzzy_only:medium
+proposed_v2_local,dang_01,dangerous,,high,0.684,high,high,0.667,0,0,0.1,fuzzy_only:high
+proposed_v2_local,dang_36,dangerous,,high,0.728,high,high,0.667,0,0,0.1,fuzzy_only:high
+proposed_v2_local,dang_38,dangerous,,medium,0.4705,medium,medium,0.383,0,0,—,fuzzy_only:medium
+proposed_v2_local,dang_06,dangerous,,high,0.685,high,high,0.667,0,0,0.1,fuzzy_only:high
+proposed_v2_local,dang_18,dangerous,,medium,0.4345,medium,medium,0.383,0,0,—,fuzzy_only:medium
+proposed_v2_local,dang_11,dangerous,,high,0.728,high,high,0.667,0,0,0.1,fuzzy_only:high
+proposed_v2_local,dang_19,dangerous,,high,0.6475,high,high,0.667,0,0,60.0,fuzzy_only:high
+proposed_v2_local,dang_20,dangerous,,critical,0.926,critical,critical,0.91,0,0,0.1,fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,dang_26,dangerous,,high,0.6805,high,high,0.667,0,0,0.1,fuzzy_only:high
+proposed_v2_local,dang_09,dangerous,,high,0.6265,high,high,0.667,0,0,60.0,fuzzy_only:high
+proposed_v2_local,dang_17,dangerous,,critical,0.944,critical,critical,0.91,0,0,0.0,fuzzy_only:critical
+proposed_v2_local,dang_05,dangerous,,critical,0.8855,critical,critical,0.91,0,0,0.1,fuzzy_only:high; fuzzy_only:critical
+proposed_v2_local,dang_24,dangerous,,high,0.6305,high,high,0.667,0,0,60.0,fuzzy_only:high
+proposed_v2_local,dang_07,dangerous,,critical,0.943,critical,critical,0.91,0,0,0.0,fuzzy_only:critical
+proposed_v2_local,dang_34,dangerous,,high,0.6455,high,high,0.667,0,0,60.0,fuzzy_only:high
+proposed_v2_local,dang_29,dangerous,,high,0.621,high,high,0.667,0,0,60.0,fuzzy_only:high
+proposed_v2_local,dang_02,dangerous,,critical,0.975,critical,critical,0.91,0,0,0.0,fuzzy_only:critical
+proposed_v2_local,dang_16,dangerous,,high,0.713,high,high,0.667,0,0,0.1,fuzzy_only:high
+proposed_v2_local,dang_39,dangerous,,high,0.666,high,high,0.667,0,0,60.0,fuzzy_only:high
+proposed_v2_local,dang_22,dangerous,,critical,0.9555,critical,critical,0.91,0,0,0.0,fuzzy_only:critical
+proposed_v2_local,adv_31,adversarial,voice_mismatch,high,0.6395,high,high,0.667,0,0,61.0,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_23,adversarial,sign,high,0.6315,high,high,0.667,0,0,61.0,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_21,adversarial,sign,high,0.699,high,high,0.667,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_04,adversarial,sign,critical,0.8925,critical,critical,0.91,0,0,0.1,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_33,adversarial,speech_claim,high,0.715,high,high,0.667,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_27,adversarial,tts_playback,high,0.6615,high,high,0.667,0,0,61.0,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_38,adversarial,sign,critical,0.937,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_22,adversarial,sign,critical,0.921,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_36,adversarial,sign,critical,0.8945,critical,critical,0.91,0,0,0.1,fuzzy_only:high; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_18,adversarial,speech_claim,critical,0.951,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_06,adversarial,sign,critical,0.961,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_02,adversarial,speech_claim,critical,0.95,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_08,adversarial,tts_playback,critical,0.91,critical,critical,0.91,0,0,0.1,fuzzy_only:critical; fuzzy_only:high; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_12,adversarial,voice_mismatch,critical,0.9125,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_37,adversarial,sign,high,0.716,high,high,0.667,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_25,adversarial,tts_playback,high,0.681,high,high,0.667,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_01,adversarial,speech_claim,high,0.6755,high,high,0.667,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_26,adversarial,tts_playback,critical,0.9285,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_07,adversarial,sign,high,0.657,high,high,0.667,0,0,61.0,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_03,adversarial,speech_claim,high,0.635,high,high,0.667,0,0,61.0,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_20,adversarial,sign,critical,0.885,critical,critical,0.91,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_14,adversarial,voice_mismatch,critical,0.9515,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_17,adversarial,speech_claim,high,0.6775,high,high,0.667,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_24,adversarial,tts_playback,critical,0.876,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_29,adversarial,voice_mismatch,high,0.726,high,high,0.667,0,0,0.1,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_10,adversarial,tts_playback,critical,0.9435,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
+proposed_v2_local,adv_15,adversarial,voice_mismatch,high,0.659,high,high,0.667,0,0,61.0,fuzzy_only:high; fuzzy_only:high; fuzzy_only:high
+proposed_v2_local,adv_34,adversarial,speech_claim,critical,0.9635,critical,critical,0.91,0,0,0.0,fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical; fuzzy_only:critical
