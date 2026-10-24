@@ -15,11 +15,13 @@ published as ``action`` events with ``source: classifier`` once ``classifier_vot
 p ≥ ``classifier_min_prob`` (the rules keep standing / sitting / walking / lying; a lying person only gets the riskier
 falling / distress / fighting; fighting / hugging also need a second track classified as fighting / hugging).
 Smoking uses three kinds of evidence: hand-to-mouth episodes (rule), the classifier's
-``smoking`` class and a cigarette seen by the detector in the head / hands crop; a confident drinking / eating /
-phone_call without a visible cigarette vetoes the hand-to-mouth rule (fewer false alarms). ``evidence`` lists which
-fired. The cigarette detector checks every tracked person once per ``cigarette_every_sec``; a cigarette seen in
-``cigarette_min_hits`` checks within ``cigarette_window_sec`` is evidence on its own; the classifier's smoking needs a
-hand-to-mouth episode or one sighting as well.
+``smoking`` class and a cigarette seen by the detector in the head / hands crop — with
+``smoking_requires_cigarette`` (default, owner review 2026-10-24: the first two alone fired on everyday hand movements
+almost all the time) only a seen cigarette produces ``possible_smoking``, the others are listed as supporting
+evidence; a confident drinking / eating / phone_call without a visible cigarette vetoes the hand-to-mouth rule
+(fewer false alarms). ``evidence`` lists which fired. The cigarette detector checks every tracked person once per
+``cigarette_every_sec``; a cigarette seen in ``cigarette_min_hits`` checks within ``cigarette_window_sec`` is evidence
+on its own; the classifier's smoking needs a hand-to-mouth episode or one sighting as well.
 
 Input comes from the vision shared buffer (raw frame + person boxes with track ids). ``object_detected`` /
 ``disappeared`` events reach this process through its control queue — the orchestrator forwards them as event JSON
@@ -72,6 +74,7 @@ class ActionConfig:
     mouth_episode_max_sec: float = 5.0      # longer contact (resting the head on the hands) is not a puff
     smoking_window_sec: float = 30.0
     smoking_min_count: int = 3
+    smoking_requires_cigarette: bool = True  # only a cigarette the detector saw counts (pose / classifier alone: no)
     classifier_min_prob: float = 0.55       # learned layer: a window counts for its top class at / above this
     classifier_votes: int = 2               # … and this many consecutive windows must agree
     classifier_fight_min_prob: float = 0.9  # fighting (risk 0.9) needs a far more confident window
@@ -434,6 +437,8 @@ class ActionEngine:
         evidence = [name for name, ok in (("hand_to_mouth", count >= cfg.smoking_min_count and not vetoed),
                                           ("classifier", classifier_smoking and (count >= 1 or hits >= 1)),
                                           ("cigarette", cigarette)) if ok]
+        if cfg.smoking_requires_cigarette and not cigarette:
+            evidence = []                   # hand-to-mouth / the classifier alone fired on drinking, phoning, …
         if not evidence:
             track.smoking = False
             return None

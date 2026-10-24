@@ -125,6 +125,23 @@ def test_immediate_actions(tmp_path, payload, severity):
     assert snapshot["alerts"] and snapshot["alerts"][0].startswith(payload["action"])
 
 
+def test_smoking_episode_is_not_carried_into_later_snapshots(tmp_path):
+    """Owner review 2026-10-24: a smoking report reappeared in every later snapshot (and in GPT's gas summaries)"""
+    aggregator, clock = make(tmp_path)
+    aggregator.on_event(make_event("camera", "object_detected", {"track_id": 3, "class": "person",
+                                                                 "state": "appeared"}))
+    aggregator.on_event(make_event("camera", "action", {"track_id": 3, "action": "sitting"}))
+    first = aggregator.on_event(make_event("camera", "action", {"track_id": 3, "action": "possible_smoking"},
+                                           severity="warning"))
+    assert first["people"][0]["actions"] == ["sitting", "possible_smoking"]
+    clock.now += 3
+    aggregator.on_event(make_event("camera", "object_detected", {"track_id": 8, "class": "laptop",
+                                                                 "state": "appeared"}))
+    clock.now += 70
+    later = aggregator.tick()
+    assert later["people"][0]["actions"] == ["sitting"] and not any("smoking" in a for a in later["alerts"])
+
+
 def test_critical_events_within_cooldown_are_batched(tmp_path):
     aggregator, clock = make(tmp_path, immediate_cooldown_sec=3)
     smoking = make_event("camera", "action", {"track_id": 1, "action": "possible_smoking"}, severity="critical")

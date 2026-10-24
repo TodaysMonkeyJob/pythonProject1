@@ -85,7 +85,7 @@ IoU; per track ~2.5 s of keypoints are kept.
 | `sitting` | knee 40–130° and thigh ≤ 45° from horizontal; or box < 75 % of this track's standing height with bent / hidden legs; or upright with the legs hidden by something inside the frame (desk) and not moving |
 | `walking` | least-squares box centre speed ≥ 0.3 body heights/s, or box height changing ≥ 25 %/s (towards / away from the camera), or ≥ half the speed with alternating ankles |
 | `lying` | torso ≥ 60° from vertical (event severity `warning`, possible fall) |
-| `possible_smoking` | a wrist reaches the nose (≤ 0.35 torso lengths) and leaves again (> 0.6) within 5 s, ≥ 3 times in 30 s (gas readings never confirm it: the sensor measures solvent / ammonia gases, not smoke) |
+| `possible_smoking` | a wrist reaches the nose (≤ 0.35 torso lengths) and leaves again (> 0.6) within 5 s, ≥ 3 times in 30 s — supporting evidence only: with `smoking_requires_cigarette` (default) the event needs a cigarette seen by the detector; gas readings never confirm it (the sensor measures solvent / ammonia gases, not smoke) |
 
 Legs cut by the bottom edge of the frame (close-up) give `unknown`, not `standing`. Resting the head on the
 hands (long contact) and keypoint drop-outs do not count as puffs.

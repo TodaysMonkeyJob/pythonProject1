@@ -75,7 +75,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     `actions.py` (F2, TOD-13) → `ActionRecognizer`: pose (`pose.py`, yolo11n-pose) on shared frames with persons,
     rule-based standing/sitting/walking/lying + `possible_smoking` (never confirmed by gas: the sensor measures
     solvent / ammonia gases, not smoke — `gas_confirmed`, the trust confirmation and rule R9 were removed on
-    2026-10-24, rule base `dedd67a8cd46`); `action` events only on change. `eval_actions.py` → labelled-video accuracy.
+    2026-10-24, rule base `dedd67a8cd46`; `actions.smoking_requires_cigarette` (default true): only a cigarette the
+    detector saw produces it; the aggregator never carries it into the next window, `aggregator.EPISODIC_ACTIONS`);
+    `action` events only on change. `eval_actions.py` → labelled-video accuracy.
     `identity.py` (F3, TOD-14) → `IdentityRecognizer`: YuNet + SFace on person boxes matched in the F9 registry,
     `person_identified` (`person_id` + `identity` = display name, `unknown_N` / `not_visible`) on change. F2 and F3
     share `consumer.SharedFrameConsumer`, which with discovery serves EVERY camera buffer in one process

@@ -28,8 +28,10 @@ Rules:
   sharply_rising (below the dangerous level) → high, NOT critical; slight + rising → medium
 - current action lying for longer than brief → critical (possible fall); falling or distress → high (critical if
   then lying); fighting → high; staggering, climbing → medium
-- possible_smoking → low or medium; the gas sensor measures solvent / ammonia gases, not smoke: gas never confirms
-  smoking and smoking never explains a gas reading (judge each on its own)
+- possible_smoking → low or medium; the gas sensor measures solvent / ammonia gases (acetone, ethanol, ammonia,
+  toluol), not smoke: gas never confirms smoking, smoking never explains or worsens a gas reading
+- summary and reasons: mention smoking only when possible_smoking is in this window's evidence, as its own fact;
+  in a gas situation describe the gas only — never write that a person "may be smoking" because of gas
 - unknown person: daytime, ordinary behaviour → low; night (22:00–06:00), very loud sounds or odd actions → medium/high
 - camera / module problems alone → low, log
 - use only facts from the data; if data is scarce, say so

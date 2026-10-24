@@ -97,7 +97,7 @@ def test_classifier_actions_need_consecutive_agreement_and_respect_lying():
 
 
 def test_smoking_from_the_classifier_and_the_veto_by_drinking():
-    cfg = ActionConfig(smoking_min_count=3, classifier_every_sec=0.0)
+    cfg = ActionConfig(smoking_min_count=3, classifier_every_sec=0.0, smoking_requires_cigarette=False)
     smoking = ActionEngine(cfg, FakeClassifier({"smoking": 0.7, "other": 0.3}))
     assert not [e for e in run(smoking, [STAND] * 6) if e["action"] == "possible_smoking"]   # the classifier alone
     hand = STAND.copy()
@@ -111,6 +111,9 @@ def test_smoking_from_the_classifier_and_the_veto_by_drinking():
     assert rule_only and rule_only[0]["evidence"] == ["hand_to_mouth"]
     drinking = ActionEngine(cfg, FakeClassifier({"drinking": 0.9, "other": 0.1}))
     assert not [e for e in run(drinking, poses) if e["action"] == "possible_smoking"]   # vetoed
+    strict = ActionConfig(smoking_min_count=3, classifier_every_sec=0.0)           # default: a cigarette is needed
+    both = ActionEngine(strict, FakeClassifier({"smoking": 0.9, "other": 0.1}))
+    assert not [e for e in run(both, poses) if e["action"] == "possible_smoking"]
 
 
 class FakeCigarette:
