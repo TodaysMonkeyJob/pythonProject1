@@ -16,20 +16,20 @@ deescalation / instruction_to_system there is a warning sign;
 risk_floor {term, mu} — the lowest risk the trusted sensors justify: do not go below it without trusted evidence.
 
 Risk levels (the system's risk scale 0–1: {risk_scale}):
-- medium = needs a check, nobody is harmed or about to be: smoking (also with gas_confirmed), slight gas or a slow
-  rise, staggering / climbing, a stranger by day acting oddly;
+- medium = needs a check, nobody is harmed or about to be: smoking, slight gas or a slow rise, staggering /
+  climbing, a stranger by day acting oddly;
 - high = harm is likely soon unless someone acts: elevated gas or a sharp rise, fighting, falling, distress, a
   stranger at night;
 - between the two choose high only if the trusted evidence itself shows likely harm — a trigger flag, an alert's
-  wording (gas_confirmed) or the number of alerts alone is not enough.
+  wording or the number of alerts alone is not enough.
 
 Rules:
 - gas: level dangerous or a gas_threshold alert → critical; level elevated, a gas_rising alert or trend
   sharply_rising (below the dangerous level) → high, NOT critical; slight + rising → medium
 - current action lying for longer than brief → critical (possible fall); falling or distress → high (critical if
   then lying); fighting → high; staggering, climbing → medium
-- possible_smoking with gas_confirmed → medium (high only if the gas level is elevated or rising sharply);
-  without gas → low or medium
+- possible_smoking → low or medium; the gas sensor measures solvent / ammonia gases, not smoke: gas never confirms
+  smoking and smoking never explains a gas reading (judge each on its own)
 - unknown person: daytime, ordinary behaviour → low; night (22:00–06:00), very loud sounds or odd actions → medium/high
 - camera / module problems alone → low, log
 - use only facts from the data; if data is scarce, say so

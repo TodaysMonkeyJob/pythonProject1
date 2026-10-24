@@ -34,7 +34,7 @@ IDENTITY_EVENTS = ["identity_created", "identity_renamed", "identity_merged", "i
 DEFAULT_MODULES = {
     "gas": ("modules.gas:run", "gas", []),
     "vision": ("modules.vision.detector:run", "vision", ["person_identified"]),       # names on the overlay
-    "actions": ("modules.vision.actions:run", "actions", ["gas_reading", "alert", "object_detected"]),
+    "actions": ("modules.vision.actions:run", "actions", ["object_detected"]),
     "identity": ("modules.vision.identity:run", "identity", ["object_detected", *IDENTITY_EVENTS]),
     "audio": ("modules.audio.mic_controller:run", "audio",
               ["scene_active", "object_detected", "person_identified", *IDENTITY_EVENTS]),

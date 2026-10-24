@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from core.events import Event, make_event
-from modules.vision.actions import (ActionConfig, ActionEngine, ActionRecognizer, GasEvidence, classify_posture,
+from modules.vision.actions import (ActionConfig, ActionEngine, ActionRecognizer, classify_posture,
                                     frame_action, match_poses, vote)
 from modules.vision.pose import (L_ANKLE, L_WRIST, NOSE, R_ANKLE, Pose, joint_angle, knee_angle, mask_keypoints,
                                  torso_angle, wrist_to_mouth)
@@ -244,7 +244,7 @@ def test_possible_smoking_without_gas():
     smoking = [e for e in events if e[0]["action"] == "possible_smoking"]
     assert len(smoking) == 1
     payload, severity, confidence = smoking[0]
-    assert payload["gas_confirmed"] is False and payload["wrist_to_mouth_count"] == 3
+    assert "gas_confirmed" not in payload and payload["wrist_to_mouth_count"] == 3
     assert severity == "warning" and 0.5 <= confidence < 0.8
 
 
@@ -272,34 +272,17 @@ def test_two_episodes_are_not_smoking():
     assert "possible_smoking" not in actions_of(events)
 
 
-def test_gas_rise_confirms_smoking():
+def test_gas_never_confirms_smoking():
+    """The gas sensor measures solvent / ammonia gases, not smoke: a gas rise changes nothing about smoking"""
     engine = ActionEngine()
+    engine.on_event(make_event("gas", "alert", {"reason": "gas_rising", "gas": "ethanol"}, "critical"), 0.0)
     events, t = run_frames(engine, smoking_frames(3))
-    assert [p["gas_confirmed"] for p, _, _ in events if p["action"] == "possible_smoking"] == [False]
-
-    engine.on_event(make_event("gas", "alert", {"reason": "gas_rising", "gas": "ethanol"}, "critical"), t)
-    events, t = run_frames(engine, smoking_frames(1), t0=t)
     smoking = [e for e in events if e[0]["action"] == "possible_smoking"]
     assert len(smoking) == 1
-    assert smoking[0][0]["gas_confirmed"] is True and smoking[0][1] == "critical" and smoking[0][2] >= 0.8
-
-    events, _ = run_frames(engine, smoking_frames(2), t0=t)            # same evidence → no repeat
+    payload, severity, confidence = smoking[0]
+    assert "gas_confirmed" not in payload and severity == "warning" and confidence < 0.8
+    events, _ = run_frames(engine, smoking_frames(2), t0=t)            # same track → no repeat
     assert "possible_smoking" not in actions_of(events)
-
-
-def test_gas_evidence_from_readings_and_window():
-    gas = GasEvidence(window_sec=60, rise_pct=0.5)
-    reading = lambda c, trend="stable": make_event("gas", "gas_reading", {"concentration_pct": c, "trend": trend})  # noqa: E731
-    gas.add(reading(0.1), 0)
-    gas.add(reading(0.3), 10)
-    assert not gas.confirmed(10)
-    gas.add(reading(0.8), 20)                                          # +0.7 % within the window
-    assert gas.confirmed(20)
-    assert not gas.confirmed(81)
-    gas.add(reading(0.8, trend="rising"), 90)
-    assert gas.confirmed(90)
-    gas.add(make_event("camera", "alert", {"reason": "gas_rising"}), 200)  # not from the gas module
-    assert not gas.confirmed(200)
 
 
 # --- track lifetime ---------------------------------------------------------------------------------------------
@@ -358,7 +341,7 @@ def test_recognizer_runs_pose_only_with_persons_and_forwards_gas():
         ("camera", "action", "standing", 4)
 
     module.handle_control(make_event("gas", "alert", {"reason": "gas_threshold"}, "critical").to_json())
-    assert module.engine.gas.rises
+    assert not hasattr(module.engine, "gas")                       # gas is not an input of the action module
     module.handle_control("not json")  # ignored
 
 

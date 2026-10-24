@@ -30,7 +30,7 @@ export function describe(ev) {
     case "notification": return `${p.title || ""}: ${p.body || ""}`;
     case "person_identified": return `#${p.track_id} ${personName(p.person_id, p.identity)}${p.known ? "" : " (незнайомець)"}`;
     case "object_detected": return `${p.class} #${p.track_id} ${p.state === "disappeared" ? "зник" : "з'явився"}`;
-    case "action": return `#${p.track_id} ${p.action}${p.gas_confirmed ? " + газ" : ""}`;
+    case "action": return `#${p.track_id} ${p.action}`;
     case "speech": return `«${p.text || ""}»`;
     case "gas_reading": return `${p.gas} ${p.concentration_pct}% ${p.trend || ""}`;
     case "motion": return `рух ${p.state === "end" ? "припинився" : "почався"}`;

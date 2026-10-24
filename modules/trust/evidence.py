@@ -7,7 +7,7 @@ Channel: Δr (confirm) / Δs (refute)
   sees the same class / the track disappears within ``flicker_sec``; operator;
 * motion — an object track on the camera within ``corroborate_sec`` / operator;
 * pose_action — the action held ≥ ``action_window_sec`` / replaced sooner (a flip); operator either way;
-* smoking — gas_confirmed or gas rising in the location within ``smoking_gas_sec`` / operator;
+* smoking — operator feedback only (gas never confirms smoking: the sensor measures solvent / ammonia gases);
 * face_identity — the same person again on the track, the voice of the visible person matches / merge, unmerge,
   rename of that person; operator;
 * scene_text — an escalating text while the sensors alarm / a calming or instructing text they contradict;
@@ -76,7 +76,6 @@ class TrustEvidence:
         self.tracks: Dict[Tuple[str, Any], Dict[str, Any]] = {}        # (camera, track) → appeared, class, person
         self.actions: Dict[Tuple[str, Any], Tuple[str, float]] = {}
         self.last_object: Dict[str, float] = {}                         # camera → last object event time
-        self.smoking: Dict[str, float] = {}                             # location → possible_smoking time
         self.twin_at: Dict[Tuple[str, str], float] = {}
         self.selftest_at: Dict[str, float] = {}
         self.person_cameras: Dict[str, Set[str]] = {}                   # person_id → cameras that identified them
@@ -230,11 +229,7 @@ class TrustEvidence:
                 self._confirm(f"{cam}/objects", f"на треку #{key[1]} розпізнано позу", now)
         self.actions[key] = (action, now)
         if action == "possible_smoking":
-            smoking = self._channel(cam, "camera", "smoking", loc, now)
-            if p.get("gas_confirmed"):
-                self._confirm(smoking, "газ підтвердив куріння", now)
-            else:
-                self.smoking[loc] = now
+            self._channel(cam, "camera", "smoking", loc, now)
 
     def _on_person_identified(self, event: Event, now: float, scored) -> None:
         p, cam, loc = event.payload, event.device_id, event.location_id
@@ -326,11 +321,6 @@ class TrustEvidence:
                             for channel in ("gas_class", "gas_concentration", "gas_trend"):
                                 self._confirm(self._channel(device, "gas", channel, loc, now),
                                               "другий сенсор локації погоджується", now)
-        if loc in self.smoking and (p.get("trend") == "rising" or float(p.get("rise_rate_pct_per_min") or 0) > 0):
-            if now - self.smoking[loc] <= float(self.ev.get("smoking_gas_sec", 60)):
-                for cam in self._devices("camera", loc):
-                    self._confirm(f"{cam}/smoking", "газ зростає після підозри на куріння", now)
-            del self.smoking[loc]
 
     def _selftest(self, sensor: str, location: Optional[str], ok: bool, detail: Optional[str], now: float) -> None:
         if ok:

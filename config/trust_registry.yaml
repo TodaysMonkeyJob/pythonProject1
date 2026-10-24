@@ -103,7 +103,6 @@ evidence:                   # how the event stream confirms / refutes channels (
   flicker_sec: 2            # a track that disappears this soon after appearing → objects refuted
   corroborate_sec: 5        # motion with an object track within this → motion confirmed
   action_window_sec: 4      # an action replaced sooner (flip) → pose_action refuted; held longer → confirmed
-  smoking_gas_sec: 60       # gas rising in the location within this after possible_smoking → smoking confirmed
   twin_every_sec: 600       # twin gas sensors agreeing → confirmed at most this often
   selftest_every_sec: 3600  # a passed self-test confirms gas channels at most this often
   registry_quiet_days: 1    # a day without corrections → person_registry confirmed

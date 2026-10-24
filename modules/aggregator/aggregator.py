@@ -152,8 +152,7 @@ class SceneState:
             if p.get("action") and p["action"] not in person.actions:
                 person.actions.append(p["action"])
             if p.get("action") == "possible_smoking":
-                self.alerts.append(f"possible_smoking #{p['track_id']}"
-                                   + (" gas_confirmed" if p.get("gas_confirmed") else ""))
+                self.alerts.append(f"possible_smoking #{p['track_id']}")
             elif p.get("action") == "lying":
                 self.alerts.append(f"lying #{p['track_id']}")
         elif event.type == "speech":

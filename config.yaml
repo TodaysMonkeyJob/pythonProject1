@@ -123,8 +123,6 @@ actions:
   mouth_episode_max_sec: 5  # longer contact (head resting on the hands) is not a puff
   smoking_window_sec: 30
   smoking_min_count: 3      # wrist-near-mouth episodes per window → possible_smoking
-  gas_window_sec: 60        # gas rise within this window → gas_confirmed
-  gas_rise_pct: 0.5
   log_events: true          # write action events to logs/YYYY-MM-DD/actions.jsonl
 
 identity:                   # F3 faces + F9 unified identity registry (faces and voices of the same person)
@@ -270,7 +268,7 @@ gas:
     ammonia: 3.0
     acetone: 5.0
     toluol: 3.0
-  rise_rate_threshold: 2.0     # %/min over trend_window_sec → alert (used by F2 gas_confirmed)
+  rise_rate_threshold: 2.0     # %/min over trend_window_sec → gas_rising alert
   trend_window_sec: 60
   trend_stable_band: 0.2       # |rate| below this (%/min) → trend "stable"
   alert_cooldown_sec: 30       # repeat the same alert reason at most this often

@@ -73,8 +73,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     changes only; writes annotated JPEG + raw frame + person boxes to `SharedFrameBuffer` (shared memory).
     `export.py` → NCNN model, `bench.py` → FPS/RAM report.
     `actions.py` (F2, TOD-13) → `ActionRecognizer`: pose (`pose.py`, yolo11n-pose) on shared frames with persons,
-    rule-based standing/sitting/walking/lying + `possible_smoking` (`gas_confirmed` from gas events forwarded
-    via the control queue); `action` events only on change. `eval_actions.py` → labelled-video accuracy.
+    rule-based standing/sitting/walking/lying + `possible_smoking` (never confirmed by gas: the sensor measures
+    solvent / ammonia gases, not smoke — `gas_confirmed`, the trust confirmation and rule R9 were removed on
+    2026-10-24, rule base `dedd67a8cd46`); `action` events only on change. `eval_actions.py` → labelled-video accuracy.
     `identity.py` (F3, TOD-14) → `IdentityRecognizer`: YuNet + SFace on person boxes matched in the F9 registry,
     `person_identified` (`person_id` + `identity` = display name, `unknown_N` / `not_visible`) on change. F2 and F3
     share `consumer.SharedFrameConsumer`, which with discovery serves EVERY camera buffer in one process

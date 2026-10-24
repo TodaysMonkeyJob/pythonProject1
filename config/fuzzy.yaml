@@ -122,14 +122,11 @@ rules:
     rule: "IF action_risk IS high AND motion_level IS NOT none THEN risk IS high"
     meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
            rationale: "A high-risk action with motion (a person getting up, fighting) is high but not yet critical."}
-  - id: R9
-    rule: "IF action_risk IS medium AND gas_concentration IS NOT clean THEN risk IS high"
-    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
-           rationale: "Possible smoking with gas in the air is supported by an independent sensor."}
   - id: R10
-    rule: "IF action_risk IS medium AND gas_concentration IS clean THEN risk IS medium"
-    meta: {source: "initial expert base (TOD-26)", author: TodaysMonkeyJob, added: 2026-10-18,
-           rationale: "Possible smoking without any gas is only a medium concern (pose rule false positives)."}
+    rule: "IF action_risk IS medium THEN risk IS medium"
+    meta: {source: "owner review: the gas sensor does not detect smoke (2026-10-24)", author: TodaysMonkeyJob,
+           added: 2026-10-24,
+           rationale: "A medium-risk action (possible smoking, staggering, climbing) is a medium concern on its own; gas is judged by the gas rules, it never confirms smoking (R9 removed)."}
   # Strangers and time of day
   - id: R11
     rule: "IF unknown_share IS all AND time_of_day_risk IS night THEN risk IS high"

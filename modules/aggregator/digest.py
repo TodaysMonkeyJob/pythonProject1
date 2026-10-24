@@ -9,7 +9,7 @@ One short line per non-empty section, local time, no ids / nulls / key names::
     speech: 12:03:40 uk unknown_4 "Привіт, є тут хтось?"
     sounds: 12:03:41 loud -12dB
     gas: acetone 51960ppm rising conf0.30 alerts gas_threshold
-    alerts: possible_smoking #5 gas_confirmed
+    alerts: possible_smoking #5
     system: mic active, scene active, 37 events
 
 Legend for the GPT system prompt: ``#N`` track id, ``?`` face not identified yet, ``unknown_N`` stranger
