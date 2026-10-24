@@ -72,7 +72,7 @@ GAS_LIMITS = {"ethanol": 5.0, "acetone": 5.0, "ammonia": 3.0, "toluol": 3.0}   #
 def rules_level(snapshot: Dict[str, Any], limits: Optional[Dict[str, float]] = None) -> str:
     """
     rules_only baseline (crisp, deterministic): gas concentration ≥ its threshold → critical, rising faster than
-    2 %/min or a gas alert → high; current action lying → critical, possible_smoking → medium (high with gas);
+    2 %/min or a gas alert → high; current action lying → critical, possible_smoking → medium;
     an unknown person at night (22:00–06:00 local) → high; else low.
     """
     limits = limits or GAS_LIMITS
@@ -86,7 +86,7 @@ def rules_level(snapshot: Dict[str, Any], limits: Optional[Dict[str, float]] = N
     if night and any(str(p["identity"]).startswith("unknown_") and p.get("present", True) for p in snapshot["people"]):
         level = "high"
     if "possible_smoking" in current or "possible_smoking" in alerts:
-        level = max(level, "high" if "gas_confirmed" in alerts else "medium", key=LEVELS.index)
+        level = max(level, "medium", key=LEVELS.index)          # gas never confirms smoking (owner review 2026-10-24)
     concentration = gas.get("concentration_ppm", 0) / 10_000
     if "gas_rising" in alerts or (gas.get("rise_rate_pct_per_min") or 0) > 2.0:
         level = max(level, "high", key=LEVELS.index)

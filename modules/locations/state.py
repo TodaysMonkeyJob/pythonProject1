@@ -66,7 +66,7 @@ def in_evening(now_local: datetime, after: str, until: str = "06:00") -> bool:
 def describe(event: Event) -> str:
     p = event.payload
     if event.type == "action":
-        return f"{p.get('action')} #{p.get('track_id')}" + (" + gas" if p.get("gas_confirmed") else "")
+        return f"{p.get('action')} #{p.get('track_id')}"
     if event.type == "alert":
         return " ".join(str(x) for x in (p.get("reason", "alert"), p.get("gas") or p.get("module") or "") if x)
     if event.type == "person_identified":

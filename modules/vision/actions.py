@@ -4,8 +4,9 @@ Action recognition (F2): rules on top of pose keypoints, plus an optional learne
 Per frame a posture is classified (standing / sitting / lying / walking / unknown); an action is confirmed
 when it wins ≥ ``vote_threshold`` of the known frames in the last ``window_sec`` and an ``action`` event is
 published only when the confirmed action of a track changes. ``possible_smoking`` is a separate signal:
-wrist near the mouth ≥ ``smoking_min_count`` times in ``smoking_window_sec``, with ``gas_confirmed`` set when
-the gas module reported a rise in the last ``gas_window_sec``.
+wrist near the mouth ≥ ``smoking_min_count`` times in ``smoking_window_sec``. Gas readings never confirm it: the gas
+sensor classifies solvent / ammonia gases (ethanol, acetone, ammonia, toluol), not smoke, so a concentration rise is
+unrelated to smoking (the former ``gas_confirmed`` flag raised false "critical" smoking alerts).
 
 Learned layer (``actions.classifier_model`` / ``actions.cigarette_model``, ``modules.vision.action_classifier``): a
 skeleton classifier trained on HMDB51 + NTU RGB+D 60 adds dynamic actions — falling, staggering, fighting, running,
@@ -20,9 +21,9 @@ fired. The cigarette detector checks every tracked person once per ``cigarette_e
 ``cigarette_min_hits`` checks within ``cigarette_window_sec`` is evidence on its own; the classifier's smoking needs a
 hand-to-mouth episode or one sighting as well.
 
-Input comes from the vision shared buffer (raw frame + person boxes with track ids). Gas readings and
-``object_detected``/``disappeared`` events reach this process through its control queue — the orchestrator
-forwards them as event JSON strings.
+Input comes from the vision shared buffer (raw frame + person boxes with track ids). ``object_detected`` /
+``disappeared`` events reach this process through its control queue — the orchestrator forwards them as event JSON
+strings.
 """
 import collections
 import math
@@ -71,8 +72,6 @@ class ActionConfig:
     mouth_episode_max_sec: float = 5.0      # longer contact (resting the head on the hands) is not a puff
     smoking_window_sec: float = 30.0
     smoking_min_count: int = 3
-    gas_window_sec: float = 60.0
-    gas_rise_pct: float = 0.5               # concentration increase within gas_window_sec
     classifier_min_prob: float = 0.55       # learned layer: a window counts for its top class at / above this
     classifier_votes: int = 2               # … and this many consecutive windows must agree
     classifier_fight_min_prob: float = 0.9  # fighting (risk 0.9) needs a far more confident window
@@ -239,7 +238,6 @@ class TrackActions:
     mouth_since: float = 0.0
     mouth_events: Deque[float] = field(default_factory=collections.deque)
     smoking: bool = False
-    smoking_gas_confirmed: bool = False
     last_seen: float = 0.0
     predictions: Deque[Optional[str]] = field(default_factory=lambda: collections.deque(maxlen=8))
     smoking_probs: Deque[float] = field(default_factory=lambda: collections.deque(maxlen=8))
@@ -250,42 +248,6 @@ class TrackActions:
     cigarette_score: float = 0.0
     cigarette_seen_at: float = float("-inf")
     cigarette_hits: Deque[Tuple[float, str]] = field(default_factory=collections.deque)   # (t, "mouth" | "hand")
-
-
-class GasEvidence:
-    """Remembers gas rises reported on the bus (gas_threshold / gas_rising alerts, rising readings)."""
-
-    def __init__(self, window_sec: float = 60.0, rise_pct: float = 0.5):
-        self.window_sec = window_sec
-        self.rise_pct = rise_pct
-        self.rises: Deque[float] = collections.deque()
-        self.readings: Deque[Tuple[float, float]] = collections.deque()
-
-    def add(self, event: Event, now: float) -> None:
-        if event.source != "gas":
-            return
-        payload = event.payload
-        if event.type == "alert" and payload.get("reason") in ("gas_threshold", "gas_rising"):
-            self.rises.append(now)
-        elif event.type == "gas_reading":
-            concentration = payload.get("concentration_pct")
-            if payload.get("trend") == "rising":
-                self.rises.append(now)
-            if isinstance(concentration, (int, float)):
-                self.readings.append((now, float(concentration)))
-                self._trim(now)
-                if concentration - min(c for _, c in self.readings) >= self.rise_pct:
-                    self.rises.append(now)
-
-    def confirmed(self, now: float) -> bool:
-        self._trim(now)
-        return bool(self.rises)
-
-    def _trim(self, now: float) -> None:
-        while self.rises and now - self.rises[0] > self.window_sec:
-            self.rises.popleft()
-        while self.readings and now - self.readings[0][0] > self.window_sec:
-            self.readings.popleft()
 
 
 class ActionEngine:
@@ -305,13 +267,11 @@ class ActionEngine:
         """
         self.cfg = cfg or ActionConfig()
         self.tracks: Dict[int, TrackActions] = {}
-        self.gas = GasEvidence(self.cfg.gas_window_sec, self.cfg.gas_rise_pct)
         self.classifier, self.cigarette = classifier, cigarette
         self.frame: Optional[np.ndarray] = None
 
     def on_event(self, event: Event, now: float) -> None:
-        """Gas events feed the smoking confirmation; ``disappeared`` drops the track's history."""
-        self.gas.add(event, now)
+        """``disappeared`` drops the track's history."""
         if event.type == "object_detected" and event.payload.get("state") == "disappeared":
             self.tracks.pop(event.payload.get("track_id"), None)
 
@@ -477,17 +437,15 @@ class ActionEngine:
         if not evidence:
             track.smoking = False
             return None
-        gas_confirmed = self.gas.confirmed(now)
-        if track.smoking and (track.smoking_gas_confirmed or not gas_confirmed):
-            return None  # already reported with the same (or stronger) evidence
-        track.smoking, track.smoking_gas_confirmed = True, gas_confirmed
-        confidence = min(0.95, 0.4 + 0.15 * len(evidence) + 0.05 * max(0, count - cfg.smoking_min_count)
-                         + (0.3 if gas_confirmed else 0.0))
+        if track.smoking:
+            return None  # already reported
+        track.smoking = True
+        confidence = min(0.95, 0.4 + 0.15 * len(evidence) + 0.05 * max(0, count - cfg.smoking_min_count))
         payload = {"track_id": track_id, "action": SMOKING, "previous": track.action, "duration_sec": 0,
-                   "gas_confirmed": gas_confirmed, "wrist_to_mouth_count": count, "evidence": evidence,
+                   "wrist_to_mouth_count": count, "evidence": evidence,
                    "cigarette_seen": "cigarette" in evidence,
                    **({"smoking_probability": round(proba.get("smoking", 0.0), 3)} if proba else {})}
-        return payload, "critical" if gas_confirmed else "warning", round(confidence, 2)
+        return payload, "warning", round(confidence, 2)
 
 
 class ActionRecognizer(SharedFrameConsumer):
@@ -504,7 +462,7 @@ class ActionRecognizer(SharedFrameConsumer):
         super().__init__(event_queue, control_queue, config, self.cfg.get("action_fps", 5), frame_buffer)
         self.classifier, self.cigarette = None, None                    # learned layer, loaded in setup()
         self.engine = ActionEngine(ActionConfig.from_dict(self.cfg))   # the first camera's (single camera: the only)
-        self.engines: Dict[str, ActionEngine] = {}                     # device_id → per-camera tracks + gas evidence
+        self.engines: Dict[str, ActionEngine] = {}                     # device_id → per-camera tracks
         self.pose_estimator = pose_estimator
 
     def engine_for(self, device_id: str) -> ActionEngine:
@@ -536,18 +494,10 @@ class ActionRecognizer(SharedFrameConsumer):
 
     def on_event(self, event: Event, now: float) -> None:
         """
-        Forwarded bus events: ``object_detected`` / ``disappeared`` reach the engine of that camera; gas readings the
-        engines of cameras in the same location (or all, while locations are unassigned).
+        Forwarded bus events: ``object_detected`` / ``disappeared`` reach the engine of that camera.
         """
         if event.type == "object_detected":
             self.engine_for(event.device_id).on_event(event, now)
-            return
-        engines = self.engines or {"": self.engine}
-        for device_id, engine in engines.items():
-            slot = self.scheduler.slots.get(device_id)
-            location = slot.location_id if slot else event.location_id
-            if "unassigned" in (location, event.location_id) or location == event.location_id:
-                engine.on_event(event, now)
 
     def process(self, frame_id: int, timestamp: float, frame: np.ndarray, meta: Dict[str, Any]) -> None:
         """Runs pose for one shared frame and publishes the resulting events."""
@@ -564,7 +514,7 @@ def run(event_queue, control_queue, config):
     Module entry point for the orchestrator (own process).
 
     :param event_queue: Bus queue to publish events to
-    :param control_queue: Control messages ("stop") and forwarded bus events (gas, object_detected)
+    :param control_queue: Control messages ("stop") and forwarded bus events (object_detected)
     :param config: Full merged config
     """
     ActionRecognizer(event_queue, control_queue, config).run()

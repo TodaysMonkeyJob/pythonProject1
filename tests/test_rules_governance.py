@@ -32,7 +32,7 @@ def edit(path: Path, change) -> None:
 
 def test_every_rule_has_metadata_and_validation_fails_without_it(tmp_path):
     data = load_yaml(str(CONFIG))
-    assert metadata_errors(data) == [] and len(normalized(data)) == 58
+    assert metadata_errors(data) == [] and len(normalized(data)) == 57
     path = config_copy(tmp_path)
     edit(path, lambda d: d["rules"][0].pop("meta"))
     assert metadata_errors(load_yaml(str(path))) == ["risk/R1: metadata missing source, author, rationale, added"]

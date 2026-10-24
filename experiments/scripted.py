@@ -147,7 +147,7 @@ def dangerous(kind: str, s: Script, attack: Optional[str] = None) -> None:
         s.gas(150, 0.05, 0.05, "clean_air", hook=lambda i: attack_hook(s, attack, i, claimant))
     elif kind == "smoking":
         s.person(1, "ivan", True)
-        s.add("camera", "action", {"track_id": 1, "action": "possible_smoking", "gas_confirmed": True}, "cam-1", 10)
+        s.add("camera", "action", {"track_id": 1, "action": "possible_smoking"}, "cam-1", 10)
         s.mark_onset()
         claimant = ("ivan", "known")
         s.gas(150, 0.3, 0.9, "toluol", alert_at=99, hook=lambda i: attack_hook(s, attack, i, claimant))

@@ -62,12 +62,12 @@ CASES = [
         "alerts: lying #9",
         "system: mic active, scene active, 6 events",
     ])),
-    ("smoking: gas confirmed", {"medium", "high", "critical"}, "\n".join([
+    ("smoking with an unrelated gas rise", {"medium", "high"}, "\n".join([
         "12:30:00-12:30:30 UTC+3 CRITICAL possible_smoking #7 | incident 20261017-123030-5e5e",
         "people: #7 unknown_2 walking>standing 30s",
         "objects: person",
         "gas: toluol 9000ppm rising conf0.62",
-        "alerts: possible_smoking #7 gas_confirmed",
+        "alerts: possible_smoking #7",
         "system: mic active, scene active, 12 events",
     ])),
     ("smoking: no gas", {"low", "medium"}, "\n".join([

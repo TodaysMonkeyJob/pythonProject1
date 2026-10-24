@@ -48,8 +48,7 @@ def timeline_line(event: Event, local_offset) -> str:
         "object_detected": lambda: f"#{p.get('track_id')} {p.get('class')} {p.get('state')}",
         "person_identified": lambda: f"#{p.get('track_id')} {p.get('identity')}"
                                      f"{' (was ' + p['previous'] + ')' if p.get('previous') else ''}",
-        "action": lambda: f"#{p.get('track_id')} {p.get('action')}"
-                          f"{' gas_confirmed' if p.get('gas_confirmed') else ''}",
+        "action": lambda: f"#{p.get('track_id')} {p.get('action')}",
         "speech": lambda: f"\"{p.get('text', '')}\"",
         "sound": lambda: f"{p.get('rms_db')} dB",
         "gas_reading": lambda: f"{p.get('gas')} {p.get('concentration_pct')}% {p.get('trend')}",

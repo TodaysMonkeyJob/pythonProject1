@@ -115,7 +115,7 @@ def test_critical_gas_alert_snapshot_immediately(tmp_path):
 
 
 @pytest.mark.parametrize("payload,severity", [
-    ({"track_id": 3, "action": "possible_smoking", "gas_confirmed": False, "wrist_to_mouth_count": 3}, "warning"),
+    ({"track_id": 3, "action": "possible_smoking", "wrist_to_mouth_count": 3}, "warning"),
     ({"track_id": 3, "action": "lying", "previous": "standing"}, "warning"),
 ])
 def test_immediate_actions(tmp_path, payload, severity):
