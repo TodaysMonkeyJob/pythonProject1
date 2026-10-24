@@ -26,6 +26,22 @@ adversarial: not lowered). Calibration (C) is fitted on the calibration split wi
 manipulated answer is not the model's honest verbal risk). Latency = danger onset (manifest `danger_onset`, marked
 by the annotators) → the first decision ≥ high, incl. the LLM latency.
 
+## Experiment v2 (F29 / TOD-40)
+
+```bash
+python -m experiments.run --suite v2 --seed 42 --scripted --llm azure            # new GPT answers are cached
+python -m experiments.run --suite v2 --seed 42 --scripted --llm azure --offline  # cache read-only, no network
+```
+
+The new design `proposed_v2` (IT2 corridor + trust registry + two-sided corridor + the TOD-39 C / E) against the
+baselines and one variant per department question: `_type1` (type-1 corridor, u ignored), `_static_trust` (TOD-27
+constants, `variants.StaticTrustRegistry`), `_floor_only` (F17 max-projection), `_local` (no GPT: corridor L for
+every snapshot), plus `_no_B / _no_C / _no_E`. The sensor-failure block replays every evaluation scenario with the
+gas sensor broken (`variants.with_gas_failure`: +1.5 % baseline drift, `baseline_drift` health 0.3) for registry vs
+static trust. `reports/experiment_v2_<date>/RESULTS.md` starts with the department-question table; `corridor.md`
+(width vs trust uncertainty, agreement h, branch shares, escalation reviews / h and how many were right),
+`failure.md`, McNemar vs `proposed_v2`, figures `width_vs_u.png`, `h_hist.png`, `branches.png`, `failure.png`.
+
 ## Recording the dataset (what only you can do)
 
 1. 40 normal, 40 dangerous, 40 adversarial scenarios on your devices (`python main.py`); 2–3 helpers who do not know

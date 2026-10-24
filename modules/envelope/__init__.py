@@ -23,6 +23,7 @@ from modules.envelope.projection import LEVELS, DEFAULT_LLM_LEVELS, DEFAULT_THRE
 from modules.envelope.state import TrustedState
 from modules.llm.calibration import RiskCalibrator
 
+POLICIES = ("two_sided", "floor_only")
 # Events the envelope needs (the orchestrator forwards them to the llm module)
 ENVELOPE_EVENTS = ["gas_reading", "motion", "object_detected", "person_identified", "action", "alert", "speech",
                    "scene_text", "notification_acked", "escalation_resolved"]
@@ -49,6 +50,11 @@ class RiskEnvelope:
         self.rules_version = short(version_hash(root))          # F26: which rule base decided
         self.lam = float(cfg.get("lambda", 0.0))
         self.h_min = float(cfg.get("h_min", 0.5))
+        # F29 (TOD-40): "two_sided" (F25) or "floor_only" — the F17 max-projection max(r_LLM, (1 − c)·y_l), kept as the
+        # experiment's ablation of the upper bound / fuzzy intersection
+        self.policy = cfg.get("policy", "two_sided")
+        if self.policy not in POLICIES:
+            raise ValueError(f"envelope.policy must be one of {POLICIES}, got {self.policy!r}")
         self.slope = fuzzy_corridor.output_slope(self.corridor.engine(None).variables[
             self.corridor.engine(None).output].terms)
 
@@ -104,6 +110,15 @@ class RiskEnvelope:
                 "confirmation_reasons": reasons, "rules_version": self.rules_version,
                 "fired_ids": [r["id"] for r in corridor["fired_rules"]]}
 
+    def _floor_only(self, y_l: float, y_r: float, c: float, risk_level: str,
+                    distribution: Optional[Dict[str, float]]) -> Dict[str, Any]:
+        """F17 projection (lower bound only): r_final = max(r_LLM, (1 − c)·y_l); no upper bound, no agreement h"""
+        r_llm, _ = self.r_llm(risk_level, distribution)
+        out = project(r_llm, y_l, y_r, c, self.thresholds)
+        return {"L": out["bound"], "U": 1.0, "r_llm": round(r_llm, 4), "r_D": None, "h": None,
+                "policy_branch": "floor_raised" if out["risk_final"] > r_llm else "floor_kept",
+                "r_final": out["risk_final"]}
+
     def r_llm(self, risk_level: str, distribution: Optional[Dict[str, float]] = None):
         """:return: (r_LLM, source): calibrated centroid of the distribution, or the fixed level number"""
         if distribution and self.calibrator is not None:
@@ -132,8 +147,11 @@ class RiskEnvelope:
         inputs, facts, corridor = self._trusted(location_id, now, local_hour)
         c, confirm_reasons, operator = self.confirmation.compute(inputs, facts, now)
         y_l, y_r = corridor["floor"], corridor["ceil"]
-        fc = fuzzy_corridor.decide(y_l, y_r, c, distribution, risk_level, self.level_sets(), self.lam, self.h_min,
-                                   self.slope)
+        if self.policy == "floor_only":
+            fc = self._floor_only(y_l, y_r, c, risk_level, distribution)
+        else:
+            fc = fuzzy_corridor.decide(y_l, y_r, c, distribution, risk_level, self.level_sets(), self.lam, self.h_min,
+                                       self.slope)
         final_level = level_of(fc["r_final"], self.thresholds)
         reason = {"fired": [r["explanation"] for r in corridor["fired_rules"][:3]],
                   "confirmation": confirm_reasons,

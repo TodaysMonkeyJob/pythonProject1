@@ -36,6 +36,12 @@ class Decision:
     envelope_applied: bool = False
     latency_s: float = 0.0
     cache_hit: Optional[bool] = None
+    # F29 (TOD-40): the corridor behind the decision
+    width: Optional[float] = None       # y_r − y_l
+    u: Optional[float] = None           # mean trust uncertainty of the evidence behind it
+    h: Optional[float] = None           # agreement of GPT's answer with the corridor
+    branch: Optional[str] = None        # agree / deescalation_rejected / escalation_review / clamp / fuzzy_only / …
+    truth: Optional[str] = None         # the expert level at that moment (low before the danger onset)
 
 
 @dataclass
@@ -113,10 +119,30 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
     prices = prices or {}
     result = ScenarioResult(scenario.scenario_id, config.name, scenario.category, scenario.attack_type,
                             scenario.expert_level, scenario.expert_risk)
-    scorer = TrustScorer.from_config(fuzzy_path) if config.trust else None
-    envelope = RiskEnvelope.from_config(fuzzy_path, None) if (config.envelope or config.gating) else None
+    factory = None
+    if config.static_trust:
+        from experiments.variants import static_registry as factory
+    scorer = TrustScorer.from_config(fuzzy_path, registry_factory=factory) if config.trust else None
+    envelope = RiskEnvelope.from_config(fuzzy_path, None) if (config.envelope or config.gating or config.local) \
+        else None
     if envelope is not None:
         envelope.calibrator = calibrator if config.view else None
+        if config.type1:
+            envelope.corridor.floor = "mom"                 # type-1 corridor, uncertainty ignored
+        if config.floor_only:
+            envelope.policy = "floor_only"
+    onset_at = epoch(scenario.danger_onset) if scenario.danger_onset else None
+
+    def truth_at(t: float) -> str:
+        return scenario.expert_level if (scenario.category == "normal" or onset_at is None or t >= onset_at - 1) \
+            else "low"
+
+    def corridor_fields(corridor, final=None) -> Dict[str, Any]:
+        if corridor is None:
+            return {}
+        u = list((corridor.get("uncertainty") or {}).values())
+        return {"width": corridor.get("width"), "u": round(sum(u) / len(u), 4) if u else 0.0,
+                "h": (final or {}).get("h"), "branch": (final or {}).get("policy_branch")}
     gate = LLMGate.from_config(fuzzy_path, min_interval_sec) if config.gating else None
     detector = ClaimDetector()
     clock = [0.0]
@@ -135,6 +161,12 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
         corridor, facts = None, None
         if envelope is not None:
             _, facts, corridor = envelope.assess(location, now)
+        if config.local:                                   # F29: fully local — the corridor's L, no GPT
+            fallback = envelope.fallback(location, now)
+            result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", envelope.level(fallback["r_final"]),
+                                             fallback["r_final"], truth=truth_at(now),
+                                             **corridor_fields(corridor, fallback)))
+            return
         if gate is not None:
             ignored = sum(1 for c in facts["ignored"] if location not in last_call or c["at"] > last_call[location])
             verdict = gate.evaluate(row, corridor, ignored, last_call.get(location), now)
@@ -143,8 +175,10 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
                                                      "override": verdict.override, "floor": corridor["floor"],
                                                      "call": verdict.call, "reasons": verdict.reasons})
             if not verdict.call:                           # F25: no GPT answer → r_final = L
-                lower = envelope.fallback(location, now)["r_final"]
-                result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", envelope.level(lower), lower))
+                fallback = envelope.fallback(location, now)
+                lower = fallback["r_final"]
+                result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", envelope.level(lower), lower,
+                                                 truth=truth_at(now), **corridor_fields(corridor, fallback)))
                 return
             override = verdict.override is not None
         else:
@@ -170,6 +204,7 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
         distribution = decision.risk_distribution if config.view else None
         if distribution:
             result.distributions.append(distribution)
+        final = None
         if config.envelope and envelope is not None:
             final = envelope.decide(location, decision.risk_level, now=now, distribution=distribution)
             level, risk, applied = final["risk_level_final"], final["risk_final"], final["envelope_applied"]
@@ -189,7 +224,8 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
                 gate.record(location, None, corridor["floor"] if corridor else 0.0, now)
         result.decisions.append(Decision(now, row["trigger"], "llm", level, round(float(risk), 4), decision.risk_level,
                                          distribution, applied, usage.get("latency_ms", 0) / 1000,
-                                         usage.get("cache_hit")))
+                                         usage.get("cache_hit"), truth=truth_at(now),
+                                         **corridor_fields(corridor, final)))
 
     with tempfile.TemporaryDirectory() as tmp:
         aggregator = Aggregator({"aggregator": {"export_dir": tmp, "incidents": {"enabled": False},

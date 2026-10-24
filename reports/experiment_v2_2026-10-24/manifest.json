@@ -1,0 +1,967 @@
+{
+ "dataset": {
+  "name": "scripted-42",
+  "path": "data/eval/scripted",
+  "hash": "f6d67b63603b83466fe4703ff321927d604bc23be740e2f226106e73689b5414",
+  "synthetic": true,
+  "scenarios": 120
+ },
+ "seed": 42,
+ "split": {
+  "calibration": 36,
+  "evaluation": 84,
+  "calibration_share": 0.3
+ },
+ "kappa": {
+  "annotators": [
+   "annotator_a",
+   "annotator_b"
+  ],
+  "n": 120,
+  "kappa": 0.9647
+ },
+ "llm": {
+  "backend": "azure",
+  "model": "gpt-4.1-mini",
+  "temperature": 0.2,
+  "calls": 1162,
+  "cache_hits": 834,
+  "invalid_json": 0,
+  "offline": false,
+  "simulated_misses": 0
+ },
+ "calibration": {
+  "fitted": true,
+  "n": 23,
+  "rejected_deescalations": 2,
+  "split": 36,
+  "fit": {
+   "loss": 0.00363,
+   "brier": 0.00105,
+   "ece": 0.01546
+  },
+  "constraints": {
+   "ok": true,
+   "monotone_centres": true,
+   "centres_in_bounds": true,
+   "centres": {
+    "low": 0.2381,
+    "medium": 0.485,
+    "high": 0.6813,
+    "critical": 0.9647
+   },
+   "min_support": 0.2,
+   "min_width": 0.2
+  },
+  "params": {
+   "low": [
+    0.13812047522083826,
+    0.2081906453315266,
+    0.26805030511015,
+    0.33812047522083827
+   ],
+   "medium": [
+    0.38497540352192555,
+    0.4548142009509445,
+    0.5151366060929067,
+    0.5849754035219256
+   ],
+   "high": [
+    0.5812973275113784,
+    0.6495313214906566,
+    0.7130633335321002,
+    0.7812973275113784
+   ],
+   "critical": [
+    0.8,
+    0.9646818392540826,
+    0.9646820647464087,
+    1.0
+   ]
+  },
+  "cv": {
+   "n": 23,
+   "brier": 0.00219,
+   "ece": 0.01297,
+   "fixed": {
+    "brier": 0.00193,
+    "ece": 0.03663
+   }
+  },
+  "used": false,
+  "note": "leave-one-out Brier worse than the fixed level mapping: the fixed mapping is used"
+ },
+ "configs": {
+  "rules_only": {
+   "llm": false,
+   "pattern_filter": false,
+   "trust": false,
+   "envelope": false,
+   "view": false,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": false
+  },
+  "llm_only": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": false,
+   "envelope": false,
+   "view": false,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": false
+  },
+  "llm_pattern": {
+   "llm": true,
+   "pattern_filter": true,
+   "trust": false,
+   "envelope": false,
+   "view": false,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": false
+  },
+  "proposed_v2": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": true
+  },
+  "proposed_v2_type1": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "snapshot": "v2.1",
+   "type1": true,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": true
+  },
+  "proposed_v2_static_trust": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": true,
+   "floor_only": false,
+   "local": false,
+   "gating": true
+  },
+  "proposed_v2_floor_only": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": true,
+   "local": false,
+   "gating": true
+  },
+  "proposed_v2_no_B": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": false,
+   "envelope": true,
+   "view": true,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": true
+  },
+  "proposed_v2_no_C": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": false,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": true
+  },
+  "proposed_v2_no_E": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": false,
+   "gating": false
+  },
+  "proposed_v2_local": {
+   "llm": true,
+   "pattern_filter": false,
+   "trust": true,
+   "envelope": true,
+   "view": true,
+   "snapshot": "v2.1",
+   "type1": false,
+   "static_trust": false,
+   "floor_only": false,
+   "local": true,
+   "gating": false
+  }
+ },
+ "min_interval_sec": 300.0,
+ "trust_registry": {
+  "config": "config/trust_registry.yaml",
+  "device_channels": {
+   "camera": [
+    "objects",
+    "motion",
+    "pose_action",
+    "smoking",
+    "face_identity",
+    "scene_text"
+   ],
+   "mic": [
+    "vad",
+    "asr",
+    "speaker_identity",
+    "face_voice_link"
+   ],
+   "gas": [
+    "gas_class",
+    "gas_concentration",
+    "gas_trend"
+   ],
+   "identity": [
+    "person_registry"
+   ],
+   "llm": [
+    "risk_assessment"
+   ]
+  },
+  "priors": {
+   "objects": {
+    "prior_status": "unmeasured",
+    "r0": 0.0,
+    "s0": 0.0,
+    "tau0": 0.5,
+    "u0": 1.0,
+    "source": null,
+    "explanation": "апріорі не виміряно (немає валідаційних даних)"
+   },
+   "motion": {
+    "prior_status": "unmeasured",
+    "r0": 0.0,
+    "s0": 0.0,
+    "tau0": 0.5,
+    "u0": 1.0,
+    "source": null,
+    "explanation": "апріорі не виміряно (немає валідаційних даних)"
+   },
+   "pose_action": {
+    "prior_status": "measured",
+    "r0": 14.0,
+    "s0": 5.0,
+    "tau0": 0.7143,
+    "u0": 0.0952,
+    "wilson_lb": 0.5121,
+    "source": "reports/actions_eval_human_behaviour_640.json",
+    "explanation": "поза (стоїть / сидить / лежить / йде): 14 з 19 відео-сегментів правильні"
+   },
+   "smoking": {
+    "prior_status": "measured",
+    "r0": 1.0,
+    "s0": 6.0,
+    "tau0": 0.2222,
+    "u0": 0.2222,
+    "wilson_lb": 0.0257,
+    "source": "reports/actions_eval_human_behaviour_640.json",
+    "explanation": "куріння (рука до рота): 1 з 7 епізодів виявлено"
+   },
+   "face_identity": {
+    "prior_status": "measured",
+    "r0": 150.0,
+    "s0": 0.0,
+    "tau0": 0.9934,
+    "u0": 0.0132,
+    "wilson_lb": 0.975,
+    "source": "reports/identity_eval_lfw.json",
+    "explanation": "«це відома людина»: 150 правильних, 0 хибно прийнятих незнайомців (LFW, поріг 0.45)"
+   },
+   "scene_text": {
+    "prior_status": "unmeasured",
+    "r0": 0.0,
+    "s0": 0.0,
+    "tau0": 0.5,
+    "u0": 1.0,
+    "source": null,
+    "explanation": "апріорі не виміряно (немає валідаційних даних)"
+   },
+   "vad": {
+    "prior_status": "measured",
+    "r0": 386.0,
+    "s0": 254.0,
+    "tau0": 0.6028,
+    "u0": 0.0031,
+    "wilson_lb": 0.5647,
+    "source": "data/calibration/speech/manifest.csv",
+    "explanation": "VAD: 386 з 640 кліпів правильно (мова → сегмент, лише шум → нічого)"
+   },
+   "asr": {
+    "prior_status": "measured",
+    "r0": 53.0,
+    "s0": 47.0,
+    "tau0": 0.5294,
+    "u0": 0.0196,
+    "wilson_lb": 0.4329,
+    "source": "multi_model_sentence_data.xlsx#Whisper 1",
+    "explanation": "Whisper (Whisper 1): 53 з 100 фраз з WER ≤ 10%"
+   },
+   "speaker_identity": {
+    "prior_status": "measured",
+    "r0": 103.0,
+    "s0": 47.0,
+    "tau0": 0.6842,
+    "u0": 0.0132,
+    "wilson_lb": 0.6086,
+    "source": "data/calibration/speaker_pairs.csv",
+    "explanation": "голос: 103 з 150 рішень (відомий / незнайомий) правильні на відкладених TTS-голосах, поріг 0.3"
+   },
+   "face_voice_link": {
+    "prior_status": "unmeasured",
+    "r0": 0.0,
+    "s0": 0.0,
+    "tau0": 0.5,
+    "u0": 1.0,
+    "source": null,
+    "explanation": "апріорі не виміряно (немає валідаційних даних)"
+   },
+   "gas_class": {
+    "prior_status": "measured",
+    "r0": 29.0,
+    "s0": 0.0,
+    "tau0": 0.9677,
+    "u0": 0.0645,
+    "wilson_lb": 0.883,
+    "source": "reports/gas_metrics.json",
+    "explanation": "класифікатор газу: 29 з 29 відкладених кривих розпізнано правильно"
+   },
+   "gas_concentration": {
+    "prior_status": "measured",
+    "r0": 29.0,
+    "s0": 0.0,
+    "tau0": 0.9677,
+    "u0": 0.0645,
+    "wilson_lb": 0.883,
+    "source": "data/gas/data.xls",
+    "explanation": "концентрація: 29 з 29 відкладених кривих у межах ±0.5 %"
+   },
+   "gas_trend": {
+    "prior_status": "measured",
+    "r0": 1380.0,
+    "s0": 0.0,
+    "tau0": 0.9993,
+    "u0": 0.0014,
+    "wilson_lb": 0.9972,
+    "source": "data/gas/data.xls",
+    "explanation": "тренд газу: 1380 з 1380 оцінок правильні на відтворених рампах / утриманнях"
+   },
+   "person_registry": {
+    "prior_status": "unmeasured",
+    "r0": 0.0,
+    "s0": 0.0,
+    "tau0": 0.5,
+    "u0": 1.0,
+    "source": null,
+    "explanation": "апріорі не виміряно (немає валідаційних даних)"
+   },
+   "risk_assessment": {
+    "prior_status": "unmeasured",
+    "r0": 0.0,
+    "s0": 0.0,
+    "tau0": 0.5,
+    "u0": 1.0,
+    "source": null,
+    "explanation": "апріорі не виміряно (немає валідаційних даних)"
+   }
+  },
+  "gamma": {
+   "objects": {
+    "value": 0.95,
+    "reason": "освітлення / розташування предметів змінюються тижнями"
+   },
+   "motion": {
+    "value": 0.9,
+    "reason": "хибний рух залежить від освітлення і погоди — змінюється за кілька днів"
+   },
+   "pose_action": {
+    "value": 0.95,
+    "reason": "якість поз залежить від ракурсу камери, змінюється рідко"
+   },
+   "smoking": {
+    "value": 0.95,
+    "reason": "те саме, що й поза (той самий детектор ключових точок)"
+   },
+   "face_identity": {
+    "value": 0.97,
+    "reason": "галерея облич стабільна, змінюється при додаванні людей"
+   },
+   "scene_text": {
+    "value": 0.8,
+    "reason": "текст у кадрі (екрани, таблички) змінюється щодня"
+   },
+   "vad": {
+    "value": 0.9,
+    "reason": "фоновий шум приміщення змінюється за дні"
+   },
+   "asr": {
+    "value": 0.8,
+    "reason": "акустика, мова й мовці змінюються швидко — ASR забуває найшвидше"
+   },
+   "speaker_identity": {
+    "value": 0.95,
+    "reason": "голосові профілі стабільні"
+   },
+   "face_voice_link": {
+    "value": 0.97,
+    "reason": "зв'язки голос ↔ обличчя міняються лише при злитті / розділенні"
+   },
+   "gas_class": {
+    "value": 0.99,
+    "reason": "хімія сенсора стабільна; деградація — місяцями"
+   },
+   "gas_concentration": {
+    "value": 0.98,
+    "reason": "дрейф концентрації повільний (тижні)"
+   },
+   "gas_trend": {
+    "value": 0.98,
+    "reason": "той самий сенсор, що й концентрація"
+   },
+   "person_registry": {
+    "value": 0.97,
+    "reason": "виправлення реєстру людей рідкісні"
+   },
+   "risk_assessment": {
+    "value": 0.9,
+    "reason": "якість відповідей GPT змінюється з промптом / моделлю — за дні"
+   }
+  },
+  "health": {
+   "recovery_per_min": 0.1,
+   "refresh_sec": 300,
+   "checks": {
+    "offline": {
+     "factor": 0.0,
+     "reason": "пристрій офлайн — даних немає"
+    },
+    "no_frames": {
+     "factor": 0.1,
+     "reason": "камера не віддає кадрів"
+    },
+    "low_fps": {
+     "factor": 0.7,
+     "reason": "FPS нижче цільового — події можуть пропускатися"
+    },
+    "frozen_frame": {
+     "factor": 0.2,
+     "reason": "кадр не змінюється (зависла камера / відтворення)"
+    },
+    "too_dark": {
+     "factor": 0.4,
+     "reason": "занадто темно для детекції"
+    },
+    "overexposed": {
+     "factor": 0.4,
+     "reason": "засвічений кадр"
+    },
+    "blurred": {
+     "factor": 0.6,
+     "reason": "розмитий кадр (низька дисперсія Лапласіана)"
+    },
+    "lens_covered": {
+     "factor": 0.3,
+     "reason": "кадр майже однорідний — ймовірно, закрито об'єктив"
+    },
+    "camera_moved": {
+     "factor": 0.5,
+     "reason": "різка зміна сцени без руху — камеру зрушили"
+    },
+    "clipping": {
+     "factor": 0.5,
+     "reason": "кліпінг — сигнал перевантажений"
+    },
+    "noisy": {
+     "factor": 0.6,
+     "reason": "високий рівень шуму (низьке SNR)"
+    },
+    "digital_silence": {
+     "factor": 1.0,
+     "reason": "цифрова тиша (сама по собі не збій)"
+    },
+    "stuck_silence": {
+     "factor": 0.3,
+     "reason": "цифрова тиша, хоча в локації є люди"
+    },
+    "wrong_sample_rate": {
+     "factor": 0.3,
+     "reason": "частота дискретизації не та, що очікується"
+    },
+    "sensor_error": {
+     "factor": 0.2,
+     "reason": "помилка читання сенсора газу"
+    },
+    "flat_readings": {
+     "factor": 0.3,
+     "reason": "покази не змінюються (сенсор завис)"
+    },
+    "out_of_range": {
+     "factor": 0.3,
+     "reason": "покази поза діапазоном навчальних даних"
+    },
+    "baseline_drift": {
+     "factor": 0.25,
+     "reason": "дрейф базової лінії чистого повітря — потрібне перекалібрування"
+    },
+    "twin_disagreement": {
+     "factor": 0.6,
+     "reason": "розходиться з другим сенсором газу цієї локації"
+    },
+    "unknown_storm": {
+     "factor": 0.5,
+     "channels": [
+      "face_identity"
+     ],
+     "reason": "забагато нових unknown_N за годину (дублікати)"
+    }
+   }
+  }
+ },
+ "rules_version": "a0ab9c2186314aeb5e0659c1be85468e6e209bda5c211e6d5a3bfd0db4974fa2",
+ "suite": "v2",
+ "failure_block": {
+  "configs": [
+   "proposed_v2",
+   "proposed_v2_static_trust"
+  ],
+  "drift_pct": 1.5,
+  "health": 0.3,
+  "scenarios": 84
+ },
+ "reference": "proposed_v2",
+ "corridor": {
+  "rules_only": {
+   "decisions": 178,
+   "mean_width": null,
+   "mean_u": null,
+   "width_u_corr": null,
+   "h": {
+    "n": 0,
+    "q25": null,
+    "median": null,
+    "q75": null,
+    "histogram": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "branches": {},
+   "reviews": 0,
+   "reviews_per_hour": 0.0,
+   "reviews_correct": null
+  },
+  "llm_only": {
+   "decisions": 110,
+   "mean_width": null,
+   "mean_u": null,
+   "width_u_corr": null,
+   "h": {
+    "n": 0,
+    "q25": null,
+    "median": null,
+    "q75": null,
+    "histogram": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "branches": {},
+   "reviews": 0,
+   "reviews_per_hour": 0.0,
+   "reviews_correct": null
+  },
+  "llm_pattern": {
+   "decisions": 110,
+   "mean_width": null,
+   "mean_u": null,
+   "width_u_corr": null,
+   "h": {
+    "n": 0,
+    "q25": null,
+    "median": null,
+    "q75": null,
+    "histogram": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "branches": {},
+   "reviews": 0,
+   "reviews_per_hour": 0.0,
+   "reviews_correct": null
+  },
+  "proposed_v2": {
+   "decisions": 132,
+   "mean_width": 0.0353,
+   "mean_u": 0.2173,
+   "width_u_corr": 0.2588,
+   "h": {
+    "n": 95,
+    "q25": 0.8432,
+    "median": 0.9,
+    "q75": 0.97,
+    "histogram": [
+     0,
+     0,
+     0,
+     2,
+     0,
+     0,
+     0,
+     5,
+     35,
+     53
+    ]
+   },
+   "branches": {
+    "agree": 0.5303,
+    "deescalation_rejected": 0.1591,
+    "escalation_review": 0.0227,
+    "clamp": 0.0076,
+    "fuzzy_only": 0.2803
+   },
+   "reviews": 3,
+   "reviews_per_hour": 0.54,
+   "reviews_correct": 0.3333
+  },
+  "proposed_v2_type1": {
+   "decisions": 132,
+   "mean_width": 0.1001,
+   "mean_u": 0.2173,
+   "width_u_corr": 0.1507,
+   "h": {
+    "n": 110,
+    "q25": 0.9,
+    "median": 0.95,
+    "q75": 1.0,
+    "histogram": [
+     2,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     3,
+     8,
+     97
+    ]
+   },
+   "branches": {
+    "agree": 0.7348,
+    "deescalation_rejected": 0.0909,
+    "clamp": 0.0076,
+    "fuzzy_only": 0.1667
+   },
+   "reviews": 0,
+   "reviews_per_hour": 0.0,
+   "reviews_correct": null
+  },
+  "proposed_v2_static_trust": {
+   "decisions": 132,
+   "mean_width": 0.0,
+   "mean_u": 0.0,
+   "width_u_corr": null,
+   "h": {
+    "n": 87,
+    "q25": 0.8,
+    "median": 0.8712,
+    "q75": 0.9,
+    "histogram": [
+     0,
+     0,
+     0,
+     4,
+     0,
+     0,
+     0,
+     2,
+     38,
+     43
+    ]
+   },
+   "branches": {
+    "agree": 0.4242,
+    "deescalation_rejected": 0.2045,
+    "escalation_review": 0.0303,
+    "fuzzy_only": 0.3409
+   },
+   "reviews": 4,
+   "reviews_per_hour": 0.72,
+   "reviews_correct": 0.5
+  },
+  "proposed_v2_floor_only": {
+   "decisions": 132,
+   "mean_width": 0.0353,
+   "mean_u": 0.2173,
+   "width_u_corr": 0.2588,
+   "h": {
+    "n": 0,
+    "q25": null,
+    "median": null,
+    "q75": null,
+    "histogram": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "branches": {
+    "fuzzy_only": 0.2803,
+    "floor_raised": 0.0076,
+    "floor_kept": 0.7121
+   },
+   "reviews": 0,
+   "reviews_per_hour": 0.0,
+   "reviews_correct": null
+  },
+  "proposed_v2_no_B": {
+   "decisions": 174,
+   "mean_width": 0.0,
+   "mean_u": 0.0,
+   "width_u_corr": null,
+   "h": {
+    "n": 84,
+    "q25": 0.8,
+    "median": 0.9,
+    "q75": 1.0,
+    "histogram": [
+     0,
+     0,
+     0,
+     3,
+     0,
+     0,
+     0,
+     2,
+     33,
+     46
+    ]
+   },
+   "branches": {
+    "agree": 0.3276,
+    "deescalation_rejected": 0.1379,
+    "escalation_review": 0.0172,
+    "fuzzy_only": 0.5172
+   },
+   "reviews": 3,
+   "reviews_per_hour": 0.54,
+   "reviews_correct": 0.0
+  },
+  "proposed_v2_no_C": {
+   "decisions": 132,
+   "mean_width": 0.0353,
+   "mean_u": 0.2173,
+   "width_u_corr": 0.2588,
+   "h": {
+    "n": 95,
+    "q25": 0.275,
+    "median": 0.925,
+    "q75": 1.0,
+    "histogram": [
+     23,
+     0,
+     1,
+     5,
+     8,
+     0,
+     0,
+     0,
+     2,
+     56
+    ]
+   },
+   "branches": {
+    "agree": 0.4318,
+    "deescalation_rejected": 0.2576,
+    "escalation_review": 0.0303,
+    "fuzzy_only": 0.2803
+   },
+   "reviews": 4,
+   "reviews_per_hour": 0.72,
+   "reviews_correct": 0.25
+  },
+  "proposed_v2_no_E": {
+   "decisions": 110,
+   "mean_width": 0.0357,
+   "mean_u": 0.2128,
+   "width_u_corr": 0.2672,
+   "h": {
+    "n": 110,
+    "q25": 0.8712,
+    "median": 0.9,
+    "q75": 0.97,
+    "histogram": [
+     0,
+     0,
+     0,
+     2,
+     0,
+     0,
+     0,
+     5,
+     35,
+     68
+    ]
+   },
+   "branches": {
+    "agree": 0.7727,
+    "deescalation_rejected": 0.1909,
+    "escalation_review": 0.0273,
+    "clamp": 0.0091
+   },
+   "reviews": 3,
+   "reviews_per_hour": 0.54,
+   "reviews_correct": 0.3333
+  },
+  "proposed_v2_local": {
+   "decisions": 178,
+   "mean_width": 0.0262,
+   "mean_u": 0.2092,
+   "width_u_corr": 0.2686,
+   "h": {
+    "n": 0,
+    "q25": null,
+    "median": null,
+    "q75": null,
+    "histogram": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "branches": {
+    "fuzzy_only": 1.0
+   },
+   "reviews": 0,
+   "reviews_per_hour": 0.0,
+   "reviews_correct": null
+  }
+ },
+ "failure": {
+  "proposed_v2": {
+   "scenarios": 84,
+   "asr": 0.0,
+   "asr_ci": [
+    0.0,
+    0.0
+   ],
+   "false_alarm_rate": 0.75,
+   "dangerous_correct": 1.0,
+   "dangerous_under": 0.0,
+   "mean_width": 0.2238
+  },
+  "proposed_v2_static_trust": {
+   "scenarios": 84,
+   "asr": 0.0,
+   "asr_ci": [
+    0.0,
+    0.0
+   ],
+   "false_alarm_rate": 0.8214,
+   "dangerous_correct": 0.75,
+   "dangerous_under": 0.0,
+   "mean_width": 0.0
+  }
+ },
+ "git": {
+  "commit": "ae5a671109de4bd18b264476cd106bda631dba71",
+  "branch": "feature/tod-40",
+  "dirty": true
+ },
+ "hashes": {
+  "config/fuzzy.yaml": "d571193ced1d892e",
+  "config.yaml": "99ca3b83d5eef2b9",
+  "prompts/security_analyst.md": "473444e8c32c0a6d",
+  "experiments/prompts/security_analyst_v1.md": "d3c29298c7898538",
+  "config/thresholds.yaml": "807c7d87d3ebe0e4",
+  "config/trust_registry.yaml": "b99bc8f28a3a802f",
+  "config/trust_priors.yaml": "907c02358710e1a4"
+ },
+ "written_at": "2026-10-24T09:11:34"
+}
