@@ -23,7 +23,7 @@ from modules.locations.state import DANGER, SAFE, LocationStateEngine
 from tools.plot_surfaces import monotonicity
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG = {"gas": {"thresholds": {"ethanol": 5.0, "ammonia": 3.0}}}
+CONFIG = {}
 
 
 class Clock:
@@ -152,17 +152,17 @@ def test_top_policy_matches_the_requirements():
 
 # --- subsystems -------------------------------------------------------------------------------------------------------
 
-def test_gas_subsystem_normalises_to_limits_and_goes_stale():
+def test_gas_subsystem_normalises_to_critical_concentration_and_goes_stale():
     clock = Clock()
     gas = GasSubsystem(CONFIG, clock=clock)
-    gas.observe(ev("gas_reading", {"gas": "ammonia", "concentration_pct": 3.2, "rise_rate_pct_per_min": 0.0}),
-                clock())
+    gas.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), clock())
     result = gas.evaluate("lab", clock(), True)
-    assert result["inputs"]["gas_level"] == pytest.approx(3.2 / 3.0, abs=1e-3) and result["level"] == "critical"
-    assert result["fired_rules"][0]["id"] == "G312"          # critical level, stable, mixture high (one sensor)
-    gas.observe(ev("gas_reading", {"gas": "ethanol", "concentration_pct": 3.2, "rise_rate_pct_per_min": 0.0}),
-                clock())
-    assert gas.evaluate("lab", clock(), True)["level"] == "high"            # same %, 5 % limit → elevated
+    assert result["inputs"]["max_norm"] == pytest.approx(0.6) and result["level"] == "high"
+    assert result["substances"] == {"ammonia": 0.6}
+    gas.observe(ev("gas_reading", {"gas": "toluol", "concentration_pct": 0.25}), clock())     # graphene, vol %
+    result = gas.evaluate("lab", clock(), True)                 # 2500 ppm vs IDLH 500 ppm → clipped to 1.2
+    assert result["inputs"]["max_norm"] == 1.2 and result["level"] == "critical"
+    assert result["substances"] == {"toluene": 1.2}             # the sensor's new state replaced ammonia
     gas.observe(ev("gas_reading", {"gas": "clean_air", "concentration_pct": 0}), clock())
     assert gas.evaluate("lab", clock(), True)["level"] == "low"
     assert gas.evaluate("lab", clock() + 31, True) is None                  # stale → no data
@@ -170,11 +170,56 @@ def test_gas_subsystem_normalises_to_limits_and_goes_stale():
     assert gas.evaluate("lab", clock(), True) is None
 
 
-def test_gas_rising_fast_escalates():
+def test_any_single_substance_at_its_critical_level_is_critical():
+    for gas_name, value, unit in (("ammonia", 300, "ppm"), ("carbon_monoxide", 1380, "mg_m3"),
+                                  ("pm2_5", 225.5, "ug_m3"), ("ammonia", 0.03, "vol_pct"), ("CO", 5000, "ppm")):
+        gas = GasSubsystem(CONFIG)
+        gas.observe(ev("gas_reading", {"gas": gas_name, "concentration": value, "unit": unit}), 1000.0)
+        result = gas.evaluate("lab", 1000.0, True)
+        assert result["inputs"]["max_norm"] >= 0.999 and result["level"] == "critical", (gas_name, result)
+
+
+def test_mixture_of_two_gases_is_worse_than_one():
+    one, two = GasSubsystem(CONFIG), GasSubsystem(CONFIG)
+    one.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), 1000.0)
+    two.observe(ev("gas_reading", {"readings": [{"gas": "ammonia", "concentration": 180, "unit": "ppm"},
+                                                {"gas": "CO", "concentration": 720, "unit": "ppm"}]}), 1000.0)
+    single, mixed = one.evaluate("lab", 1000.0, True), two.evaluate("lab", 1000.0, True)
+    assert mixed["inputs"]["mixture_index"] == pytest.approx(1.2) and single["inputs"]["mixture_index"] == 0.6
+    assert mixed["risk"] > single["risk"] and (single["level"], mixed["level"]) == ("high", "critical")
+    # … also from two separate sensors in the same location
+    two_sensors = GasSubsystem(CONFIG)
+    two_sensors.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), 1000.0)
+    two_sensors.observe(ev("gas_reading", {"gas": "pm2_5", "concentration": 135.3, "unit": "ug_m3"},
+                           device="pm-1"), 1000.0)
+    assert two_sensors.evaluate("lab", 1000.0, True)["level"] == "critical"
+
+
+def test_dynamics_is_the_slope_of_max_norm_over_the_window():
     gas = GasSubsystem(CONFIG)
-    slow = gas.infer({"gas_level": 0.6, "gas_dynamics": 0.0})
-    fast = gas.infer({"gas_level": 0.6, "gas_dynamics": 0.3})
-    assert slow["level"] == "high" and fast["level"] == "critical"
+    for second in range(0, 61, 2):                              # 30 → 180 ppm NH₃ in 60 s: +0.5 c_crit / min
+        gas.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 30 + 2.5 * second, "unit": "ppm"}),
+                    1000.0 + second)
+    result = gas.evaluate("lab", 1060.0, True)
+    assert result["inputs"]["dynamics"] == pytest.approx(0.5, abs=1e-3)
+    assert result["level"] == "critical"                        # dangerous (0.6) + sharp rise
+    steady = GasSubsystem(CONFIG)
+    for second in range(0, 61, 2):
+        steady.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), 1000.0 + second)
+    assert steady.evaluate("lab", 1060.0, True)["inputs"]["dynamics"] == 0
+    early = GasSubsystem(CONFIG)                                # one sample: no trend yet
+    early.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), 1000.0)
+    assert early.evaluate("lab", 1000.0, True)["inputs"]["dynamics"] == 0
+
+
+def test_gas_rules_from_the_issue():
+    gas = GasSubsystem(CONFIG)
+    level = lambda **inputs: gas.infer(inputs)["level"]  # noqa: E731
+    assert level(max_norm=1.0) == "critical"
+    assert level(max_norm=0.3, mixture_index=1.2) == "high"       # mixture raises the risk below c_crit
+    assert level(max_norm=0.6, mixture_index=0.6, dynamics=0.1) == "high"
+    assert level(max_norm=0.3, mixture_index=0.3, dynamics=0.3) == "high"
+    assert level(max_norm=0.05, mixture_index=0.05) == "low"
 
 
 def test_hours_outside_activity_window():

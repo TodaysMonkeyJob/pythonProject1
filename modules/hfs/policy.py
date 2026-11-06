@@ -23,10 +23,10 @@ def clamp(level: int) -> int:
 
 def gas(level: int, dynamics: int, mixture: int) -> int:
     """
-    gas_level clean / slight / elevated / critical → 0 / 1 / 2 / 3 (a critical concentration is critical on its own;
-    the limit is the critical one, so a quarter of it is already worth attention); gas_dynamics sharply_rising → +1
-    (an early leak reaches the next level within minutes; falling never lowers a level: the gas is still there);
-    mixture_index high → +1 (several gases at or above the combined limit Σ C/L ≥ 1).
+    A2 (TOD-42), all substances as shares of their critical concentration: max_norm safe / moderate / dangerous /
+    critical → low / medium / high / critical (any single substance at its critical level is critical on its own);
+    dynamics sharp_rise → one level up (the next level within minutes; falling never lowers a level — the gas is still
+    there); mixture_index high (Σ c/c_crit ≥ 1) → one level up: two gases at 0.6 are worse than one.
     """
     return clamp(level + (dynamics == 3) + (mixture == 2))
 

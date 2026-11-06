@@ -277,6 +277,10 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `reports/surfaces/`). Missing subsystem → input 0 + `partial`. Location state follows `hfs_risk` only in
   autonomous mode (`hfs_decides`); dashboard territory view shows the risk strip (click → fired rules).
   `python -m modules.hfs --check`. Location rule `activity_hours`. `whisper_client` moved to `modules/audio/`.
+  A2 (TOD-42) gas: substances as c / c_crit (`config/gases.yaml`: NIOSH IDLH, EPA AQI Hazardous for PM2.5, molar
+  masses; `modules/hfs/gas_normalize.py` units vol_pct / ppm / mg_m3 / ug_m3) → `max_norm`, `mixture_index` (Σ),
+  `dynamics` (slope / min over `hfs.gas.window_sec`). `gas_reading` = the sensor's current state (`concentration` +
+  `unit`, `readings: [...]`, or legacy `concentration_pct`). Sensor survey + periods: `docs/sensors.md`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —
