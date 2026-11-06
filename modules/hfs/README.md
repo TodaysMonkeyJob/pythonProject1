@@ -3,7 +3,7 @@
 Article 1: every decision is made locally by a two-level fuzzy system — no LLM, no network.
 
 ```
-gas_reading ─▶ gas    (gas_level, gas_dynamics, mixture_index)                 ─▶ risk 1 ┐
+gas_reading ─▶ gas    (max_norm, dynamics, mixture_index: c / c_crit)          ─▶ risk 1 ┐
 motion, object_detected, person_identified ─▶ camera (unknown_share,              ─▶ risk 2 ├─▶ top ─▶ overall risk
                                               motion_intensity, off_hours)               │        per location
 sound, speech ─▶ audio (sound_level, sound_type, danger_keywords, speaker_unknown) ─▶ risk 3 ┘   (hfs_risk event)
@@ -45,5 +45,10 @@ python -m modules.hfs top risk_gas=0.87 risk_camera=0.1        # explain one inf
 python -m tools.plot_surfaces                                  # reports/surfaces/
 ```
 
-Inputs are first versions; A2 (gas, PM2.5, IDLH limits), A3 (camera) and A4 (audio) refine them. Change a table by
+Gas (A2 / TOD-42): every substance as c / c_crit from `config/gases.yaml` (NIOSH IDLH; EPA AQI Hazardous for PM2.5;
+`gas_normalize.py`: vol % / ppm / mg/m³ / µg/m³). `max_norm` = max, `mixture_index` = Σ (two gases at 0.6 → critical,
+one → high), `dynamics` = least-squares slope of max_norm per minute over 60 s. Sensor survey, periods and the
+graphene range problem (its whole dataset is above C_crit): `docs/sensors.md`.
+
+Camera and audio inputs are first versions; A3 (camera) and A4 (audio) refine them. Change a table by
 changing its policy in `policy.py` and the YAML together (the test compares them).

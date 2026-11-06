@@ -1,0 +1,51 @@
+# A2 (TOD-42) critical concentrations: the "immediately dangerous" level of every substance the gas subsystem knows.
+# The gas subsystem compares substances by c_norm = c / c_crit (1.0 = 100 % of the critical concentration); sensors
+# and models keep their native units (vol %, ppm, µg/m³ — TOD-48). Add a substance with one entry.
+#
+#   c_crit      the critical concentration, in `unit`
+#   unit        ppm | vol_pct | mg_m3 | ug_m3
+#   molar_mass  g/mol, for ppm ↔ mg/m³ (mg/m³ = ppm · M / 24.45 at 25 °C, 1 atm); null for particles
+#   aliases     names other components use (the TOD-19 classifier says "toluol")
+#   source      where c_crit comes from (checked 2026-11-06)
+gases:
+  ammonia:
+    formula: NH3
+    c_crit: 300
+    unit: ppm
+    molar_mass: 17.03
+    source: "NIOSH IDLH (https://www.cdc.gov/niosh/idlh/)"
+  carbon_monoxide:
+    formula: CO
+    c_crit: 1200
+    unit: ppm
+    molar_mass: 28.01
+    aliases: [co]
+    source: "NIOSH IDLH (https://www.cdc.gov/niosh/idlh/)"
+  pm2_5:
+    formula: PM2.5
+    c_crit: 225.5
+    unit: ug_m3
+    molar_mass: null
+    aliases: [pm25, pm2.5]
+    source: "US EPA AQI 2024 (effective 2024-05-06): start of the Hazardous category, 24-h PM2.5. Particles have no
+      lethal concentration; the standard smoke indicator."
+  # Gases of our graphene FET dataset (TOD-19 classifier)
+  ethanol:
+    formula: C2H5OH
+    c_crit: 3300
+    unit: ppm
+    molar_mass: 46.07
+    source: "NIOSH Pocket Guide IDLH 3300 ppm [10 % LEL] (https://www.cdc.gov/niosh/npg/npgd0262.html)"
+  acetone:
+    formula: (CH3)2CO
+    c_crit: 2500
+    unit: ppm
+    molar_mass: 58.08
+    source: "NIOSH Pocket Guide IDLH 2500 ppm [10 % LEL] (https://www.cdc.gov/niosh/npg/npgd0004.html)"
+  toluene:
+    formula: C6H5CH3
+    c_crit: 500
+    unit: ppm
+    molar_mass: 92.14
+    aliases: [toluol]
+    source: "NIOSH Pocket Guide IDLH 500 ppm (https://www.cdc.gov/niosh/npg/npgd0619.html)"

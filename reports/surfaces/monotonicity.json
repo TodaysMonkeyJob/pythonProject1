@@ -8,14 +8,14 @@
   },
   "rules": 48,
   "inputs": {
-   "gas_level": {
+   "max_norm": {
     "steps": 1210,
     "falls": 0,
     "share": 0.0,
     "max_fall": 0.0,
     "level_drops": 0
    },
-   "gas_dynamics": {
+   "dynamics": {
     "steps": 1210,
     "falls": 0,
     "share": 0.0,

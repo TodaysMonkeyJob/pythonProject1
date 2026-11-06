@@ -306,9 +306,12 @@ hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule ba
   enabled: true             # one hfs_risk event per location on change (python -m modules.hfs --check / explain)
   min_delta: 0.05           # overall risk change that is published even without a level change
   keepalive_sec: 30         # … and every this long anyway
-  gas:
-    stale_sec: 30           # no reading for this long → no gas data (partial)
-    limits: {}              # gas → critical limit, %; empty = gas.thresholds (A2 / TOD-42: NIOSH IDLH / EPA)
+  gas:                      # A2 (TOD-42): substances as c / c_crit — periods and sensors: docs/sensors.md
+    gases: config/gases.yaml   # critical concentrations (NIOSH IDLH, EPA AQI Hazardous for PM2.5)
+    stale_sec: 30           # no reading for this long → no gas data (partial); sensors report every ~1 s
+    window_sec: 60          # dynamics = slope of max_norm per minute over this window (≥ T90 of EC sensors, ≥ 30 samples)
+    min_samples: 3          # fewer samples / a shorter span than min_span_sec → dynamics 0 (no trend yet)
+    min_span_sec: 10
   camera:
     activity_hours: ["08:00", "19:00"]   # default; a location's rule activity_hours wins
     motion_window_sec: 30

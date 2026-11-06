@@ -1,42 +1,48 @@
-# A1 (TOD-41) level-1 subsystem "gas" of the autonomous hierarchical fuzzy system (modules/hfs) → risk 1.
-# Explain a case: python -m modules.hfs gas gas_level=0.7 gas_dynamics=0.2
-# Inputs are normalised to the gas's critical limit, so one rule base serves every gas (A2 / TOD-42 replaces the
-# placeholder limits `gas.thresholds` with NIOSH IDLH / EPA values and adds PM2.5).
+# A2 (TOD-42) level-1 subsystem "gas and PM2.5" of the autonomous hierarchical fuzzy system (modules/hfs) → risk 1.
+# Explain a case: python -m modules.hfs gas max_norm=0.6 mixture_index=1.2 dynamics=0
 #
-# Complete rule table (4 × 4 × 3 = 48 rules, G<level><dynamics><mixture> = term indices) of modules/hfs/policy.py gas():
-#   level clean / slight / elevated / critical → low / medium / high / critical; sharply rising → one level up;
-#   mixture index high → one level up. Ruspini terms + product / sum inference → monotonic (see policy.py).
-version: 1
+# Every substance as a share of its critical concentration, c_norm = c / c_crit (config/gases.yaml: NIOSH IDLH for
+# gases, EPA AQI 2024 "Hazardous" for PM2.5), so one rule base serves every gas and smoke. Terms (UA in comments):
+#   max_norm       safe (безпечно) · moderate (помірно) · dangerous (небезпечно) · critical (критично, = 1 at ≥ 1.0)
+#   mixture_index  low (низький) · noticeable (помітний) · high (високий, Σ c/c_crit ≥ 1)
+#   dynamics       falling (спад) · stable (стабільно) · rising (зростання) · sharp_rise (різке зростання)
+#
+# Complete rule table (4 × 4 × 3 = 48 rules, G<max_norm><dynamics><mixture> = term indices) of modules/hfs/policy.py
+# gas(): max_norm safe / moderate / dangerous / critical → low / medium / high / critical; sharp rise → one level up;
+# mixture high → one level up. The issue's examples hold: critical → critical; dangerous + rising → high; moderate +
+# sharp rise → high; safe + low mixture → low; a high mixture raises the risk although every gas is below critical.
+# Ruspini terms + product / sum inference → exactly monotonic (policy.py, reports/surfaces/).
+version: 2
 output: risk
-update_sec: 2
+update_sec: 2                      # inference period (sampling: docs/sensors.md; dynamics window: hfs.gas.window_sec)
 defuzzification: centroid
 operators: {and: prod, or: probor, implication: prod, aggregation: sum}   # with the complete table: exactly monotonic
 default_output: 0.0
 
 variables:
-  gas_level:                       # max over sensors of concentration / critical limit of that gas
-    universe: [0, 2, 0.005]
+  max_norm:                        # max over substances of c / c_crit, clipped to 0..1.2
+    universe: [0, 1.2, 0.005]
     terms:                         # Ruspini partition: μ sums to 1 everywhere
-      clean: [trap, 0, 0, 0.05, 0.25]
-      slight: [tri, 0.05, 0.25, 0.6]
-      elevated: [tri, 0.25, 0.6, 1.0]
-      critical: [trap, 0.6, 1.0, 2, 2]
-  gas_dynamics:                    # rise rate of the main gas, share of its limit per minute
-    universe: [-0.5, 0.5, 0.005]
+      safe: [trap, 0, 0, 0.1, 0.3]
+      moderate: [tri, 0.1, 0.3, 0.6]
+      dangerous: [tri, 0.3, 0.6, 1.0]
+      critical: [trap, 0.6, 1.0, 1.2, 1.2]
+  dynamics:                        # least-squares slope of max_norm per minute over hfs.gas.window_sec (60 s)
+    universe: [-0.5, 0.5, 0.005]   # ±0.5 / min = from 0 to the critical level in 2 minutes
     unit: "/min"
     default: 0
     terms:
       falling: [trap, -0.5, -0.5, -0.1, 0]
       stable: [tri, -0.1, 0, 0.1]
-      rising: [tri, 0, 0.1, 0.25]
-      sharply_rising: [trap, 0.1, 0.25, 0.5, 0.5]
-  mixture_index:                   # Σ C_i / limit_i over the sensors of the location (additive mixture rule)
-    universe: [0, 3, 0.01]
+      rising: [tri, 0, 0.1, 0.25]          # 0.1 / min: critical within ~10 min
+      sharp_rise: [trap, 0.1, 0.25, 0.5, 0.5]   # ≥ 0.25 / min: critical within ~4 min
+  mixture_index:                   # Σ c_i / c_crit,i (additive mixture rule of occupational exposure limits)
+    universe: [0, 3.6, 0.01]       # three substances at 1.2
     default: 0
     terms:
       low: [trap, 0, 0, 0.3, 0.7]
-      medium: [tri, 0.3, 0.7, 1.0]
-      high: [trap, 0.7, 1.0, 3, 3]
+      noticeable: [tri, 0.3, 0.7, 1.0]
+      high: [trap, 0.7, 1.0, 3.6, 3.6]
   risk:                            # same as the top level's output: equal areas (0.25), centroids ≈ 0.13 / 0.35 /
     universe: [0, 1, 0.005]        # 0.65 / 0.87 = the peaks of the top level's input terms
     terms:
@@ -47,148 +53,147 @@ variables:
 
 rules:
   - id: G000
-    rule: "IF gas_level IS clean AND gas_dynamics IS falling AND mixture_index IS low THEN risk IS low"
-    meta: &policy {source: "initial expert base (TOD-41), modules/hfs/policy.py gas()",
-                   author: TodaysMonkeyJob, added: 2026-11-06,
-                   rationale: "gas_level clean / slight / elevated / critical → low / medium / high / critical (a critical concentration is critical on its own); sharply rising → one level up (an early leak); mixture index high (Σ C/L ≥ 1) → one level up; falling never lowers a level."}
+    rule: "IF max_norm IS safe AND dynamics IS falling AND mixture_index IS low THEN risk IS low"
+    meta: &policy {source: "A2 (TOD-42), modules/hfs/policy.py gas()", author: TodaysMonkeyJob,
+                   added: 2026-11-06, rationale: "All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level."}
   - id: G001
-    rule: "IF gas_level IS clean AND gas_dynamics IS falling AND mixture_index IS medium THEN risk IS low"
+    rule: "IF max_norm IS safe AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS low"
     meta: *policy
   - id: G002
-    rule: "IF gas_level IS clean AND gas_dynamics IS falling AND mixture_index IS high THEN risk IS medium"
+    rule: "IF max_norm IS safe AND dynamics IS falling AND mixture_index IS high THEN risk IS medium"
     meta: *policy
   - id: G010
-    rule: "IF gas_level IS clean AND gas_dynamics IS stable AND mixture_index IS low THEN risk IS low"
+    rule: "IF max_norm IS safe AND dynamics IS stable AND mixture_index IS low THEN risk IS low"
     meta: *policy
   - id: G011
-    rule: "IF gas_level IS clean AND gas_dynamics IS stable AND mixture_index IS medium THEN risk IS low"
+    rule: "IF max_norm IS safe AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS low"
     meta: *policy
   - id: G012
-    rule: "IF gas_level IS clean AND gas_dynamics IS stable AND mixture_index IS high THEN risk IS medium"
+    rule: "IF max_norm IS safe AND dynamics IS stable AND mixture_index IS high THEN risk IS medium"
     meta: *policy
   - id: G020
-    rule: "IF gas_level IS clean AND gas_dynamics IS rising AND mixture_index IS low THEN risk IS low"
+    rule: "IF max_norm IS safe AND dynamics IS rising AND mixture_index IS low THEN risk IS low"
     meta: *policy
   - id: G021
-    rule: "IF gas_level IS clean AND gas_dynamics IS rising AND mixture_index IS medium THEN risk IS low"
+    rule: "IF max_norm IS safe AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS low"
     meta: *policy
   - id: G022
-    rule: "IF gas_level IS clean AND gas_dynamics IS rising AND mixture_index IS high THEN risk IS medium"
+    rule: "IF max_norm IS safe AND dynamics IS rising AND mixture_index IS high THEN risk IS medium"
     meta: *policy
   - id: G030
-    rule: "IF gas_level IS clean AND gas_dynamics IS sharply_rising AND mixture_index IS low THEN risk IS medium"
+    rule: "IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS medium"
     meta: *policy
   - id: G031
-    rule: "IF gas_level IS clean AND gas_dynamics IS sharply_rising AND mixture_index IS medium THEN risk IS medium"
+    rule: "IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS medium"
     meta: *policy
   - id: G032
-    rule: "IF gas_level IS clean AND gas_dynamics IS sharply_rising AND mixture_index IS high THEN risk IS high"
+    rule: "IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS high"
     meta: *policy
   - id: G100
-    rule: "IF gas_level IS slight AND gas_dynamics IS falling AND mixture_index IS low THEN risk IS medium"
+    rule: "IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS low THEN risk IS medium"
     meta: *policy
   - id: G101
-    rule: "IF gas_level IS slight AND gas_dynamics IS falling AND mixture_index IS medium THEN risk IS medium"
+    rule: "IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS medium"
     meta: *policy
   - id: G102
-    rule: "IF gas_level IS slight AND gas_dynamics IS falling AND mixture_index IS high THEN risk IS high"
+    rule: "IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS high THEN risk IS high"
     meta: *policy
   - id: G110
-    rule: "IF gas_level IS slight AND gas_dynamics IS stable AND mixture_index IS low THEN risk IS medium"
+    rule: "IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS low THEN risk IS medium"
     meta: *policy
   - id: G111
-    rule: "IF gas_level IS slight AND gas_dynamics IS stable AND mixture_index IS medium THEN risk IS medium"
+    rule: "IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS medium"
     meta: *policy
   - id: G112
-    rule: "IF gas_level IS slight AND gas_dynamics IS stable AND mixture_index IS high THEN risk IS high"
+    rule: "IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS high THEN risk IS high"
     meta: *policy
   - id: G120
-    rule: "IF gas_level IS slight AND gas_dynamics IS rising AND mixture_index IS low THEN risk IS medium"
+    rule: "IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS low THEN risk IS medium"
     meta: *policy
   - id: G121
-    rule: "IF gas_level IS slight AND gas_dynamics IS rising AND mixture_index IS medium THEN risk IS medium"
+    rule: "IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS medium"
     meta: *policy
   - id: G122
-    rule: "IF gas_level IS slight AND gas_dynamics IS rising AND mixture_index IS high THEN risk IS high"
+    rule: "IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS high THEN risk IS high"
     meta: *policy
   - id: G130
-    rule: "IF gas_level IS slight AND gas_dynamics IS sharply_rising AND mixture_index IS low THEN risk IS high"
+    rule: "IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS high"
     meta: *policy
   - id: G131
-    rule: "IF gas_level IS slight AND gas_dynamics IS sharply_rising AND mixture_index IS medium THEN risk IS high"
+    rule: "IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS high"
     meta: *policy
   - id: G132
-    rule: "IF gas_level IS slight AND gas_dynamics IS sharply_rising AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G200
-    rule: "IF gas_level IS elevated AND gas_dynamics IS falling AND mixture_index IS low THEN risk IS high"
+    rule: "IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS low THEN risk IS high"
     meta: *policy
   - id: G201
-    rule: "IF gas_level IS elevated AND gas_dynamics IS falling AND mixture_index IS medium THEN risk IS high"
+    rule: "IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS high"
     meta: *policy
   - id: G202
-    rule: "IF gas_level IS elevated AND gas_dynamics IS falling AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G210
-    rule: "IF gas_level IS elevated AND gas_dynamics IS stable AND mixture_index IS low THEN risk IS high"
+    rule: "IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS low THEN risk IS high"
     meta: *policy
   - id: G211
-    rule: "IF gas_level IS elevated AND gas_dynamics IS stable AND mixture_index IS medium THEN risk IS high"
+    rule: "IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS high"
     meta: *policy
   - id: G212
-    rule: "IF gas_level IS elevated AND gas_dynamics IS stable AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G220
-    rule: "IF gas_level IS elevated AND gas_dynamics IS rising AND mixture_index IS low THEN risk IS high"
+    rule: "IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS low THEN risk IS high"
     meta: *policy
   - id: G221
-    rule: "IF gas_level IS elevated AND gas_dynamics IS rising AND mixture_index IS medium THEN risk IS high"
+    rule: "IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS high"
     meta: *policy
   - id: G222
-    rule: "IF gas_level IS elevated AND gas_dynamics IS rising AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G230
-    rule: "IF gas_level IS elevated AND gas_dynamics IS sharply_rising AND mixture_index IS low THEN risk IS critical"
+    rule: "IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS critical"
     meta: *policy
   - id: G231
-    rule: "IF gas_level IS elevated AND gas_dynamics IS sharply_rising AND mixture_index IS medium THEN risk IS critical"
+    rule: "IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS critical"
     meta: *policy
   - id: G232
-    rule: "IF gas_level IS elevated AND gas_dynamics IS sharply_rising AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G300
-    rule: "IF gas_level IS critical AND gas_dynamics IS falling AND mixture_index IS low THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS falling AND mixture_index IS low THEN risk IS critical"
     meta: *policy
   - id: G301
-    rule: "IF gas_level IS critical AND gas_dynamics IS falling AND mixture_index IS medium THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS critical"
     meta: *policy
   - id: G302
-    rule: "IF gas_level IS critical AND gas_dynamics IS falling AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS falling AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G310
-    rule: "IF gas_level IS critical AND gas_dynamics IS stable AND mixture_index IS low THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS stable AND mixture_index IS low THEN risk IS critical"
     meta: *policy
   - id: G311
-    rule: "IF gas_level IS critical AND gas_dynamics IS stable AND mixture_index IS medium THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS critical"
     meta: *policy
   - id: G312
-    rule: "IF gas_level IS critical AND gas_dynamics IS stable AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS stable AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G320
-    rule: "IF gas_level IS critical AND gas_dynamics IS rising AND mixture_index IS low THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS rising AND mixture_index IS low THEN risk IS critical"
     meta: *policy
   - id: G321
-    rule: "IF gas_level IS critical AND gas_dynamics IS rising AND mixture_index IS medium THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS critical"
     meta: *policy
   - id: G322
-    rule: "IF gas_level IS critical AND gas_dynamics IS rising AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS rising AND mixture_index IS high THEN risk IS critical"
     meta: *policy
   - id: G330
-    rule: "IF gas_level IS critical AND gas_dynamics IS sharply_rising AND mixture_index IS low THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS critical"
     meta: *policy
   - id: G331
-    rule: "IF gas_level IS critical AND gas_dynamics IS sharply_rising AND mixture_index IS medium THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS critical"
     meta: *policy
   - id: G332
-    rule: "IF gas_level IS critical AND gas_dynamics IS sharply_rising AND mixture_index IS high THEN risk IS critical"
+    rule: "IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical"
     meta: *policy
