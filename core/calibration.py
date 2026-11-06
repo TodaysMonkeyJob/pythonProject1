@@ -337,5 +337,5 @@ def wer(reference: str, hypothesis: str) -> float:
 
 
 def asr_confidence(avg_logprob: float, no_speech_prob: float) -> float:
-    """The live raw score (``modules.llm.whisper_client``): exp(avg_logprob) · (1 − no_speech_prob)"""
+    """The live raw score (``modules.audio.whisper_client``): exp(avg_logprob) · (1 − no_speech_prob)"""
     return math.exp(min(0.0, float(avg_logprob))) * (1.0 - float(no_speech_prob or 0.0))

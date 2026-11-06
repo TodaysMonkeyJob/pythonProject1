@@ -6,7 +6,7 @@ import numpy as np
 
 from core.events import Event
 from modules.audio.mic_controller import MicController
-from modules.llm.whisper_client import WhisperOptions, _segments, azure_transcriber, local_transcriber
+from modules.audio.whisper_client import WhisperOptions, _segments, azure_transcriber, local_transcriber
 
 AUDIO = np.zeros(16000, np.int16)
 

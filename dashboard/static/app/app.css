@@ -116,6 +116,17 @@ h2 { font-size: .78em; text-transform: uppercase; letter-spacing: .07em; color: 
 .ack { border-color: var(--attention); white-space: nowrap; }
 .main-cam { flex: 1; min-height: 0; display: flex; } .main-cam > .tile, .main-cam > .grid-empty { flex: 1; }
 .thumbs { flex: 0 0 88px; display: flex; gap: 6px; overflow-x: auto; } .thumbs .tile { flex: 0 0 150px; }
+/* A1 (TOD-41) HFS strip: risk 1–3 + overall, click → fired rules of both levels */
+.hfs-strip { flex: 0 0 auto; display: flex; align-items: stretch; gap: 10px; width: 100%; padding: 6px 10px; border: 0;
+             border-radius: 10px; background: var(--panel); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.hfs-meter { flex: 1; display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.hfs-meter b { justify-self: end; font-variant-numeric: tabular-nums; }
+.hfs-meter.missing b { color: var(--muted); }
+.hfs-bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+.hfs-bar .fill { height: 100%; background: var(--muted); }
+.hfs-bar .fill.low { background: var(--low); } .hfs-bar .fill.medium { background: var(--medium); }
+.hfs-bar .fill.high { background: var(--high); } .hfs-bar .fill.critical { background: var(--critical); }
+.badge-partial { align-self: center; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--muted); color: var(--muted); font-size: .8em; }
 .people-chips { flex: 0 0 auto; max-height: 76px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; }
 .person-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 14px; background: var(--panel);
                border: 1px solid var(--line); font-size: .92em; }

@@ -14,7 +14,7 @@ export const PANEL_TABS = ["events", "talk", "gas", "gpt"];
 const TAB_LABEL = { events: "Події", talk: "Розмова", gas: "Газ", gpt: "Рішення GPT" };
 const ARROW = { rising: "↗", falling: "↘", stable: "→" };
 const LEVEL_LABEL = { low: "низький", medium: "середній", high: "високий", critical: "критичний" };
-const QUIET = new Set(["gas_reading", "motion", "heartbeat", "location_summary", "mic_state"]);  // not in "Події"
+const QUIET = new Set(["gas_reading", "motion", "heartbeat", "location_summary", "mic_state", "hfs_risk"]);  // not in "Події" (HFS: the strip)
 const memory = new Map();       // territory → {scroll: {events, talk, gpt}, cam}
 let current = null;
 
@@ -35,6 +35,38 @@ async function loadData(id) {
     history({ location_id: id, since: new Date(Date.now() - 6 * 3600e3).toISOString(), limit: 1500 }),
     history({ location_id: id, types: "llm_decision", since: day, limit: 100 })]);
   return { speech, gas: gas.reverse(), events: events.filter((e) => !QUIET.has(e.type)), llm };   // lists: newest first
+}
+
+// --- A1 (TOD-41) hierarchical fuzzy system: risk 1 (gas) · risk 2 (camera) · risk 3 (audio) · overall -------------
+const HFS_PARTS = [["risk1", "gas", "Газ"], ["risk2", "camera", "Камера"], ["risk3", "audio", "Звук"]];
+const HFS_LEVEL_UA = { gas: "газ", camera: "камера", audio: "звук", top: "загальний" };
+
+function hfsMeter(label, value, level, note) {
+  const missing = value === null || value === undefined;
+  return h("div", { class: `hfs-meter${missing ? " missing" : ""}`, title: note || "" },
+    h("span", { class: "muted small" }, label),
+    h("b", { class: `lvl ${level || ""}` }, missing ? "—" : fmt2(value)),
+    h("div", { class: "hfs-bar" }, missing ? null : h("div", { class: `fill ${level || ""}`, style: { width: `${Math.round(value * 100)}%` } })));
+}
+
+function hfsDialog(p) {
+  const by = p.fired_rules_by_level || {};
+  dialog("Нечітка система: чому такий ризик",
+    h("p", {}, `Загальний ризик ${fmt2(p.overall)} (${LEVEL_LABEL[p.level] || p.level}), інтервал ${fmt2((p.interval || [])[0])}–${fmt2((p.interval || [])[1])}`,
+      p.partial ? ` · часткова оцінка: немає ${(p.missing || []).map((m) => HFS_LEVEL_UA[m] || m).join(", ") || "частини даних"}` : ""),
+    ...["top", "gas", "camera", "audio"].filter((k) => (by[k] || []).length).map((k) => h("div", {},
+      h("h3", {}, k === "top" ? "Верхній рівень" : `Підсистема: ${HFS_LEVEL_UA[k]}`),
+      h("ul", { class: "env-reasons" }, by[k].map((r) => h("li", {}, `${r.id}: ${r.explanation}`))))));
+}
+
+function hfsStrip(p) {
+  if (!p) return null;
+  const level = (name) => ((p.subsystems || {})[name] || {}).level;
+  return h("button", { class: "hfs-strip", "aria-label": "ризики нечіткої системи, натисніть для пояснення", onclick: () => hfsDialog(p) },
+    ...HFS_PARTS.map(([key, name, label]) => hfsMeter(label, p[key], level(name),
+      p[key] === null || p[key] === undefined ? "немає даних (пристрій офлайн)" : ((p.fired_rules_by_level || {})[name] || [])[0]?.explanation)),
+    hfsMeter("Загалом", p.overall, p.level, ((p.fired_rules_by_level || {}).top || [])[0]?.explanation),
+    p.partial ? h("span", { class: "badge-partial", title: "оцінка без частини підсистем" }, "часткова") : null);
 }
 
 // --- F17 corridor, F19 source, F16 trust (also used by other views) ------------------------------------------------
@@ -122,7 +154,7 @@ function mount(root, id, tab, go) {
     gpt: new LiveList({ empty: "рішень ще немає", label: "рішення GPT", onScroll: (y) => { mem.scroll.gpt = y; } }),
   };
   const refs = {
-    head: h("header", { class: "loc-head" }), cam: h("div", { class: "main-cam" }), thumbs: h("div", { class: "thumbs" }),
+    head: h("header", { class: "loc-head" }), hfs: h("div", { class: "hfs" }), cam: h("div", { class: "main-cam" }), thumbs: h("div", { class: "thumbs" }),
     people: h("div", { class: "people-chips", "aria-label": "люди зараз" }),
     gasNow: h("div", { class: "gas-now" }), gasChart: h("canvas", { class: "gas-bars", dataset: { chart: "bars" } }),
     gptNow: h("div", { class: "gpt-now" }),
@@ -139,7 +171,7 @@ function mount(root, id, tab, go) {
            h("h2", {}, "Історія"), lists.gpt.el),
   };
   const page = h("div", { class: "loc-view", dataset: { view: "loc", loc: id } },
-    h("section", { class: "loc-left" }, refs.head, refs.cam, refs.thumbs, refs.people),
+    h("section", { class: "loc-left" }, refs.head, refs.hfs, refs.cam, refs.thumbs, refs.people),
     h("aside", { class: "panel loc-right" }, tabs, h("div", { class: "panes" }, Object.values(panes))));
   root.replaceChildren(page);
   current = { id, root, page, lists, refs, tabs, panes, tab: null, data: null, go };
@@ -192,6 +224,8 @@ function update() {
     h("span", { class: "reason", title: s.reason || "" }, s.reason || ""),
     h("button", { class: "ack", disabled: !s.active_alerts, "aria-label": "підтвердити тривоги території",
                   onclick: () => ackLocation(id) }, s.active_alerts ? `Підтвердити (${s.active_alerts})` : "Підтвердити"));
+  refs.hfs.hidden = !s.hfs;
+  refs.hfs.replaceChildren(...(s.hfs ? [hfsStrip(s.hfs)] : []));
   const cams = cameras().filter((d) => d.location_id === id);
   const mem = remember(id);
   const main = cams.find((d) => d.device_id === mem.cam) || cams[0];

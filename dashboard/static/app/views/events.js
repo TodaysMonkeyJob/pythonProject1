@@ -27,6 +27,7 @@ export function describe(ev) {
     case "escalation_review": return `GPT бачить вищий ризик (${LEVEL[p.risk_level_llm] || p.risk_level_llm}) — потрібне рішення оператора`;
     case "escalation_resolved": return `оператор ${p.by || ""}: ескалацію ${p.accepted ? "прийнято" : "відхилено"}`;
     case "deescalation_rejected": return `зниження відхилено: GPT ${LEVEL[p.risk_level_llm] || p.risk_level_llm} → ${LEVEL[p.risk_level_final] || p.risk_level_final}`;
+    case "hfs_risk": return `нечітка система: ${LEVEL[p.level] || p.level} ${Number(p.overall).toFixed(2)} (газ ${p.risk1 ?? "—"} · камера ${p.risk2 ?? "—"} · звук ${p.risk3 ?? "—"})${p.partial ? ", часткова" : ""}`;
     case "notification": return `${p.title || ""}: ${p.body || ""}`;
     case "person_identified": return `#${p.track_id} ${personName(p.person_id, p.identity)}${p.known ? "" : " (незнайомець)"}`;
     case "object_detected": return `${p.class} #${p.track_id} ${p.state === "disappeared" ? "зник" : "з'явився"}`;

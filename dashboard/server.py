@@ -192,7 +192,8 @@ class DashboardState:
                 "ram_used_mb": round((memory.total - memory.available) / 1e6),
                 "ram_total_mb": round(memory.total / 1e6),
                 "uptime_sec": round(now - self.started),
-                "gas_thresholds": self.config.get("gas", {}).get("thresholds", {})}
+                "gas_thresholds": self.config.get("gas", {}).get("thresholds", {}),
+                "mode": str(self.config.get("mode") or "hybrid")}       # A1 (TOD-41): autonomous | hybrid
 
 
     def _vision(self) -> Dict[str, Any]:

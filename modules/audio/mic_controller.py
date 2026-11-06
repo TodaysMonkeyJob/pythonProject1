@@ -234,7 +234,7 @@ class MicController(BaseModule):
         """
         :param frame_source: Object with open() / read() -> [int16 frame] / close(); SoundDeviceSource by default
         :param vad: frame -> is speech; webrtcvad by default
-        :param transcriber: (audio, sample_rate) -> {"text", "language"}; from modules.llm.whisper_client by default
+        :param transcriber: (audio, sample_rate) -> {"text", "language"}; from modules.audio.whisper_client by default
         :param clock: Monotonic time source (tests)
         :param speaker: ``speaker.SpeakerIdentifier``; created from the config on the first segment by default,
                         False = no speaker identification
@@ -412,7 +412,7 @@ class MicController(BaseModule):
     def _get_transcriber(self):
         """Created on the first segment (in the Whisper thread), so start-up stays fast."""
         if self.transcriber is None:
-            from modules.llm.whisper_client import create_transcriber
+            from modules.audio.whisper_client import create_transcriber
 
             try:
                 self.transcriber = create_transcriber(self.config)

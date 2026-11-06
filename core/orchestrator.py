@@ -9,6 +9,8 @@ Orchestrator (F4): runs every enabled module in its own process, routes events, 
 * Watchdog: a module whose process died, or that sent no heartbeat for ``missed_heartbeats`` × 5 s (after a
   start-up grace period), is restarted with exponential backoff; every restart is a ``system`` ``alert`` event.
 * The vision shared-memory buffer is created before the modules start and unlinked on shutdown.
+* ``mode: autonomous`` (A1 / TOD-41, ``core/mode.py``): the LLM worker and GPT rule suggestions are not started and
+  never imported; decisions come from the hierarchical fuzzy system (``modules/hfs``).
 """
 import copy
 import importlib
@@ -23,6 +25,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from core.bus import CONTROL_STOP, publish
 from core.events import Event, make_event
 from core.logger import JsonlLogger
+from core.mode import LLM_PACKAGES, apply_mode, is_autonomous
 from core.module import HEARTBEAT_INTERVAL
 from system_setup.logger_setup import init_logger
 
@@ -42,6 +45,8 @@ DEFAULT_MODULES = {
     "llm": ("modules.llm:run", "llm", [            # works from the SQLite outbox; F17 envelope needs the evidence
         "gas_reading", "motion", "object_detected", "person_identified", "action", "alert", "speech", "scene_text",
         "notification_acked", "escalation_resolved"]),   # F26: operator outcomes → fired-rule statistics
+    "hfs": ("modules.hfs:run", "hfs", [            # A1 (TOD-41): gas / camera / audio subsystems → overall risk
+        "gas_reading", "motion", "object_detected", "person_identified", "sound", "speech"]),
     "locations": ("modules.locations:run", "locations", ["*"]),   # F12 per-location state + notifications
     "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary"]),
 }
@@ -160,6 +165,7 @@ class Orchestrator:
         :param device_scan: network config → [FoundDevice]; ``core.discovery.scan`` by default (tests inject a fake)
         """
         self.device_scan = device_scan
+        config = apply_mode(config)                 # A1: autonomous → no LLM / GPT paths, local Whisper
         self.config = config
         self.cfg = config.get("orchestrator", {})
         self.ctx = mp.get_context("spawn")
@@ -187,16 +193,19 @@ class Orchestrator:
         if self.trust is not None:
             self.trust.registry.ensure_device("identity", "identity", None, time.time())
             self.trust.registry.ensure_device("llm", "llm", None, time.time())
-            from modules.rules.suggester import SuggestionTriggers, store_from_config   # F27 (TOD-38)
+            if not is_autonomous(config):           # GPT rule suggestions: hybrid only
+                from modules.rules.suggester import SuggestionTriggers, store_from_config   # F27 (TOD-38)
 
-            self.trust.evidence.suggestions = SuggestionTriggers(
-                store_from_config(config), (config.get("rules") or {}).get("suggestions"),
-                config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml"), self.trust.registry)
+                self.trust.evidence.suggestions = SuggestionTriggers(
+                    store_from_config(config), (config.get("rules") or {}).get("suggestions"),
+                    config.get("trust", {}).get("fuzzy_config", "config/fuzzy.yaml"), self.trust.registry)
 
     # --- setup -----------------------------------------------------------------------------------------------
 
     @staticmethod
     def module_specs(config: Dict[str, Any]) -> List[ModuleSpec]:
+        config = apply_mode(config)
+        autonomous = is_autonomous(config)
         overrides = config.get("orchestrator", {}).get("modules", {}) or {}
         discovery = config.get("network", {}).get("discovery", False)
         specs = []
@@ -207,6 +216,8 @@ class Orchestrator:
             if override.get("enabled") is False or not config.get(section, {}).get("enabled", False):
                 continue
             target = override.get("target", target)
+            if autonomous and target.partition(":")[0].startswith(LLM_PACKAGES):
+                continue                            # never imported in autonomous mode (not even to probe it)
             if not target_available(target):
                 logger.info(f"Module {name} ({target}) not available yet — skipped")
                 continue

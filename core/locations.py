@@ -13,6 +13,7 @@ seeds it from ``config/locations.yaml`` (optional)::
         rules:
           unknown_person_after: "20:00"   # an unknown person only counts as a warning after this time (until 06:00)
           gas_thresholds: {acetone: 3.0}  # a reading above → critical in this location
+          activity_hours: ["08:00", "19:00"]   # A1 (TOD-41): the HFS camera subsystem's working hours
 
 Changes publish ``device_updated`` for moved devices (so modules follow) and are picked up by readers via ``poll()``.
 """
@@ -25,7 +26,7 @@ from core.devices import slug
 from core.events import UNASSIGNED, Event
 
 COLUMNS = {"order_index": "INTEGER NOT NULL DEFAULT 50", "icon": "TEXT", "rules_json": "TEXT"}
-RULE_KEYS = ("unknown_person_after", "gas_thresholds", "attention_window_min", "cooldown_min")
+RULE_KEYS = ("unknown_person_after", "gas_thresholds", "attention_window_min", "cooldown_min", "activity_hours")
 
 
 class LocationRegistry:
@@ -169,5 +170,12 @@ def clean_rules(rules: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     rules = {k: v for k, v in (rules or {}).items() if k in RULE_KEYS and v not in (None, "")}
     if "gas_thresholds" in rules:
         rules["gas_thresholds"] = {str(k): float(v) for k, v in (rules["gas_thresholds"] or {}).items()}
+    if "activity_hours" in rules:
+        hours = rules["activity_hours"]
+        if isinstance(hours, str):
+            hours = hours.replace("–", "-").split("-")
+        if not (isinstance(hours, (list, tuple)) and len(hours) == 2):
+            raise ValueError(f"activity_hours must be [\"HH:MM\", \"HH:MM\"], got {rules['activity_hours']!r}")
+        rules["activity_hours"] = [str(h).strip() for h in hours]
     return rules
 

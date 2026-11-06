@@ -8,6 +8,7 @@ import time
 from typing import Any, Dict, Optional
 
 from core.events import Event, make_event
+from core.mode import is_autonomous
 from core.module import BaseModule
 from modules.locations.state import ATTENTION, DANGER, OFFLINE, LocationStateEngine
 from system_setup.logger_setup import init_logger
@@ -50,7 +51,8 @@ class LocationsModule(BaseModule):
             self.locations = LocationRegistry(network.get("devices_path", "data/devices.db"), publish=self.publish,
                                               seed_file=self.cfg.get("seed_file", "config/locations.yaml"))
             ignore = (network.get("hub_location") or "hub", "unknown")
-            self.engine = LocationStateEngine(self.locations.name, self.locations.rules, self.devices, self.cfg,
+            cfg = {**self.cfg, "hfs_decides": is_autonomous(self.config)}     # A1: HFS risk instead of GPT
+            self.engine = LocationStateEngine(self.locations.name, self.locations.rules, self.devices, cfg,
                                               ignore=ignore)
         if self.notifications is None:
             from modules.notify.service import NotificationService

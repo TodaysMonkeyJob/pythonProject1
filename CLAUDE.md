@@ -267,6 +267,16 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   (department questions answered by numbers + McNemar verdict), corridor.md, failure.md, ablation / McNemar vs
   proposed_v2, figures width_vs_u / h_hist / branches / failure; manifest hashes thresholds / trust files.
   `--offline` = `tools.fit_thresholds.OfflineLLM` (cache read-only, misses → simulator, counted).
+- A1 (TOD-41) autonomous mode (Article 1): `config.yaml` `mode: autonomous | hybrid` (`core/mode.py` `apply_mode`:
+  autonomous → no LLM worker / envelope / GPT rule suggestions, aggregator `queue_for_llm: false`, local Whisper; the
+  orchestrator never imports `LLM_PACKAGES`). `modules/hfs/` hierarchical fuzzy system: level-1 subsystems gas /
+  camera / audio (`config/fuzzy/{gas,camera,audio}.yaml` → risk 1–3, own `update_sec`) + top level (`top.yaml`) →
+  `hfs_risk` per location (risk1..3, overall, level, interval, partial, missing, fired_rules_by_level), on change +
+  `keepalive_sec`. Every rule base = complete table of a policy in `modules/hfs/policy.py` on Ruspini tri / trap
+  terms with prod / sum inference → exactly monotonic (tests compare every cell; `python -m tools.plot_surfaces` →
+  `reports/surfaces/`). Missing subsystem → input 0 + `partial`. Location state follows `hfs_risk` only in
+  autonomous mode (`hfs_decides`); dashboard territory view shows the risk strip (click → fired rules).
+  `python -m modules.hfs --check`. Location rule `activity_hours`. `whisper_client` moved to `modules/audio/`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —
@@ -291,7 +301,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   DASHBOARD_USER / DASHBOARD_PASS; without them it binds 127.0.0.1 only. `static/index.html`: single page, vanilla
   JS + Chart.js (CDN), all event text inserted via textContent.
   - `modules/audio/mic_controller.py` — F4 microphone: STANDBY (RMS + webrtcvad on 30 ms frames, nothing recorded)
-    / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/llm/whisper_client.py` → `speech`
+    / ACTIVE (scene_active, loud sound or speech; speech segments → `modules/audio/whisper_client.py` → `speech`
     with `backend`). `whisper_backend: azure` falls back to local faster-whisper when keys are missing or a request
     fails (Azure retried after `azure_retry_sec`); `azure_only` = cloud only, no fallback; `local` = local only;
     `WhisperOptions` (both backends): fixed `language` or detection restricted to `languages` (Azure re-asks in the

@@ -159,7 +159,7 @@ def test_whisper_segments_from_results():
     assert [(s.start, s.end, s.text) for s in whisper_segments(result, 2.0)] == [(0.0, 1.2, "hello"),
                                                                                  (1.2, 2.0, "there")]
     assert [(s.start, s.end) for s in whisper_segments({"text": "hi"}, 1.5)] == [(0.0, 1.5)]
-    from modules.llm.whisper_client import _segments
+    from modules.audio.whisper_client import _segments
 
     azure_like = [SimpleNamespace(start=0.0, end=1.0, text=" a"), SimpleNamespace(start=1.0, end=2.0, text="")]
     assert _segments(azure_like) == [{"start": 0.0, "end": 1.0, "text": "a"}]
