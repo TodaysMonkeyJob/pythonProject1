@@ -57,6 +57,7 @@ EVENT_TYPES = (
     "trust_feedback",       # F23: operator feedback from the dashboard (channel_id, verdict, reason / transcript fix)
     "escalation_review",    # F25: GPT sees a higher risk than the corridor allows — the operator decides (review_id)
     "escalation_resolved",  # F25: the operator accepted / rejected GPT's level (review_id, accepted, by)
+    "hfs_risk",             # A1 (TOD-41): risk1..3 + overall of a location from the hierarchical fuzzy system
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"

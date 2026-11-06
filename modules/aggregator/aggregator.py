@@ -412,7 +412,9 @@ class Aggregator:
         export_dir = agg.get("export_dir", "exports")
         self.snapshot_dir = agg.get("snapshot_dir", os.path.join(export_dir, "snapshots"))
         self.write_files = agg.get("write_snapshot_files", True)
-        self.outbox = Outbox(agg.get("outbox_path", os.path.join(export_dir, "outbox.db")))
+        # A1 (TOD-41): mode autonomous → nothing is queued for GPT (snapshots / incidents stay local)
+        self.outbox = Outbox(agg.get("outbox_path", os.path.join(export_dir, "outbox.db"))) \
+            if agg.get("queue_for_llm", True) else None
         self.csv = EventCsv(export_dir) if agg.get("export_csv", True) else None
         self.builder = SnapshotBuilder(self.cfg, agg.get("schema_path", SCHEMA_PATH))
         self.clock, self.local_now = clock, local_now
@@ -535,7 +537,8 @@ class Aggregator:
             digest = payload_text(snapshot["llm_view"])
         if incident_id:
             self.incidents.attach(snapshot, digest)
-        self.outbox.add(snapshot, trigger, created_at=now, digest=digest)
+        if self.outbox is not None:
+            self.outbox.add(snapshot, trigger, created_at=now, digest=digest)
         self._write(snapshot)
         logger.info(f"Snapshot {trigger} {location_id} ({self.builder.size(snapshot)} B)"
                     f"{f': {reason}' if reason else ''}")
@@ -580,7 +583,8 @@ class Aggregator:
         snapshot = {"snapshot_id": str(uuid.uuid4()), "trigger": "global", "window": {
             "from": utc_iso(since), "to": utc_iso(now)}, "locations": list(active)}
         digest = "\n".join(lines)[:1200]
-        self.outbox.add(snapshot, "global", created_at=now, digest=digest)
+        if self.outbox is not None:
+            self.outbox.add(snapshot, "global", created_at=now, digest=digest)
         self._write(snapshot)
         return snapshot
 
@@ -597,7 +601,8 @@ class Aggregator:
             self.incidents.finish()                                       # an open incident is not lost
         if self.csv is not None:
             self.csv.close()
-        self.outbox.close()
+        if self.outbox is not None:
+            self.outbox.close()
         if self.locations is not None:
             self.locations.close()
 

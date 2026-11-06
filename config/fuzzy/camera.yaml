@@ -1,0 +1,128 @@
+# A1 (TOD-41) level-1 subsystem "camera" of the autonomous hierarchical fuzzy system (modules/hfs) → risk 2.
+# Explain a case: python -m modules.hfs camera unknown_share=1 off_hours=4 motion_intensity=0.8
+# A3 (TOD-43) refines the inputs (adaptive motion, optional actions mode).
+#
+# Complete rule table (3 × 3 × 3 = 27 rules, C<unknown><motion><off_hours> = term indices) of modules/hfs/policy.py
+# camera(): level = unknown (none 0 / some 1 / all 2) + off_hours (within 0 / near 1 / outside 2) + motion high − 2.
+version: 1
+output: risk
+update_sec: 1
+defuzzification: centroid
+operators: {and: prod, or: probor, implication: prod, aggregation: sum}   # with the complete table: exactly monotonic
+default_output: 0.0
+
+variables:
+  unknown_share:                   # unidentified persons / persons in view (0 when nobody is in view)
+    universe: [0, 1, 0.005]
+    default: 0
+    terms:                         # Ruspini partition: μ sums to 1 everywhere
+      none: [trap, 0, 0, 0.05, 0.5]
+      some: [tri, 0.05, 0.5, 0.95]
+      all: [trap, 0.5, 0.95, 1, 1]
+  motion_intensity:                # share of the last hfs.camera.motion_window_sec with motion
+    universe: [0, 1, 0.005]
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0.05, 0.3]
+      low: [tri, 0.05, 0.3, 0.7]
+      high: [trap, 0.3, 0.7, 1, 1]
+  off_hours:                       # hours outside the location's activity hours (0 = inside them)
+    universe: [0, 12, 0.05]
+    unit: h
+    default: 0
+    terms:
+      within: [trap, 0, 0, 0, 1]
+      near: [tri, 0, 1, 3]
+      outside: [trap, 1, 3, 12, 12]
+  risk:                            # same as the top level's output: equal areas (0.25), centroids ≈ 0.13 / 0.35 /
+    universe: [0, 1, 0.005]        # 0.65 / 0.87 = the peaks of the top level's input terms
+    terms:
+      low: [trap, 0, 0, 0.125, 0.375]
+      medium: [tri, 0.1, 0.35, 0.6]
+      high: [tri, 0.4, 0.65, 0.9]
+      critical: [trap, 0.625, 0.875, 1, 1]
+
+rules:
+  - id: C000
+    rule: "IF unknown_share IS none AND motion_intensity IS none AND off_hours IS within THEN risk IS low"
+    meta: &policy {source: "initial expert base (TOD-41), modules/hfs/policy.py camera()",
+                   author: TodaysMonkeyJob, added: 2026-11-06,
+                   rationale: "Strangers matter outside activity hours: unknown_share none / some / all + off_hours within / near / outside + high motion − 2 (only strangers long after hours → high, moving a lot → critical; visitors by day → low; an empty room → low; sustained motion after hours without anyone identified → medium)."}
+  - id: C001
+    rule: "IF unknown_share IS none AND motion_intensity IS none AND off_hours IS near THEN risk IS low"
+    meta: *policy
+  - id: C002
+    rule: "IF unknown_share IS none AND motion_intensity IS none AND off_hours IS outside THEN risk IS low"
+    meta: *policy
+  - id: C010
+    rule: "IF unknown_share IS none AND motion_intensity IS low AND off_hours IS within THEN risk IS low"
+    meta: *policy
+  - id: C011
+    rule: "IF unknown_share IS none AND motion_intensity IS low AND off_hours IS near THEN risk IS low"
+    meta: *policy
+  - id: C012
+    rule: "IF unknown_share IS none AND motion_intensity IS low AND off_hours IS outside THEN risk IS low"
+    meta: *policy
+  - id: C020
+    rule: "IF unknown_share IS none AND motion_intensity IS high AND off_hours IS within THEN risk IS low"
+    meta: *policy
+  - id: C021
+    rule: "IF unknown_share IS none AND motion_intensity IS high AND off_hours IS near THEN risk IS low"
+    meta: *policy
+  - id: C022
+    rule: "IF unknown_share IS none AND motion_intensity IS high AND off_hours IS outside THEN risk IS medium"
+    meta: *policy
+  - id: C100
+    rule: "IF unknown_share IS some AND motion_intensity IS none AND off_hours IS within THEN risk IS low"
+    meta: *policy
+  - id: C101
+    rule: "IF unknown_share IS some AND motion_intensity IS none AND off_hours IS near THEN risk IS low"
+    meta: *policy
+  - id: C102
+    rule: "IF unknown_share IS some AND motion_intensity IS none AND off_hours IS outside THEN risk IS medium"
+    meta: *policy
+  - id: C110
+    rule: "IF unknown_share IS some AND motion_intensity IS low AND off_hours IS within THEN risk IS low"
+    meta: *policy
+  - id: C111
+    rule: "IF unknown_share IS some AND motion_intensity IS low AND off_hours IS near THEN risk IS low"
+    meta: *policy
+  - id: C112
+    rule: "IF unknown_share IS some AND motion_intensity IS low AND off_hours IS outside THEN risk IS medium"
+    meta: *policy
+  - id: C120
+    rule: "IF unknown_share IS some AND motion_intensity IS high AND off_hours IS within THEN risk IS low"
+    meta: *policy
+  - id: C121
+    rule: "IF unknown_share IS some AND motion_intensity IS high AND off_hours IS near THEN risk IS medium"
+    meta: *policy
+  - id: C122
+    rule: "IF unknown_share IS some AND motion_intensity IS high AND off_hours IS outside THEN risk IS high"
+    meta: *policy
+  - id: C200
+    rule: "IF unknown_share IS all AND motion_intensity IS none AND off_hours IS within THEN risk IS low"
+    meta: *policy
+  - id: C201
+    rule: "IF unknown_share IS all AND motion_intensity IS none AND off_hours IS near THEN risk IS medium"
+    meta: *policy
+  - id: C202
+    rule: "IF unknown_share IS all AND motion_intensity IS none AND off_hours IS outside THEN risk IS high"
+    meta: *policy
+  - id: C210
+    rule: "IF unknown_share IS all AND motion_intensity IS low AND off_hours IS within THEN risk IS low"
+    meta: *policy
+  - id: C211
+    rule: "IF unknown_share IS all AND motion_intensity IS low AND off_hours IS near THEN risk IS medium"
+    meta: *policy
+  - id: C212
+    rule: "IF unknown_share IS all AND motion_intensity IS low AND off_hours IS outside THEN risk IS high"
+    meta: *policy
+  - id: C220
+    rule: "IF unknown_share IS all AND motion_intensity IS high AND off_hours IS within THEN risk IS medium"
+    meta: *policy
+  - id: C221
+    rule: "IF unknown_share IS all AND motion_intensity IS high AND off_hours IS near THEN risk IS high"
+    meta: *policy
+  - id: C222
+    rule: "IF unknown_share IS all AND motion_intensity IS high AND off_hours IS outside THEN risk IS critical"
+    meta: *policy

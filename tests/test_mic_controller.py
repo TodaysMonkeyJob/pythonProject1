@@ -195,7 +195,7 @@ def test_whisper_errors_do_not_stop_the_module():
 
 
 def test_create_transcriber_backends():
-    from modules.llm.whisper_client import AzureWithLocalFallback, create_transcriber
+    from modules.audio.whisper_client import AzureWithLocalFallback, create_transcriber
 
     assert create_transcriber({"audio": {"mic": {"whisper_backend": "none"}}})(SPEECH, 16000)["text"] == ""
     fallback = create_transcriber({"audio": {"mic": {"whisper_backend": "azure"}}, "llm": {}})   # no keys
@@ -225,7 +225,7 @@ class Recorder:
 
 
 def fallback(azure, local, clock, retry_sec=300):
-    from modules.llm.whisper_client import AzureWithLocalFallback
+    from modules.audio.whisper_client import AzureWithLocalFallback
 
     config = {"audio": {"mic": {"azure_retry_sec": retry_sec}}}
     return AzureWithLocalFallback(config, azure_factory=lambda c: azure, local_factory=lambda c: local, clock=clock)
@@ -256,7 +256,7 @@ def test_azure_failure_switches_to_local_and_retries_later():
 
 
 def test_missing_azure_keys_use_local_from_the_start():
-    from modules.llm.whisper_client import AzureWithLocalFallback
+    from modules.audio.whisper_client import AzureWithLocalFallback
 
     local = Recorder("local")
 
@@ -285,7 +285,7 @@ def test_speech_event_shows_backend():
 
 
 def test_language_names_become_codes():
-    from modules.llm.whisper_client import language_code
+    from modules.audio.whisper_client import language_code
 
     assert language_code("english") == "en" and language_code("Ukrainian") == "uk"
     assert language_code("en") == "en" and language_code(None) is None

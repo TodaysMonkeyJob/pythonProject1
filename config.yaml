@@ -1,6 +1,10 @@
 # IoT security system configuration.
 # Secrets (Azure keys, dashboard credentials) are NOT stored here — see .env.example.
 
+mode: hybrid                # A1 (TOD-41): autonomous = every decision by the local hierarchical fuzzy system (hfs),
+                            # no LLM worker / GPT gating / rule suggestions, local Whisper, no cloud calls;
+                            # hybrid = fuzzy layers around GPT (Article 2), the hfs runs as a shadow
+
 network:                    # F11: devices of this node, found automatically (no extra programs needed)
   discovery: true           # one pipeline per camera / microphone found; false = the single vision.device + mic
   node_id: null             # this machine; null = hostname
@@ -297,6 +301,23 @@ aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
     frame_interval_sec: 2   # … one every 2 s
     max_frames: 40
     max_total_mb: 1024      # oldest archives are deleted above this
+
+hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule bases config/fuzzy/{gas,camera,audio,top}.yaml
+  enabled: true             # one hfs_risk event per location on change (python -m modules.hfs --check / explain)
+  min_delta: 0.05           # overall risk change that is published even without a level change
+  keepalive_sec: 30         # … and every this long anyway
+  gas:
+    stale_sec: 30           # no reading for this long → no gas data (partial)
+    limits: {}              # gas → critical limit, %; empty = gas.thresholds (A2 / TOD-42: NIOSH IDLH / EPA)
+  camera:
+    activity_hours: ["08:00", "19:00"]   # default; a location's rule activity_hours wins
+    motion_window_sec: 30
+    unidentified_after_sec: 10   # a person still without an identity decision this long counts as unidentified
+    stale_sec: 30
+  audio:
+    window_sec: 30          # sounds / speech this recent count
+    stale_sec: 30
+  top: {}                   # update_sec / rules override the defaults of config/fuzzy/top.yaml
 
 llm:                        # F6: GPT analysis of snapshot digests (Azure OpenAI, keys in .env)
   enabled: true

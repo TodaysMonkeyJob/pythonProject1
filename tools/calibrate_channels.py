@@ -74,7 +74,7 @@ def transcribe(folder: str, csv_path: str, model_name: str, config_path: str) ->
     from faster_whisper import WhisperModel
 
     from core.config import load_config
-    from modules.llm.whisper_client import WhisperOptions, _segments
+    from modules.audio.whisper_client import WhisperOptions, _segments
 
     mic = load_config(config_path).get("audio", {}).get("mic", {})
     opts = WhisperOptions.from_mic(mic)

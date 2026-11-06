@@ -1,0 +1,137 @@
+{
+ "gas": {
+  "operators": {
+   "and": "prod",
+   "or": "probor",
+   "implication": "prod",
+   "aggregation": "sum"
+  },
+  "rules": 48,
+  "inputs": {
+   "gas_level": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "gas_dynamics": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "mixture_index": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   }
+  }
+ },
+ "camera": {
+  "operators": {
+   "and": "prod",
+   "or": "probor",
+   "implication": "prod",
+   "aggregation": "sum"
+  },
+  "rules": 27,
+  "inputs": {
+   "unknown_share": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "motion_intensity": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "off_hours": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   }
+  }
+ },
+ "audio": {
+  "operators": {
+   "and": "prod",
+   "or": "probor",
+   "implication": "prod",
+   "aggregation": "sum"
+  },
+  "rules": 81,
+  "inputs": {
+   "sound_level": {
+    "steps": 13310,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "sound_type": {
+    "steps": 13310,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "danger_keywords": {
+    "steps": 13310,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "speaker_unknown": {
+    "steps": 13310,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   }
+  }
+ },
+ "top": {
+  "operators": {
+   "and": "prod",
+   "or": "probor",
+   "implication": "prod",
+   "aggregation": "sum"
+  },
+  "rules": 64,
+  "inputs": {
+   "risk_gas": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "risk_camera": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "risk_audio": {
+    "steps": 1210,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   }
+  }
+ }
+}

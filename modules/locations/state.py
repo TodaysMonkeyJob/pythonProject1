@@ -8,6 +8,10 @@ Per-location security state (F12 / TOD-23): every room / territory is ``safe``, 
 * ``offline`` — every device of the location is offline (and nothing is pending).
 * ``safe`` — none of the above.
 
+A1 (TOD-41) ``hfs_decides`` (mode autonomous): the latest ``hfs_risk`` of the location (hierarchical fuzzy system,
+valid ``hfs_valid_min``) takes the place of the GPT risk: ``high`` / ``critical`` → danger, ``medium`` → attention. In
+hybrid mode it is only shown (``summary()["hfs"]``).
+
 ``danger`` de-escalates only after ``cooldown_min`` without new critical events; acknowledging clears the location's
 alerts (and the GPT risk) at once. Every transition is returned as a ``location_state_changed`` payload; ``summary()``
 is the live object pushed to the dashboard.
@@ -29,6 +33,8 @@ IGNORED_TYPES = ("location_state_changed", "location_summary", "notification", "
 ENVELOPE_FIELDS = ("risk_level_final", "risk_llm", "risk_floor", "risk_ceil", "confirmation", "risk_final",
                    "envelope_applied", "envelope_reason", "over_reaction", "source",
                    "y_l", "y_r", "L", "U", "r_D", "h", "policy_branch", "escalation_review", "risk_width")
+# A1 (TOD-41) hierarchical fuzzy system values shown on the dashboard
+HFS_FIELDS = ("risk1", "risk2", "risk3", "overall", "level", "interval", "partial", "missing", "fired_rules_by_level")
 
 
 @dataclass
@@ -49,6 +55,7 @@ class LocationLive:
     last_speech: Optional[Dict[str, Any]] = None
     gas: Optional[Dict[str, Any]] = None
     last_llm: Optional[Dict[str, Any]] = None
+    last_hfs: Optional[Dict[str, Any]] = None
     alerts: List[Alert] = field(default_factory=list)
     warnings: Deque[Tuple[float, str, str]] = field(default_factory=collections.deque)
     last_critical: float = float("-inf")
@@ -61,6 +68,19 @@ def in_evening(now_local: datetime, after: str, until: str = "06:00") -> bool:
     end = datetime.strptime(until, "%H:%M").time()
     current = now_local.time()
     return current >= start or current < end if start > end else start <= current < end
+
+
+def hfs_reason(hfs: Dict[str, Any]) -> str:
+    """``HFS critical 0.82 (camera 0.84, gas 0.10; no audio): C9 unknown_share = 1 → all 1.00; …``"""
+    names = {"risk1": "gas", "risk2": "camera", "risk3": "audio"}
+    risks = sorted(((hfs.get(k), name) for k, name in names.items() if hfs.get(k) is not None), reverse=True)
+    parts = ", ".join(f"{name} {value:.2f}" for value, name in risks)
+    missing = f"; no {', '.join(hfs.get('missing') or [])}" if hfs.get("missing") else ""
+    why = ""
+    if risks:
+        fired = (hfs.get("fired_rules_by_level") or {}).get(risks[0][1]) or []
+        why = f": {fired[0]['id']} {fired[0]['explanation']}" if fired else ""
+    return f"HFS {hfs.get('level')} {float(hfs.get('overall') or 0):.2f} ({parts}{missing}){why}"
 
 
 def describe(event: Event) -> str:
@@ -91,6 +111,8 @@ class LocationStateEngine:
         self.attention_window = float(cfg.get("attention_window_min", 5)) * 60
         self.cooldown = float(cfg.get("cooldown_min", 2)) * 60
         self.llm_valid = float(cfg.get("llm_valid_min", 10)) * 60
+        self.hfs_decides = bool(cfg.get("hfs_decides", False))
+        self.hfs_valid = float(cfg.get("hfs_valid_min", 2)) * 60
         self.local_now = local_now
         self.ignore = ignore
         self.live: Dict[str, LocationLive] = {}
@@ -149,6 +171,9 @@ class LocationStateEngine:
             loc.last_llm = {"risk_level": p.get("risk_level"), "summary": p.get("summary"), "ts": event.timestamp,
                             "at": now, "event_id": event.event_id,
                             **{k: p[k] for k in ENVELOPE_FIELDS if k in p}}
+        elif event.type == "hfs_risk":              # A1: handled by compute(), never as a plain critical event
+            loc.last_hfs = {"ts": event.timestamp, "at": now, "event_id": event.event_id,
+                            **{k: p[k] for k in HFS_FIELDS if k in p}}
         elif event.severity == "critical" and event.source != "llm":
             self._critical(loc, event, now, describe(event))
         elif event.severity == "warning" and event.source != "llm" and self._counts_as_warning(event):
@@ -201,6 +226,10 @@ class LocationStateEngine:
             return DANGER, reasons, [a.event_id for a in open_alerts]
         if risk in ("high", "critical"):
             return DANGER, f"GPT: {llm['summary']}", [llm["event_id"]]
+        hfs = loc.last_hfs if self.hfs_decides and loc.last_hfs and now - loc.last_hfs["at"] < self.hfs_valid \
+            and loc.last_hfs["at"] > loc.acknowledged_at else None
+        if hfs and hfs.get("level") in ("high", "critical"):
+            return DANGER, hfs_reason(hfs), [hfs["event_id"]]
         devices = [d for d in self.devices() if d["location_id"] == loc.location_id and d["enabled"]]
         if devices and not any(d["status"] == "online" for d in devices) and not open_alerts:
             return OFFLINE, "all devices offline", []
@@ -212,6 +241,8 @@ class LocationStateEngine:
                 [w[2] for w in loc.warnings]
         if risk == "medium":
             return ATTENTION, f"GPT: {llm['summary']}", [llm["event_id"]]
+        if hfs and hfs.get("level") == "medium":
+            return ATTENTION, hfs_reason(hfs), [hfs["event_id"]]
         return SAFE, "", []
 
     def evaluate(self, now: float, location_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -245,6 +276,7 @@ class LocationStateEngine:
                 "devices": {"online": sum(d["status"] == "online" for d in devices), "total": len(devices)},
                 "last_llm": {k: llm[k] for k in ("risk_level", "summary", "ts", *ENVELOPE_FIELDS) if k in llm}
                 if llm else None,
+                "hfs": {k: loc.last_hfs[k] for k in ("ts", *HFS_FIELDS) if k in loc.last_hfs} if loc.last_hfs else None,
                 "active_alerts": sum(not a.acknowledged for a in loc.alerts),
                 "updated_at": utc_timestamp()}
 

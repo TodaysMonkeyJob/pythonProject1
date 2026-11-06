@@ -9,7 +9,7 @@ from core.events import make_event
 from core.fuzzy import FuzzyEngine, load_yaml
 from modules.audio.attribution import Segment, align, iso
 from modules.audio.speaker import Turn
-from modules.llm.whisper_client import _segments
+from modules.audio.whisper_client import _segments
 from modules.trust import ClaimDetector, TrustScorer
 from modules.trust.channels import channel_of
 
