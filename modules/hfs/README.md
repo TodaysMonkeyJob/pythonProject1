@@ -4,8 +4,8 @@ Article 1: every decision is made locally by a two-level fuzzy system — no LLM
 
 ```
 gas_reading ─▶ gas    (max_norm, dynamics, mixture_index: c / c_crit)          ─▶ risk 1 ┐
-motion, object_detected, person_identified ─▶ camera (unknown_share,              ─▶ risk 2 ├─▶ top ─▶ overall risk
-                                              motion_intensity, off_hours)               │        per location
+motion(_level), object_detected, person_identified ─▶ camera (unknown_share,       ─▶ risk 2 ├─▶ top ─▶ overall risk
+                                              motion_intensity, activity_time)           │        per location
 sound, speech ─▶ audio (sound_level, sound_type, danger_keywords, speaker_unknown) ─▶ risk 3 ┘   (hfs_risk event)
 ```
 
@@ -50,5 +50,12 @@ Gas (A2 / TOD-42): every substance as c / c_crit from `config/gases.yaml` (NIOSH
 one → high), `dynamics` = least-squares slope of max_norm per minute over 60 s. Sensor survey, periods and the
 graphene range problem (its whole dataset is above C_crit): `docs/sensors.md`.
 
-Camera and audio inputs are first versions; A3 (camera) and A4 (audio) refine them. Change a table by
+Camera (A3 / TOD-43): `unknown_share` = N_unknown / (N_unknown + N_known) in view, with an interval from the
+identification accuracy (Wilson bound of the LFW evaluation, Binomial number of wrong identities → `input_intervals`
+for the TOD-45 FOU); `motion_intensity` = smoothed moving share of the frame from the adaptive detector's
+`motion_level` events; `activity_time` = signed hours to the location's schedule (`core/schedule.py`: windows,
+weekdays, `object_type` presets apartment / office / warehouse / factory). No people count, no actions: the actions
+mode is a per-location toggle that only logs. Benchmarks: `reports/camera_bench/`.
+
+Audio inputs are first versions; A4 refines them. Change a table by
 changing its policy in `policy.py` and the YAML together (the test compares them).

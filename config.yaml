@@ -63,6 +63,21 @@ vision:
   motion_var_threshold: 25
   motion_warmup_frames: 30  # background model warm-up, no motion reported
   motion_end_sec: 2.0       # no motion for this long → motion "end"
+  # A3 (TOD-43) adaptive motion (modules/vision/motion.py; python -m tools.camera_bench → reports/camera_bench/)
+  motion_adaptive: true     # false = the original fixed-threshold detector
+  motion_background_sec: 20 # background adapts over this many seconds at any fps (learning rate = 1 / (fps · s))
+  motion_illumination_k: 6  # brightness jump > k × recent jitter (≥ motion_illumination_min grey levels) → re-learn
+  motion_illumination_min: 6
+  motion_illumination_holdoff_sec: 2
+  motion_grid: 8            # per-cell noise levels (foliage, curtains, screens stop reporting motion)
+  motion_noise_k: 3
+  motion_cell_min_share: 0.02
+  motion_noise_adapt_sec: 30
+  motion_persist_frames: 2  # motion in ≥ 2 of the last 3 frames
+  motion_persist_window: 3
+  motion_mask_rects: null   # [[x1, y1, x2, y2], …] pixels never analysed (a window onto a road)
+  motion_smooth_sec: 5      # motion_level = moving share of the frame smoothed over this time constant …
+  motion_level_sec: 2       # … sent at most this often while it changes (HFS camera input, not logged)
 
   # Objects: YOLO + ByteTrack, only on motion or every yolo_interval_sec
   model: yolo11n.pt         # downloaded automatically; on the Pi: python -m modules.vision.export → models/yolo11n_ncnn_model
@@ -87,7 +102,10 @@ vision:
   max_cpu_temp: 80          # °C, reserved for thermal throttling
 
 actions:
-  enabled: true
+  enabled: true             # the process; A3 (TOD-43) light mode by default — models only where a location wants them
+  mode: per_location        # per_location: location rule actions_enabled (dashboard Locations page) | on | off
+  default_enabled: false    # locations without the rule: light mode (person detection + identification + motion)
+  unload_after_sec: 30      # models freed this long after the last location turned actions off
   pose_model: yolo11n-pose.pt   # on the Pi: python -m modules.vision.export --model yolo11n-pose.pt → models/yolo11n-pose_ncnn_model
   imgsz: 320
   pose_conf: 0.4            # person detection confidence of the pose model
@@ -312,10 +330,17 @@ hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule ba
     window_sec: 60          # dynamics = slope of max_norm per minute over this window (≥ T90 of EC sensors, ≥ 30 samples)
     min_samples: 3          # fewer samples / a shorter span than min_span_sec → dynamics 0 (no trend yet)
     min_span_sec: 10
-  camera:
-    activity_hours: ["08:00", "19:00"]   # default; a location's rule activity_hours wins
-    motion_window_sec: 30
-    unidentified_after_sec: 10   # a person still without an identity decision this long counts as unidentified
+  camera:                   # A3 (TOD-43): unknown_share, motion_intensity, activity_time (core/schedule.py)
+    activity_hours: [["08:00", "19:00"]]  # default schedule; a location's activity_hours / object_type wins
+    schedules:              # object_type presets (location rule object_type), days 0 = Monday
+      apartment: {hours: [["07:00", "23:00"]]}             # someone is home any time; the night is the sensitive part
+      office: {hours: [["08:00", "19:00"]], days: [0, 1, 2, 3, 4]}
+      warehouse: {hours: [["06:00", "14:00"], ["14:00", "22:00"]], days: [0, 1, 2, 3, 4, 5]}   # two shifts
+      factory: {hours: [["06:00", "14:00"], ["14:00", "22:00"], ["22:00", "06:00"]]}            # three shifts, 24/7
+    unidentified_after_sec: 10   # a person without an identity decision this long counts as unknown
+    motion_level_stale_sec: 10   # motion_level older than this → the motion in progress (or none)
+    identification_report: reports/identity_eval_lfw.json   # p for the unknown_share interval (Wilson lower bound)
+    interval_quantile: 0.95
     stale_sec: 30
   audio:
     window_sec: 30          # sounds / speech this recent count

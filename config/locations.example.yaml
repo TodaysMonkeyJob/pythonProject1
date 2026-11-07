@@ -1,4 +1,7 @@
 # Copy to config/locations.yaml to seed the locations on the first start (then edit them on the dashboard).
+# A3 (TOD-43) activity schedules for the four object types: `object_type` picks a preset of hfs.camera.schedules
+# (config.yaml), `activity_hours` (+ `activity_days`, 0 = Monday) sets the location's own windows. The camera
+# subsystem uses activity_time (inside / ±1 h transition / outside the schedule), never the clock.
 locations:
   - id: warehouse
     name: "Warehouse"
@@ -7,6 +10,8 @@ locations:
     rules:                    # optional per-location overrides
       unknown_person_after: "20:00"   # an unknown person only counts as a warning from 20:00 to 06:00
       gas_thresholds: {acetone: 3.0}  # % — a reading above is critical (danger) in this location
+      object_type: warehouse          # two shifts 06–22, Monday–Saturday
+      actions_enabled: false          # light mode (default): person detection + identification + motion only
     fuzzy:                    # optional F15 overrides of config/fuzzy.yaml for this location (see core/fuzzy)
       rules:
         - {id: WH1, rule: "IF people_count IS crowd AND time_of_day_risk IS off_hours THEN risk IS high"}
@@ -14,6 +19,21 @@ locations:
     name: "Office"
     order: 2
     icon: "💼"
+    rules:
+      object_type: office             # 08–19, Monday–Friday
+  - id: flat
+    name: "Apartment"
+    order: 4
+    icon: "🏠"
+    rules:
+      object_type: apartment          # someone may be home any time; 07–23 counts as active, the night is sensitive
+  - id: plant
+    name: "Factory floor"
+    order: 5
+    icon: "🏭"
+    rules:
+      activity_hours: [["06:00", "14:00"], ["14:00", "22:00"], ["22:00", "06:00"]]   # three shifts, 24/7
+      actions_enabled: true           # actions mode: pose / action models for these cameras (logs and alerts only)
   - id: entrance
     name: "Entrance"
     order: 3

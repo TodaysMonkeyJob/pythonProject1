@@ -1,70 +1,123 @@
 """
-Camera subsystem (A1 / TOD-41) → risk 2. Rule base ``config/fuzzy/camera.yaml``.
+Camera subsystem (A1 / TOD-41, A3 / TOD-43) → risk 2. Rule base ``config/fuzzy/camera.yaml``.
 
-* ``unknown_share`` — persons in view that are not identified: ``unknown_N`` at once, a track still without a
-  decision (``unidentified`` / ``not_visible`` / nothing yet) after ``unidentified_after_sec``; 0 with nobody in view;
-* ``motion_intensity`` — share of the last ``motion_window_sec`` with motion (the busiest camera of the location);
-* ``off_hours`` — hours from now to the location's activity hours (rule ``activity_hours: ["08:00", "19:00"]`` of
-  the location, else ``hfs.camera.activity_hours``); 0 inside them, at most 12.
+Inputs (supervisor, slides 9–11: no people count, no action classes — both are scene-specific or too unreliable):
 
-Data available = an online camera in the location, or camera events from it in the last ``stale_sec``. A3 / TOD-43
-refines the inputs (adaptive motion, optional actions mode).
+* ``unknown_share`` = N_unknown / (N_unknown + N_known) over the persons in view of the location's cameras (0 when
+  nobody is there): 1 known + 1 unknown = 0.5. A person whose face gives no decision for ``unidentified_after_sec``
+  counts as unknown (a hidden face is no reason to trust). Its interval (the future FOU, TOD-45): each identity is
+  wrong with probability 1 − p (p = identification accuracy, ``identification_accuracy`` below), so the number of
+  wrong identities is Binomial(n, 1 − p); with its ``interval_quantile`` quantile f the share lies in
+  [(k − f) / n, (k + f) / n];
+* ``motion_intensity`` — smoothed moving share of the frame (``motion_level`` events of the adaptive detector, the
+  busiest camera of the location); without them the area of the motion in progress;
+* ``activity_time`` — signed hours to the nearest change of the location's activity schedule (``core/schedule.py``):
+  negative inside, positive outside, ±1 h = transition.
+
+Data available = an online camera in the location, or camera events from it in the last ``stale_sec``.
 """
+import json
+import math
+import os
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.events import Event
+from core.schedule import Schedule
 from modules.hfs.base import FuzzySubsystem
 
 NOT_DECIDED = ("unidentified", "not_visible", None, "")
-DEFAULT_HOURS = ("08:00", "19:00")
+DEFAULT_HOURS = (("08:00", "19:00"),)
 
 
-def hours_outside(now_local: datetime, start: str, end: str) -> float:
-    """:return: hours from ``now_local`` to the nearest edge of the [start, end) window (0 inside), wraps midnight"""
-    def minutes(text: str) -> int:
-        hours, _, mins = str(text).partition(":")
-        return int(hours) * 60 + int(mins or 0)
+def identification_accuracy(report_path: str, threshold: float, z: float = 1.96) -> Tuple[float, str]:
+    """
+    :param report_path: ``tools/eval_faces.py`` report (``reports/identity_eval_lfw.json``)
+    :param threshold: the deployed ``identity.face_threshold``
+    :return: (p, provenance) — the Wilson lower bound of the share of correct decisions (known people recognised +
+             strangers rejected) at the threshold: 650 / 650 correct gives p ≈ 0.994, not an overconfident 1.0
+    """
+    with open(report_path, encoding="utf-8") as f:
+        report = json.load(f)
+    row = min(report["by_threshold"], key=lambda r: abs(r["threshold"] - threshold))
+    known, strangers = int(report["known_test_images"]), int(report["stranger_images"])
+    n = known + strangers
+    correct = row["known_accuracy"] * known + (1 - row["false_accept_rate"]) * strangers
+    phat = correct / n
+    centre = (phat + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * math.sqrt(phat * (1 - phat) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return round(centre - half, 4), (f"Wilson 95 % lower bound of {correct:.0f}/{n} correct decisions at threshold "
+                                     f"{row['threshold']} ({os.path.basename(report_path)})")
 
-    a, b = minutes(start) % 1440, minutes(end) % 1440
-    t = now_local.hour * 60 + now_local.minute + now_local.second / 60
-    inside = a <= t < b if a <= b else (t >= a or t < b)
-    if inside or a == b:
-        return 0.0
-    after_end, before_start = (t - b) % 1440, (a - t) % 1440
-    return round(min(12.0, min(after_end, before_start) / 60), 3)
+
+def binomial_quantile(n: int, error: float, q: float) -> int:
+    """:return: the smallest f with P(Binomial(n, error) ≤ f) ≥ q"""
+    cumulative = 0.0
+    for f in range(n + 1):
+        cumulative += math.comb(n, f) * error ** f * (1 - error) ** (n - f)
+        if cumulative >= q - 1e-12:
+            return f
+    return n
+
+
+def share_interval(unknown: int, total: int, error: float, q: float = 0.95) -> Tuple[float, float]:
+    """:return: [lo, hi] of the unknown share when each of ``total`` identities is wrong with probability ``error``"""
+    if total <= 0:
+        return 0.0, 0.0
+    f = binomial_quantile(total, error, q)
+    return round(max(0, unknown - f) / total, 4), round(min(total, unknown + f) / total, 4)
 
 
 class CameraSubsystem(FuzzySubsystem):
     name = "camera"
     device_kind = "camera"
-    event_types = ("motion", "object_detected", "person_identified")
+    event_types = ("motion", "motion_level", "object_detected", "person_identified")
 
     def __init__(self, config: Dict[str, Any], path: Optional[str] = None,
                  rules: Callable[[str], Dict[str, Any]] = lambda location_id: {},
                  local_now: Callable[[], datetime] = datetime.now, **kwargs):
         """
-        :param rules: location_id → location rules (``activity_hours``)
+        :param rules: location_id → location rules (``activity_hours`` / ``activity_days`` / ``object_type``)
         """
         super().__init__(config, path, **kwargs)
         self.rules, self.local_now = rules, local_now
-        self.hours = tuple(self.cfg.get("activity_hours") or DEFAULT_HOURS)
-        self.motion_window = float(self.cfg.get("motion_window_sec", 30))
+        self.default_hours = self.cfg.get("activity_hours") or [list(w) for w in DEFAULT_HOURS]
+        self.presets = self.cfg.get("schedules") or {}
         self.unidentified_after = float(self.cfg.get("unidentified_after_sec", 10))
+        self.level_stale = float(self.cfg.get("motion_level_stale_sec", 10))
+        self.quantile = float(self.cfg.get("interval_quantile", 0.95))
+        self.accuracy, self.accuracy_source = self._accuracy(config)
         # location → {(device, track): {"since", "status": known / unknown / pending}}
         self.people: Dict[str, Dict[Tuple[str, Any], Dict[str, Any]]] = {}
-        # location → {device: [(start, end or None)]} motion intervals
-        self.motion: Dict[str, Dict[str, List[List[Optional[float]]]]] = {}
+        # location → {device: (ts, smoothed intensity)} / {device: area ratio of the motion in progress}
+        self.levels: Dict[str, Dict[str, Tuple[float, float]]] = {}
+        self.active: Dict[str, Dict[str, float]] = {}
+        self._schedules: Dict[str, Tuple[str, Schedule]] = {}
+
+    def _accuracy(self, config: Dict[str, Any]) -> Tuple[float, str]:
+        if self.cfg.get("identification_accuracy") is not None:
+            return float(self.cfg["identification_accuracy"]), "hfs.camera.identification_accuracy"
+        path = self.cfg.get("identification_report", "reports/identity_eval_lfw.json")
+        threshold = float((config.get("identity") or {}).get("face_threshold", 0.45))
+        try:
+            return identification_accuracy(path, threshold)
+        except (OSError, KeyError, ValueError):
+            return 0.95, "default 0.95 (no identification report)"
+
+    # --- evidence ---------------------------------------------------------------------------------------------------
 
     def observe(self, event: Event, now: float) -> None:
         super().observe(event, now)
         p = event.payload
+        if event.type == "motion_level":
+            self.levels.setdefault(event.location_id, {})[event.device_id] = (now, float(p.get("intensity") or 0.0))
+            return
         if event.type == "motion":
-            spans = self.motion.setdefault(event.location_id, {}).setdefault(event.device_id, [])
-            if p.get("state") == "start" and not (spans and spans[-1][1] is None):
-                spans.append([now, None])
-            elif p.get("state") == "end" and spans and spans[-1][1] is None:
-                spans[-1][1] = now
+            active = self.active.setdefault(event.location_id, {})
+            if p.get("state") == "start":
+                active[event.device_id] = float(p.get("area_ratio") or 0.0)
+            else:
+                active.pop(event.device_id, None)
             return
         if p.get("track_id") is None:
             return
@@ -92,33 +145,48 @@ class CameraSubsystem(FuzzySubsystem):
         for people in self.people.values():
             for key in [k for k in people if k[0] == device_id]:
                 del people[key]
-        for cameras in self.motion.values():
-            cameras.pop(device_id, None)
+        for store in (*self.levels.values(), *self.active.values()):
+            store.pop(device_id, None)
 
-    def motion_share(self, location_id: str, now: float) -> float:
-        start_of_window, best = now - self.motion_window, 0.0
-        for spans in (self.motion.get(location_id) or {}).values():
-            spans[:] = [s for s in spans if s[1] is None or s[1] > start_of_window]
-            covered = sum((now if end is None else end) - max(start, start_of_window) for start, end in spans)
-            best = max(best, covered / self.motion_window)
-        return round(min(1.0, max(0.0, best)), 4)
+    # --- inputs -----------------------------------------------------------------------------------------------------
+
+    def counts(self, location_id: str, now: float) -> Tuple[int, int]:
+        """:return: (unknown, total) persons in view; undecided persons count as unknown after a grace period"""
+        people = list((self.people.get(location_id) or {}).values())
+        unknown = sum(p["status"] == "unknown" or
+                      (p["status"] == "pending" and now - p["since"] >= self.unidentified_after) for p in people)
+        decided = sum(p["status"] == "known" for p in people) + unknown
+        return unknown, decided
 
     def unknown_share(self, location_id: str, now: float) -> float:
-        people = list((self.people.get(location_id) or {}).values())
-        if not people:
-            return 0.0
-        unidentified = sum(p["status"] == "unknown" or
-                           (p["status"] == "pending" and now - p["since"] >= self.unidentified_after)
-                           for p in people)
-        return round(unidentified / len(people), 4)
+        unknown, total = self.counts(location_id, now)
+        return round(unknown / total, 4) if total else 0.0
 
-    def off_hours(self, location_id: str) -> float:
-        start, end = (self.rules(location_id) or {}).get("activity_hours") or self.hours
-        return hours_outside(self.local_now(), start, end)
+    def motion_intensity(self, location_id: str, now: float) -> float:
+        levels = [value for ts, value in (self.levels.get(location_id) or {}).values() if now - ts <= self.level_stale]
+        if levels:
+            return round(min(1.0, max(levels)), 4)
+        return round(min(1.0, max((self.active.get(location_id) or {}).values(), default=0.0)), 4)
+
+    def schedule(self, location_id: str) -> Schedule:
+        rules = self.rules(location_id) or {}
+        key = json.dumps([rules.get(k) for k in ("activity_hours", "activity_days", "object_type")], sort_keys=True)
+        cached = self._schedules.get(location_id)
+        if cached is None or cached[0] != key:
+            cached = (key, Schedule.from_rules(rules, self.presets, self.default_hours))
+            self._schedules[location_id] = cached
+        return cached[1]
+
+    def activity_time(self, location_id: str) -> float:
+        return self.schedule(location_id).activity_time(self.local_now())
 
     def features(self, location_id: str, now: float, available: bool) -> Optional[Dict[str, Any]]:
         if not (available or self.recent(location_id, now)):
             return None
-        return {"unknown_share": self.unknown_share(location_id, now),
-                "motion_intensity": self.motion_share(location_id, now),
-                "off_hours": self.off_hours(location_id)}
+        unknown, total = self.counts(location_id, now)
+        lo, hi = share_interval(unknown, total, 1 - self.accuracy, self.quantile)
+        return {"unknown_share": round(unknown / total, 4) if total else 0.0,
+                "motion_intensity": self.motion_intensity(location_id, now),
+                "activity_time": self.activity_time(location_id),
+                "_intervals": {"unknown_share": [lo, hi]},
+                "_persons": {"unknown": unknown, "total": total}}

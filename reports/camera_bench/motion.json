@@ -1,0 +1,153 @@
+{
+ "fps": 10,
+ "seconds": 60,
+ "clips": {
+  "lighting": {
+   "before": {
+    "frames": 570,
+    "false_motion_rate": 0.042
+   },
+   "after": {
+    "frames": 570,
+    "false_motion_rate": 0.0
+   }
+  },
+  "foliage": {
+   "before": {
+    "frames": 570,
+    "false_motion_rate": 0.018
+   },
+   "after": {
+    "frames": 570,
+    "false_motion_rate": 0.004
+   }
+  },
+  "noise": {
+   "before": {
+    "frames": 570,
+    "false_motion_rate": 0.0
+   },
+   "after": {
+    "frames": 570,
+    "false_motion_rate": 0.0
+   }
+  },
+  "walk": {
+   "before": {
+    "frames": 570,
+    "recall": 1.0,
+    "latency_sec": [
+     0.1,
+     0.1,
+     0.1,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "crossings": 6,
+    "crossings_detected": 6,
+    "false_motion_rate": 0.333
+   },
+   "after": {
+    "frames": 570,
+    "recall": 1.0,
+    "latency_sec": [
+     0.2,
+     0.2,
+     0.2,
+     0.0,
+     0.0,
+     0.1
+    ],
+    "crossings": 6,
+    "crossings_detected": 6,
+    "false_motion_rate": 0.09
+   }
+  }
+ },
+ "fps_sweep": {
+  "1": {
+   "frames": 30,
+   "recall": 0.889,
+   "latency_sec": [
+    0.0,
+    1.0,
+    2.0
+   ],
+   "crossings": 3,
+   "crossings_detected": 3,
+   "false_motion_rate": 0.0
+  },
+  "2": {
+   "frames": 90,
+   "recall": 0.969,
+   "latency_sec": [
+    1.0,
+    0.0,
+    0.0,
+    0.5
+   ],
+   "crossings": 4,
+   "crossings_detected": 4,
+   "false_motion_rate": 0.059
+  },
+  "3": {
+   "frames": 150,
+   "recall": 1.0,
+   "latency_sec": [
+    0.67,
+    0.67,
+    0.0,
+    0.33,
+    0.0
+   ],
+   "crossings": 5,
+   "crossings_detected": 5,
+   "false_motion_rate": 0.053
+  },
+  "5": {
+   "frames": 270,
+   "recall": 1.0,
+   "latency_sec": [
+    0.4,
+    0.4,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "crossings": 5,
+   "crossings_detected": 5,
+   "false_motion_rate": 0.105
+  },
+  "10": {
+   "frames": 570,
+   "recall": 1.0,
+   "latency_sec": [
+    0.2,
+    0.2,
+    0.2,
+    0.0,
+    0.0,
+    0.1
+   ],
+   "crossings": 6,
+   "crossings_detected": 6,
+   "false_motion_rate": 0.09
+  },
+  "15": {
+   "frames": 870,
+   "recall": 1.0,
+   "latency_sec": [
+    0.13,
+    0.13,
+    0.13,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "crossings": 6,
+   "crossings_detected": 6,
+   "false_motion_rate": 0.103
+  }
+ }
+}

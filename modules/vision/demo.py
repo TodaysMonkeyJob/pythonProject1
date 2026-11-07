@@ -47,6 +47,7 @@ if args.pose_model:
     from modules.vision.actions import ActionRecognizer
 
     config["actions"]["pose_model"] = args.pose_model
+    config["actions"]["mode"] = "on"            # the demo shows actions on every camera
     threading.Thread(target=ActionRecognizer(events, actions_control, config).run, daemon=True).start()
 
 identity_control = queue.Queue()

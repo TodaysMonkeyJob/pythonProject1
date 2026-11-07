@@ -184,7 +184,8 @@ h2 { font-size: .78em; text-transform: uppercase; letter-spacing: .07em; color: 
 .devrow { display: grid; grid-template-columns: 16px minmax(160px, 1.4fr) 90px 90px minmax(150px, 1fr) 80px 140px; gap: 8px;
           align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .devrow.offline { opacity: .55; }
-.locrow { display: grid; grid-template-columns: 60px 1fr 120px 1fr 90px 36px 36px; gap: 6px; padding: 4px 0; align-items: center; }
+.locrow { display: grid; grid-template-columns: 60px 1fr 110px 1fr 110px 1fr 70px 90px 36px 36px; gap: 6px; padding: 4px 0; align-items: center; }
+.actions-toggle { white-space: nowrap; }
 .locrow.head { font-size: .85em; } .icon-input { width: 100%; text-align: center; }
 .code { font-size: 40px; font-weight: 700; letter-spacing: .2em; }
 .status-kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin-bottom: 10px; }

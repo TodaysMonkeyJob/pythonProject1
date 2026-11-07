@@ -31,13 +31,19 @@ def with_rect(x, y=150, w=120, h=250):
     return frame
 
 
-def _drain(q):
+def _drain(q, levels=None):
+    """:param levels: a list collecting the motion_level events (A3), which are not change events"""
     events = []
     while True:
         try:
-            events.append(Event.from_json(q.get_nowait()))
+            event = Event.from_json(q.get_nowait())
         except queue.Empty:
             return events
+        if event.type == "motion_level":
+            if levels is not None:
+                levels.append(event)
+            continue
+        events.append(event)
 
 
 class FakeClock:
@@ -331,7 +337,7 @@ def test_detector_scenario_publishes_changes_only(shm_name):
     objects.objects = [person(1)]
     calls_before = objects.calls
     feed(det, source, clock, [with_rect(50 + 10 * i) for i in range(15)], 1 / 15)  # someone walks in
-    assert objects.calls - calls_before == 15                                 # YOLO on every moving frame
+    assert objects.calls - calls_before == 14       # YOLO on every moving frame but the first (A3: motion in 2 of 3)
 
     calls_before = objects.calls
     feed(det, source, clock, [background() for _ in range(600)], 1.0)         # stands still for 10 min
@@ -436,3 +442,68 @@ def test_real_yolo_tracks_people():
     detections = detector.track(img)
     persons = [d for d in detections if d.cls == "person"]
     assert len(persons) >= 3 and all(d.track_id is not None for d in persons)
+
+
+# --- A3 (TOD-43) adaptive motion ----------------------------------------------------------------------------------
+
+def _scene(seed=3):
+    rng = np.random.default_rng(seed)
+    base = cv2.resize(rng.integers(60, 190, (30, 40)).astype(np.float32), (320, 240), interpolation=cv2.INTER_CUBIC)
+    return base, rng
+
+
+def _frame(base, rng, brightness=0.0, box=None):
+    img = base + brightness + rng.normal(0, 2, base.shape)
+    if box is not None:
+        x, y = box
+        img[y:y + 100, x:x + 40] = 35
+    return cv2.cvtColor(np.clip(img, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+
+
+def test_adaptive_motion_ignores_a_light_switch_but_not_a_person():
+    base, rng = _scene()
+    legacy = MotionDetector(min_area=400, adaptive=False, fps=10)
+    adaptive = MotionDetector(min_area=400, adaptive=True, fps=10)
+    for _ in range(60):
+        frame = _frame(base, rng)
+        legacy.detect(frame), adaptive.detect(frame)
+    lit = [(legacy.detect(f).motion, adaptive.detect(f)) for f in (_frame(base, rng, 40) for _ in range(30))]
+    assert sum(m for m, _ in lit) > 5                       # the old detector reports the whole frame moving
+    assert not any(r.motion for _, r in lit) and lit[0][1].illumination_change
+    seen = [adaptive.detect(_frame(base, rng, 40, (20 + 8 * i, 120))).motion for i in range(20)]
+    assert sum(seen) >= 15                                  # a person walking in the new light is still seen
+
+
+def test_adaptive_motion_learning_rate_follows_fps_and_masks():
+    assert MotionDetector(fps=2, background_sec=20).learning_rate == pytest.approx(1 / 40)
+    assert MotionDetector(fps=20, background_sec=20).learning_rate == pytest.approx(1 / 400)
+    base, rng = _scene()
+    masked = MotionDetector(min_area=400, fps=10, mask_rects=[[0, 0, 320, 240]])
+    for _ in range(60):
+        masked.detect(_frame(base, rng))
+    assert not any(masked.detect(_frame(base, rng, 0, (20 + 8 * i, 120))).motion for i in range(20))
+
+
+def test_detector_motion_options_from_config():
+    from modules.vision.detector import motion_options
+
+    assert motion_options({"motion_adaptive": False, "fps": 15, "motion_mask_rects": None}) == \
+        {"adaptive": False, "fps": 15}
+
+
+def test_detector_publishes_smoothed_motion_level(shm_name):
+    clock = FakeClock(1000.0)
+    buffer = SharedFrameBuffer.create(shm_name, W, H)
+    det, _, _ = make_detector(clock, buffer)
+    det.motion_smooth_sec, det.motion_level_sec = 5.0, 2.0
+    for second in range(10):                                  # 20 % of the frame moving, one sample per second
+        det._update_motion_level(0.2, 1000.0 + second)
+    levels = []
+    _drain(det.event_queue, levels)
+    values = [e.payload["intensity"] for e in levels]
+    assert len(values) == 5 and values == sorted(values)      # every 2 s, rising toward 0.2 (smoothed, not raw)
+    assert 0.1 < values[-1] < 0.2 and all(e.type == "motion_level" for e in levels)
+    det._update_motion_level(0.2, 1010.5)
+    assert _drain(det.event_queue, levels) == [] and len(levels) == 5   # rate-limited
+    buffer.close()
+    buffer.unlink()

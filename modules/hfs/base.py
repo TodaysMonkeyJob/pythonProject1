@@ -95,11 +95,17 @@ class FuzzySubsystem:
         raise NotImplementedError
 
     def infer(self, inputs: Optional[Dict[str, Any]], location_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """:return: {risk, level, interval, fired_rules, inputs, partial} or None without inputs"""
+        """
+        :param inputs: crisp inputs; keys starting with ``_`` are not inputs but are carried into the result without
+                       the underscore (``_intervals`` → ``input_intervals``: input uncertainty for the FOU, TOD-45)
+        :return: {risk, level, interval, fired_rules, inputs, partial, …} or None without inputs
+        """
         if inputs is None:
             return None
+        extras = {("input_intervals" if k == "_intervals" else k[1:]): v for k, v in inputs.items() if k[:1] == "_"}
+        crisp = {k: v for k, v in inputs.items() if k[:1] != "_"}
         engine = self.engine_for(location_id)
-        return {**summarise(engine, engine.infer(inputs, alpha=ALPHA)), "partial": False}
+        return {**summarise(engine, engine.infer(crisp, alpha=ALPHA)), "partial": False, **extras}
 
     def evaluate(self, location_id: str, now: float, available: bool) -> Optional[Dict[str, Any]]:
         return self.infer(self.features(location_id, now, available), location_id)

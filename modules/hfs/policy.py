@@ -31,14 +31,23 @@ def gas(level: int, dynamics: int, mixture: int) -> int:
     return clamp(level + (dynamics == 3) + (mixture == 2))
 
 
-def camera(unknown: int, motion: int, off_hours: int) -> int:
+def camera(unknown: int, motion: int, activity: int) -> int:
     """
-    unknown_share none / some / all + off_hours within / near / outside + (motion_intensity high) − 2: strangers only
-    matter outside activity hours — only strangers long after hours is high, critical when they move a lot; visitors
-    among known people by day are normal; an empty room is low at any time, sustained motion long after hours with
-    nobody identified is medium (someone the camera cannot see well).
+    A3 (TOD-43). unknown_share none / part / most / all, motion_intensity none / low / medium / high, activity_time
+    working / transition / off. Base by unknown share and time::
+
+                 working  transition  off
+        none        0         0        0
+        part        0         0        0      visitors among known people: low
+        most        1         1        1      mostly strangers: medium
+        all         1         2        2      only strangers: medium by day, high around / after hours
+
+    high motion → one level up when anybody unknown is in view (most strangers + high motion → high at any time,
+    only strangers after hours moving a lot → critical), or with nobody unknown in view after hours (sustained motion
+    the camera cannot attribute: medium). Steps of at most one level per term: smooth, monotone.
     """
-    return clamp(unknown + off_hours + (motion == 2) - 2)
+    base = ((0, 0, 0), (0, 0, 0), (1, 1, 1), (1, 2, 2))[unknown][activity]
+    return clamp(base + (motion == 3 and (unknown >= 1 or activity == 2)))
 
 
 def audio(sound_level: int, sound_type: int, keywords: int, speaker: int) -> int:

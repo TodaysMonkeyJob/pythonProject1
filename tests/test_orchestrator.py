@@ -69,6 +69,20 @@ def test_crashed_module_is_restarted_and_logged(tmp_path):
     assert alerts[0]["payload"]["cause"] == "exited with code 3" and alerts[0]["payload"]["restarts"] == 1
 
 
+def test_planned_restart_has_no_alert_and_no_backoff(tmp_path):
+    orch = make(tmp_path, [("restarter", "light_restarter", [])])
+    orch.start()
+    try:
+        module = orch.modules["restarter"]
+        first = module.process.pid
+        assert pump(orch, 30, until=lambda: module.process is not None and module.process.pid != first
+                    and module.last_heartbeat)
+        assert module.restarts == 0
+    finally:
+        orch.shutdown()
+    assert not [e for e in logged(tmp_path) if e["type"] == "alert"]
+
+
 def test_silent_module_is_restarted_after_missed_heartbeats(tmp_path):
     orch = make(tmp_path, [("hanger", "hanger", [])], missed_heartbeats=0.4)   # 2 s without a heartbeat
     orch.start()

@@ -21,6 +21,9 @@ from system_setup.logger_setup import init_logger
 logger = init_logger()
 
 HEARTBEAT_INTERVAL = 5.0
+# A module process that exits with this code asks for an immediate restart (no alert, no backoff): the actions module
+# returns to light mode this way — only a fresh process gives the memory of unloaded torch models back (A3 / TOD-43)
+PLANNED_RESTART_EXIT = 75
 
 
 class BaseModule:

@@ -29,12 +29,14 @@ strings.
 """
 import collections
 import math
+import time
 from dataclasses import dataclass, field, fields
-from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from core.events import Event
+from core.module import PLANNED_RESTART_EXIT
 from modules.vision.consumer import SharedFrameConsumer
 from modules.vision.pose import (L_ANKLE, L_WRIST, NOSE, R_ANKLE, R_WRIST, Pose, PoseEstimator, knee_angle,
                                  legs_visible, thigh_angle_from_horizontal, torso_angle, torso_length, visible,
@@ -457,18 +459,53 @@ class ActionRecognizer(SharedFrameConsumer):
     """
     Reads frames and person boxes from the vision shared buffer, runs pose only when a person is present
     and publishes ``action`` events.
+
+    A3 (TOD-43) camera modes — ``actions.mode``:
+
+    * ``per_location`` (default): light mode unless a location turns ``actions_enabled`` on (location rule, dashboard
+      Locations page; ``actions.default_enabled`` for locations without the rule, false). The pose / action /
+      cigarette models are loaded only while a served camera's location wants them, and unloaded (memory freed)
+      ``unload_after_sec`` after the last one stopped wanting them; frames of other locations are skipped;
+    * ``on``: every camera, models loaded at start (the demo, tests); ``off``: never.
+
+    Actions are only logged / alerted: in the autonomous HFS (Article 1) they never enter the fuzzy rules.
     """
     name = "actions"
     source = "camera"
+    MODES = ("per_location", "on", "off")
 
     def __init__(self, event_queue, control_queue, config: Dict[str, Any], pose_estimator=None,
-                 frame_buffer: Optional[SharedFrameBuffer] = None):
+                 frame_buffer: Optional[SharedFrameBuffer] = None,
+                 location_rules: Optional[Callable[[str], Dict[str, Any]]] = None,
+                 model_loader: Optional[Callable[[], Tuple[Any, Any, Any]]] = None, clock=time.monotonic):
+        """
+        :param pose_estimator: an injected (already loaded) pose model — tests; loaded and unloaded with the mode
+        :param location_rules: location_id → rules (``actions_enabled``); the location registry when None
+        :param model_loader: → (pose, classifier, cigarette); the real models when None
+        """
         self.cfg = config.get("actions", {})
         super().__init__(event_queue, control_queue, config, self.cfg.get("action_fps", 5), frame_buffer)
-        self.classifier, self.cigarette = None, None                    # learned layer, loaded in setup()
+        self.classifier, self.cigarette = None, None                    # learned layer, loaded with the models
         self.engine = ActionEngine(ActionConfig.from_dict(self.cfg))   # the first camera's (single camera: the only)
         self.engines: Dict[str, ActionEngine] = {}                     # device_id → per-camera tracks
-        self.pose_estimator = pose_estimator
+        self.mode = str(self.cfg.get("mode", "per_location"))
+        if self.mode not in self.MODES:
+            raise ValueError(f"actions.mode must be one of {self.MODES}, got {self.mode!r}")
+        self.default_enabled = bool(self.cfg.get("default_enabled", False))
+        self.unload_after = float(self.cfg.get("unload_after_sec", 30))
+        # restart: leave the process (the orchestrator restarts it in light mode) — the only way to give torch's
+        # memory back (unloading in place kept 552 MB vs 51 MB light, reports/camera_bench/); in_process: tests, demo
+        self.unload = str(self.cfg.get("unload", "restart" if config.get("_module") else "in_process"))
+        self.exit_code: Optional[int] = None
+        self.location_rules = location_rules
+        self.model_loader = model_loader
+        self.clock = clock
+        self._injected = pose_estimator
+        self.pose_estimator = pose_estimator if self.mode != "off" else None
+        self._registry = None
+        self._wanted_at = float("-inf")
+        self._next_sync = 0.0
+        self.load_seconds: Optional[float] = None
 
     def engine_for(self, device_id: str) -> ActionEngine:
         """Each camera has its own tracks (track ids are per camera); one pose model serves all of them."""
@@ -482,20 +519,95 @@ class ActionRecognizer(SharedFrameConsumer):
 
     def setup(self) -> None:
         super().setup()
+        if self.mode == "per_location" and self.location_rules is None:
+            from core.locations import LocationRegistry
+
+            self._registry = LocationRegistry(self.config.get("network", {}).get("devices_path", "data/devices.db"))
+            self.location_rules = self._registry.rules
+        self.sync_models(force=True)
         if self.pose_estimator is None:
+            logger.warning(f"Actions: light mode (mode {self.mode}) — pose / action models not loaded")
+
+    def teardown(self) -> None:
+        super().teardown()
+        if self._registry is not None:
+            self._registry.close()
+
+    # --- A3: light / actions mode -----------------------------------------------------------------------------------
+
+    def enabled_for(self, location_id: Optional[str]) -> bool:
+        if self.mode != "per_location":
+            return self.mode == "on"
+        rules = (self.location_rules(location_id) if self.location_rules and location_id else None) or {}
+        return bool(rules.get("actions_enabled", self.default_enabled))
+
+    def wanted(self) -> List[str]:
+        """:return: locations of the served cameras that want actions"""
+        locations = {slot.location_id for slot in self.scheduler} or {self.location_id}
+        return sorted(loc for loc in locations if self.enabled_for(loc))
+
+    @property
+    def models_loaded(self) -> bool:
+        return self.pose_estimator is not None
+
+    def sync_models(self, force: bool = False) -> None:
+        """Loads the models when a location wants actions, unloads them ``unload_after_sec`` after none does."""
+        now = self.clock()
+        if not force and now < self._next_sync:
+            return
+        self._next_sync = now + 2.0
+        wanted = self.wanted()
+        if wanted:
+            self._wanted_at = now
+            if not self.models_loaded:
+                self.load_models(wanted)
+        elif self.models_loaded and (self.mode == "off" or now - self._wanted_at >= self.unload_after):
+            self.unload_models()
+
+    def load_models(self, locations: List[str]) -> None:
+        started, rss = time.perf_counter(), rss_mb()
+        if self.model_loader is not None:
+            self.pose_estimator, self.classifier, self.cigarette = self.model_loader()
+        elif self._injected is not None:
+            self.pose_estimator = self._injected
+        else:
             self.pose_estimator = PoseEstimator(self.cfg["pose_model"], self.cfg.get("imgsz", 320),
                                                 self.cfg.get("pose_conf", 0.4), self.cfg.get("keypoint_conf", 0.4))
             self.pose_estimator.load()
             from modules.vision.yolo import limit_threads
 
             limit_threads(self.cfg.get("threads", 2))  # after loading: importing ultralytics resets torch's threads
-        from modules.vision.action_classifier import ActionClassifier, CigaretteDetector
+            from modules.vision.action_classifier import ActionClassifier, CigaretteDetector
 
-        self.classifier = ActionClassifier.from_path(self.cfg.get("classifier_model"))
-        self.cigarette = CigaretteDetector.from_config(self.cfg)
-        self.engine.classifier, self.engine.cigarette = self.classifier, self.cigarette
-        if self.classifier is not None:
-            logger.info(f"Action classifier: {', '.join(self.classifier.classes)}")
+            self.classifier = ActionClassifier.from_path(self.cfg.get("classifier_model"))
+            self.cigarette = CigaretteDetector.from_config(self.cfg)
+            if self.classifier is not None:
+                logger.info(f"Action classifier: {', '.join(self.classifier.classes)}")
+        for engine in (self.engine, *self.engines.values()):
+            engine.classifier, engine.cigarette = self.classifier, self.cigarette
+        self.load_seconds = round(time.perf_counter() - started, 2)
+        logger.warning(f"Actions mode ON for {', '.join(locations)}: pose / action models loaded in "
+                       f"{self.load_seconds} s (RSS {rss:.0f} → {rss_mb():.0f} MB)")
+
+    def unload_models(self) -> None:
+        if self.unload == "restart":
+            logger.warning(f"Actions mode OFF: restarting the {self.name} process in light mode (frees "
+                           f"{rss_mb():.0f} MB)")
+            self.exit_code, self.running = PLANNED_RESTART_EXIT, False
+            return
+        rss = rss_mb()
+        self.pose_estimator, self.classifier, self.cigarette = None, None, None
+        self.engines.clear()
+        self.engine = ActionEngine(self.engine.cfg)
+        free_memory()
+        logger.warning(f"Actions mode OFF: pose / action models unloaded (RSS {rss:.0f} → {rss_mb():.0f} MB)")
+
+    def heartbeat_payload(self) -> Dict[str, Any]:
+        return {"actions_mode": self.mode, "models_loaded": self.models_loaded, "actions_locations": self.wanted()}
+
+    def step(self) -> None:
+        self.sync_models()
+        super().step()
 
     def on_event(self, event: Event, now: float) -> None:
         """
@@ -506,12 +618,37 @@ class ActionRecognizer(SharedFrameConsumer):
 
     def process(self, frame_id: int, timestamp: float, frame: np.ndarray, meta: Dict[str, Any]) -> None:
         """Runs pose for one shared frame and publishes the resulting events."""
+        location = self.current.location_id if self.current else self.location_id
+        if self.pose_estimator is None or not self.enabled_for(location):
+            return                                  # light mode for this camera: no pose
         persons = meta.get("persons", [])
         poses = self.pose_estimator.estimate(frame) if persons else []
         frame_size = (frame.shape[1], frame.shape[0])
         engine = self.engine_for(self.current.device_id) if self.current else self.engine
         for payload, severity, confidence in engine.update(timestamp, persons, poses, frame_size, frame):
             self.emit("action", payload, severity=severity, confidence=confidence)
+
+
+def rss_mb() -> float:
+    """:return: resident memory of this process, MB"""
+    import psutil
+
+    return psutil.Process().memory_info().rss / 1e6
+
+
+def free_memory() -> None:
+    """Returns the unloaded models' memory: Python garbage + the torch allocator caches."""
+    import gc
+    import sys
+
+    gc.collect()
+    torch = sys.modules.get("torch")
+    if torch is not None:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        mps = getattr(torch, "mps", None)
+        if mps is not None and getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            mps.empty_cache()
 
 
 def run(event_queue, control_queue, config):
@@ -522,4 +659,7 @@ def run(event_queue, control_queue, config):
     :param control_queue: Control messages ("stop") and forwarded bus events (object_detected)
     :param config: Full merged config
     """
-    ActionRecognizer(event_queue, control_queue, config).run()
+    module = ActionRecognizer(event_queue, control_queue, config)
+    module.run()
+    if module.exit_code is not None:
+        raise SystemExit(module.exit_code)          # planned restart in light mode (core.module.PLANNED_RESTART_EXIT)
