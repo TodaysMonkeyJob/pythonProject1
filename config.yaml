@@ -370,6 +370,18 @@ hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule ba
     stale_sec: 30
   top: {}                   # update_sec / rules override the defaults of config/fuzzy/top.yaml
 
+agents:                     # B2 (TOD-49): plug-in agents (agents/<name>/agent.yaml + code), docs/agents.md
+  enabled: true             # the host process; dashboard page «Агенти» switches single agents on / off
+  decides: false            # true: the location state follows agent_decision (validation agent) instead of
+                            # hfs_risk / llm_decision; false: decisions are logged and shown only
+  state_path: data/agents_state.json   # dashboard switches (survive restarts; git-ignored)
+  roots: []                 # more folders with agent folders (agents/ is always searched)
+  entry_points: true        # installed plug-ins (entry point group iot_guard.agents)
+  enabled_agents: {}        # name → true / false: overrides the manifest's enabled_default
+  settings: {}              # name → its settings (override the manifest's config)
+  status_interval_sec: 2    # agent_status (dashboard only, not logged)
+  board_max_age_sec: 120    # situation board: claims older than this are forgotten
+
 llm:                        # F6: GPT analysis of snapshot digests (Azure OpenAI, keys in .env)
   enabled: true
   snapshot_version: v2.1    # F28 (TOD-39): v1 (text digest) | v2 (terms) | v2.1 (terms + numeric ranges); TOD-40's

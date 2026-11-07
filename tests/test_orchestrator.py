@@ -152,11 +152,11 @@ def test_module_specs_from_config():
     config = load_config()
     names = [s.name for s in Orchestrator.module_specs(config)]
     # cameras / microphones run per device
-    assert names == ["gas", "actions", "identity", "aggregator", "llm", "hfs", "locations", "dashboard"]
+    assert names == ["gas", "actions", "identity", "aggregator", "llm", "hfs", "agents", "locations", "dashboard"]
     config["network"]["discovery"] = False
     names = [s.name for s in Orchestrator.module_specs(config)]
-    assert names == ["gas", "vision", "actions", "identity", "audio", "aggregator", "llm", "hfs", "locations",
-                     "dashboard"]
+    assert names == ["gas", "vision", "actions", "identity", "audio", "aggregator", "llm", "hfs", "agents",
+                     "locations", "dashboard"]
     config["identity"]["enabled"] = False
     config["orchestrator"]["modules"] = {"gas": {"enabled": False}, "audio": {"target": "modules.audio:run"}}
     specs = {s.name: s for s in Orchestrator.module_specs(config)}

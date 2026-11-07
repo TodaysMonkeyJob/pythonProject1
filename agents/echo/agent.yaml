@@ -1,0 +1,17 @@
+# Template agent (B2 / TOD-49, docs/agents.md): copy the folder, rename, edit.
+name: echo
+role: other
+version: 1.0.0
+description: Repeats every transcript it receives as an echo claim and answers decision rounds with the count.
+entry: agent:EchoAgent
+subscribes: [speech, "claim:risk"]
+publishes: [echo]
+backend: {kind: rules}
+resources: {ram_mb: 1, gpu: false}
+data_scope:
+  events: [speech]          # no camera / face / gas data reaches it
+  claims: [fuzzy]
+timeout_s: 0.5
+enabled_default: false
+config:
+  max_chars: 80
