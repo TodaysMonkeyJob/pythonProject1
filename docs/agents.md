@@ -102,8 +102,8 @@ The agent shows up on the dashboard page **Агенти** after a restart. No ot
 
 `claim` is the claim type and `value` its content. The validation agent counts `risk_opinion` claims with
 `value.risk` in [0, 1]. Their `value.kind` is either `at_least` ("what I saw is at least this risky", which only
-raises) or `estimate` (the default: an overall risk, which may lower only when it comes from video / gas). Every claim goes on the bus as an `agent_claim` event, so it is logged in
-`logs/<date>/events.jsonl` together with the agent's version.
+raises) or `estimate` (the default: an overall risk, which may lower only when it comes from video / gas). Every claim goes on the bus as an `agent_claim` event and is logged, with the agent's version, in its own file
+`logs/<date>/agents.jsonl` — not in `events.jsonl`, the dashboard feed or the CSV export (only the decisions are).
 
 ## Rules the framework enforces
 

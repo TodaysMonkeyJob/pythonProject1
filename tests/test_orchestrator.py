@@ -225,3 +225,33 @@ def test_child_processes_get_small_thread_pools():
     assert env["OMP_WAIT_POLICY"] == "PASSIVE"                       # no busy-waiting on shared cores
     assert thread_env({"orchestrator": {"child_threads": 4}}, "aggregator")["OMP_NUM_THREADS"] == "4"
     assert thread_env({}, None)["MKL_NUM_THREADS"] == "2"
+
+
+def test_agent_claims_go_to_their_own_log_not_the_event_log(tmp_path):
+    """Agent-to-agent traffic stays out of events.jsonl, the dashboard feed and the CSV export."""
+    from core.events import make_event
+
+    config = {"mode": "autonomous", "logging": {"dir": str(tmp_path / "logs")}, "trust": {"enabled": False},
+              "orchestrator": {"log_events": True}}
+    orch = Orchestrator(config, modules=[ModuleSpec("dashboard", "x:run", ["*"]),
+                                         ModuleSpec("reader", "x:run", ["agent_claim"])])
+    claim = make_event("system", "agent_claim", {"agent": "fuzzy", "claim": "risk"}, location_id="lab")
+    decision = make_event("system", "agent_decision", {"level": "high", "risk": 0.65}, location_id="lab")
+    for event in (claim, decision):
+        orch._route(event.to_json())
+    day = os.listdir(tmp_path / "logs")[0]
+    with open(tmp_path / "logs" / day / "events.jsonl") as f:
+        assert [json.loads(line)["type"] for line in f] == ["agent_decision"]
+    with open(tmp_path / "logs" / day / "agents.jsonl") as f:
+        assert [json.loads(line)["type"] for line in f] == ["agent_claim"]
+    def forwarded(name):
+        import queue
+
+        out = []
+        while True:
+            try:
+                out.append(json.loads(orch.modules[name].control.get(timeout=0.5))["type"])
+            except queue.Empty:
+                return out
+
+    assert forwarded("dashboard") == ["agent_decision"] and forwarded("reader") == ["agent_claim"]

@@ -316,7 +316,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   imported only when enabled; disable → stop() + object dropped. `framework/registry.py` (switches: manifest <
   `agents.enabled_agents` < dashboard, persisted in `agents.state_path` = data/agents_state.json, guarded; required
   agents stay on, cloud_model never in autonomous, one fuzzy / validation agent), `bus_adapter.py` (`Claim` →
-  `agent_claim` event; scope filter: subscriptions ∩ data_scope always; per-location situation board),
+  `agent_claim` event, logged only to `logs/<date>/agents.jsonl` — router `AGENT_LOG_EVENTS`, explicit subscribers only; scope filter: subscriptions ∩ data_scope always; per-location situation board),
   `orchestrator.py` `AgentHost` (thread per agent or inline; a fuzzy `risk` claim opens a decision round, deadlines per
   agent → late / missing / superseded, validation agent decides, no validator → corridor = `fuzzy_only`;
   `agent_decision` + `agent_operator_request`; claims outside `publishes` dropped). Shipped: `fuzzy` (hfs_risk →
