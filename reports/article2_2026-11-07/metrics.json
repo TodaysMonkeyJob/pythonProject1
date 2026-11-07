@@ -1,8 +1,8 @@
 {
  "manifest": {
   "seed": 42,
-  "git": "ef9919a",
-  "date": "2026-11-07T18:02:19+00:00",
+  "git": "869abe5",
+  "date": "2026-11-07T21:06:39+00:00",
   "scenarios": 58,
   "labels": "draft — author's expert labels, to be confirmed by the supervisor",
   "weights": {
@@ -28,8 +28,8 @@
    "operator_requests": 0,
    "operator_load": 0.0,
    "latency_ms": {
-    "mean": 0.083,
-    "p95": 0.091
+    "mean": 0.0,
+    "p95": 0.0
    },
    "macro_f1_by_group": {
     "action": 0.2222,
@@ -44,39 +44,49 @@
      "id": "c03",
      "label": "low",
      "got": "medium",
-     "branch": "fuzzy_only"
+     "branch": "autonomous"
     },
     {
      "id": "x02",
      "label": "high",
      "got": "medium",
-     "branch": "fuzzy_only"
+     "branch": "autonomous"
     },
     {
      "id": "m02",
      "label": "high",
      "got": "low",
-     "branch": "fuzzy_only"
+     "branch": "autonomous"
     },
     {
      "id": "m03",
      "label": "high",
      "got": "low",
-     "branch": "fuzzy_only"
+     "branch": "autonomous"
     },
     {
      "id": "m08",
      "label": "critical",
      "got": "high",
-     "branch": "fuzzy_only"
+     "branch": "autonomous"
     },
     {
      "id": "m09",
      "label": "critical",
      "got": "high",
-     "branch": "fuzzy_only"
+     "branch": "autonomous"
     }
-   ]
+   ],
+   "by_mode_effective": {
+    "autonomous": {
+     "scenarios": 58,
+     "macro_f1": 0.8974,
+     "accuracy": 0.8966,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 0
+    }
+   }
   },
   "multi_agent": {
    "macro_f1": 0.913,
@@ -88,8 +98,8 @@
    "operator_requests": 4,
    "operator_load": 0.069,
    "latency_ms": {
-    "mean": 0.739,
-    "p95": 0.806
+    "mean": 0.77,
+    "p95": 0.863
    },
    "macro_f1_by_group": {
     "action": 0.4444,
@@ -130,7 +140,17 @@
      "got": "high",
      "branch": "fuzzy_only"
     }
-   ]
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 58,
+     "macro_f1": 0.913,
+     "accuracy": 0.9138,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 4
+    }
+   }
   },
   "no_video": {
    "macro_f1": 0.8974,
@@ -142,8 +162,8 @@
    "operator_requests": 1,
    "operator_load": 0.0172,
    "latency_ms": {
-    "mean": 0.713,
-    "p95": 0.774
+    "mean": 0.726,
+    "p95": 0.788
    },
    "macro_f1_by_group": {
     "action": 0.2222,
@@ -190,7 +210,17 @@
      "got": "high",
      "branch": "raised"
     }
-   ]
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 58,
+     "macro_f1": 0.8974,
+     "accuracy": 0.8966,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 1
+    }
+   }
   },
   "no_audio": {
    "macro_f1": 0.913,
@@ -202,8 +232,8 @@
    "operator_requests": 3,
    "operator_load": 0.0517,
    "latency_ms": {
-    "mean": 0.715,
-    "p95": 0.785
+    "mean": 0.734,
+    "p95": 0.818
    },
    "macro_f1_by_group": {
     "action": 0.4444,
@@ -244,7 +274,17 @@
      "got": "high",
      "branch": "fuzzy_only"
     }
-   ]
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 58,
+     "macro_f1": 0.913,
+     "accuracy": 0.9138,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 3
+    }
+   }
   },
   "no_physical_guard": {
    "macro_f1": 0.8467,
@@ -256,8 +296,8 @@
    "operator_requests": 4,
    "operator_load": 0.069,
    "latency_ms": {
-    "mean": 0.728,
-    "p95": 0.806
+    "mean": 0.75,
+    "p95": 0.83
    },
    "macro_f1_by_group": {
     "action": 0.4444,
@@ -322,7 +362,17 @@
      "got": "low",
      "branch": "deescalation_confirmed"
     }
-   ]
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 58,
+     "macro_f1": 0.8467,
+     "accuracy": 0.8448,
+     "attack_success_rate": 1.0,
+     "attacks": 4,
+     "operator_requests": 4
+    }
+   }
   }
  }
 }

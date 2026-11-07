@@ -124,6 +124,18 @@ def load_history(log_dir: str, limit: int) -> List[str]:
     return lines[-limit:]
 
 
+def parse_viewers(value: Any) -> Dict[str, str]:
+    """``DASHBOARD_VIEWERS="anna:pw1,ivan:pw2"`` (or a mapping) → {name: password}"""
+    if isinstance(value, dict):
+        return {str(k): str(v) for k, v in value.items()}
+    out = {}
+    for item in str(value or "").split(","):
+        name, _, secret = item.strip().partition(":")
+        if name and secret:
+            out[name] = secret
+    return out
+
+
 class DashboardState:
     """Thread-safe-enough shared state: written by the module thread, read by the web server thread."""
 
@@ -140,6 +152,10 @@ class DashboardState:
         self.locations = None      # core.locations.LocationRegistry (F12)
         self.notifications = None  # modules.notify.service.NotificationService (F12; list / acknowledge)
         self.summaries: Dict[str, Dict[str, Any]] = {}   # location_id → latest location_summary
+        from core.mode import mode_of
+
+        self.mode = {"mode": mode_of(config), "locations": dict(config.get("mode_locations") or {}),
+                     "source": config.get("mode_source") or "config"}   # TOD-52: updated by mode_changed
         self.agents: Optional[Dict[str, Any]] = None     # B2: latest agent_status of the agents module
         self.agents_at = 0.0
         self.publish = None        # BaseModule.publish of the dashboard module
@@ -156,6 +172,9 @@ class DashboardState:
         if event.type == "heartbeat":
             self.heartbeats[event.payload.get("module", "?")] = {**event.payload, "at": time.time()}
             return
+        if event.type == "mode_changed":      # TOD-52
+            self.mode = {"mode": event.payload["mode"], "locations": event.payload.get("locations") or {},
+                         "source": "dashboard"}
         if event.type == "agent_status":      # B2 (TOD-49): page «Агенти» polls /api/agents
             self.agents, self.agents_at = event.payload, time.time()
             return
@@ -198,7 +217,7 @@ class DashboardState:
                 "ram_total_mb": round(memory.total / 1e6),
                 "uptime_sec": round(now - self.started),
                 "gas_thresholds": self.config.get("gas", {}).get("thresholds", {}),
-                "mode": str(self.config.get("mode") or "hybrid")}       # A1 (TOD-41): autonomous | hybrid
+                "mode": self.mode["mode"]}                               # TOD-52: autonomous | multiagent
 
 
     def _vision(self) -> Dict[str, Any]:
@@ -280,9 +299,18 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
     vision = config.get("vision", {})
     security = HTTPBasic(auto_error=False)
 
-    def valid(username: str, secret: str) -> bool:
-        return bool(user and password) and secrets.compare_digest(username.encode(), str(user).encode()) \
-            and secrets.compare_digest(secret.encode(), str(password).encode())
+    viewers = parse_viewers(cfg.get("viewers"))            # TOD-52: read-only accounts
+
+    def same(a: str, b: str) -> bool:
+        return secrets.compare_digest(a.encode(), str(b).encode())
+
+    def role_of(username: str, secret: str) -> Optional[str]:
+        """:return: admin (DASHBOARD_USER) | viewer (DASHBOARD_VIEWERS) | None"""
+        if user and password and same(username, user) and same(secret, password):
+            return "admin"
+        if username in viewers and same(secret, viewers[username]):
+            return "viewer"
+        return None
 
     def auth(request: Request,
              credentials: Annotated[Optional[HTTPBasicCredentials], Depends(security)] = None) -> None:
@@ -290,9 +318,17 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
             if request.url.scheme == "https":  # the LAN-facing node server: never an open dashboard
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, "set DASHBOARD_USER / DASHBOARD_PASS in .env to "
                                     "use the dashboard over the network")
-            return  # no credentials configured: the HTTP server is bound to 127.0.0.1 only
-        if credentials is None or not valid(credentials.username, credentials.password):
+            request.state.role = "admin"       # no credentials configured: bound to 127.0.0.1, the local operator
+            return
+        role = role_of(credentials.username, credentials.password) if credentials is not None else None
+        if role is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": 'Basic realm="dashboard"'})
+        request.state.role = role
+
+    def admin(request: Request) -> None:
+        """Only the admin may change how the system decides (TOD-52)."""
+        if getattr(request.state, "role", None) != "admin":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "only the admin can do this")
 
     app = FastAPI(title="IoT security dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -607,6 +643,38 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         state.publish(make_event("system", "trust_feedback", payload))
         return {"accepted": True, **payload}
 
+    # --- M1 (TOD-52): mode switch (admin only), per-location overrides, fallback, audit ---------------------------
+    @app.get("/api/mode", dependencies=[Depends(auth)])
+    def api_mode(request: Request):
+        from core.mode import LABEL_UK, store_of
+
+        effective = {loc: s.get("mode") for loc, s in state.summaries.items() if s.get("mode")}
+        fallback = [{"location_id": loc, "name": state.summaries[loc].get("name", loc), "reason": m.get("reason")}
+                    for loc, m in effective.items() if m.get("effective") != m.get("requested")]
+        return {**state.mode, "labels": LABEL_UK, "role": getattr(request.state, "role", None),
+                "effective": effective, "fallback": fallback, "history": store_of(config).history(10)}
+
+    @app.post("/api/mode", dependencies=[Depends(auth), Depends(admin)])
+    def api_mode_switch(body: Dict[str, Any], request: Request):
+        from core.events import make_event
+        from core.mode import normalise
+
+        try:
+            mode = normalise(body.get("mode"))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if body.get("confirm") is not True:
+            raise HTTPException(400, "confirm: true required (the dashboard asks first)")
+        location = body.get("location_id") or None
+        if location and state.locations is not None and location not in {
+                loc["location_id"] for loc in state.locations.list()}:
+            raise HTTPException(404, f"unknown location {location!r}")
+        if state.publish is None:
+            raise HTTPException(503, "event bus not available")
+        payload = {"mode": mode, "location_id": location, "by": user_of(request)}
+        state.publish(make_event("system", "mode_control", payload))
+        return {"accepted": True, **payload}
+
     # --- A7 (TOD-48): gas sensors found by the gas module (gas.mode drivers); driver choice for unknown devices ---
     gas_cfg = config.get("gas") or {}
 
@@ -832,7 +900,7 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
             username, _, secret = base64.b64decode(header.split(" ", 1)[1]).decode().partition(":")
         except Exception:
             return False
-        return valid(username, secret)
+        return role_of(username, secret) is not None       # admin or viewer (TOD-52)
 
     # --- F13 control room: static app, history for detail views, one video WebSocket per page ---------------------
 

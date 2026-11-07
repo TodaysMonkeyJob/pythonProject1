@@ -3,11 +3,13 @@ IoT security system entry point: starts every enabled module in parallel (see co
 
     python main.py                 # all modules from config.yaml; Ctrl+C / SIGTERM to stop
     python main.py --only gas,vision
+    python main.py --mode multiagent   # Article 2 (else IOT_MODE → the dashboard choice → config.yaml; docs/modes.md)
     python -m speech_to_text_whisper   # the original standalone speech-to-text recorder
 """
 import argparse
 
 from core.config import load_config
+from core.mode import resolve
 from core.orchestrator import Orchestrator
 from system_setup.logger_setup import init_logger, set_logger_params
 
@@ -18,10 +20,12 @@ def main() -> None:
     parser.add_argument("--env", default=".env")
     parser.add_argument("--only", help="comma-separated module names to run (default: all enabled)")
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--mode", choices=["autonomous", "multiagent"],
+                        help="Article 1 / Article 2 (wins over IOT_MODE, the dashboard choice and config.yaml)")
     args = parser.parse_args()
 
     set_logger_params(init_logger(), log_level=args.log_level, no_log_file=True)
-    config = load_config(args.config, env_file=args.env)
+    config = resolve(load_config(args.config, env_file=args.env), cli=args.mode)   # TOD-52: start-up precedence
     specs = Orchestrator.module_specs(config)
     if args.only:
         wanted = {name.strip() for name in args.only.split(",")}

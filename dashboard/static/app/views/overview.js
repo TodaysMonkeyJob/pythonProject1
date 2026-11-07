@@ -19,7 +19,19 @@ export function locationCard(location) {
         ` ${(STATE_LABEL[state] || state).toUpperCase()}`)),
     h("div", { class: "reason" }, s && s.reason ? s.reason : state === "safe" ? "без подій" : "—"),
     h("div", { class: "muted small" }, `людей: ${s ? s.people_count : 0}${people ? ` — ${people}` : ""}`,
-      s ? ` · пристрої ${s.devices.online}/${s.devices.total}` : ""));
+      s ? ` · пристрої ${s.devices.online}/${s.devices.total}` : ""),
+    modeBadge(location.location_id));
+}
+
+// TOD-52: the location's mode when it differs from the global one, or when it fell back to autonomous
+const MODE_SHORT = { autonomous: "автономний", multiagent: "мультиагентний" };
+function modeBadge(id) {
+  const m = (store.summaries[id] || {}).mode, mode = store.mode;
+  if (!m || !mode) return null;
+  const override = (mode.locations || {})[id];
+  if (m.effective !== m.requested) return h("div", { class: "mode-badge warn-text small", title: m.reason || "" }, `⚠ ${MODE_SHORT[m.effective]} (резерв): ${m.reason || ""}`);
+  if (override) return h("div", { class: "mode-badge muted small" }, `режим локації: ${MODE_SHORT[override]}`);
+  return null;
 }
 
 export function notificationFeed(limit = 5) {

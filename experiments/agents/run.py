@@ -10,7 +10,7 @@ shipped agents and their measured weights, in these configurations:
 
 | configuration | agents on |
 | -- | -- |
-| article1 | fuzzy (the corridor decides) |
+| article1 | none — ``mode: autonomous``, the HFS decides (TOD-52) |
 | multi_agent | fuzzy, video, audio, validation |
 | no_video / no_audio | multi_agent without that agent |
 | no_physical_guard | multi_agent, but any estimate may lower the risk below the corridor (the protocol's guard off) |
@@ -18,7 +18,9 @@ shipped agents and their measured weights, in these configurations:
 Metrics against the labels: macro-F1 / accuracy of the decided level and of the level after the operator answers
 an ``agent_operator_request`` (assumed to accept the agents' level — an upper bound); attack success rate (attack
 scenarios decided below their label); operator load (requests per scenario); decision latency on this machine (HFS
-evaluation + agents round, inline). The end-to-end scenario m01 (smoke + "все гаразд" + a stranger) is written as a
+evaluation + agents round, inline). Every metric is also split by the decision's ``mode_effective`` (TOD-52): a
+multi-agent configuration whose decision fell back to the fuzzy system counts under ``autonomous``, so Article 1 and
+Article 2 results are never mixed. The end-to-end scenario m01 (smoke + "все гаразд" + a stranger) is written as a
 full message trace (``trace_m01.jsonl``).
 """
 import argparse
@@ -35,6 +37,7 @@ import yaml
 from agents.framework.orchestrator import AgentHost
 from agents.framework.registry import AgentRegistry
 from core.events import Event, make_event
+from core.mode import AUTONOMOUS, MULTIAGENT
 from experiments.hfs import metrics as M
 from experiments.hfs.run import LOCATION, WEDNESDAY, events_of, sha
 from modules.hfs.worker import HierarchicalFuzzySystem
@@ -42,7 +45,7 @@ from modules.hfs.worker import HierarchicalFuzzySystem
 RANK = {level: i for i, level in enumerate(M.LEVELS)}
 ALL = {"validation": True, "video": True, "audio": True, "echo": False}
 CONFIGS = {                                    # name → (agents on, agents.settings)
-    "article1": ({"validation": False, "video": False, "audio": False, "echo": False}, {}),
+    "article1": ({"validation": False, "video": False, "audio": False, "echo": False}, {"_mode": AUTONOMOUS}),
     "multi_agent": (ALL, {}),
     "no_video": ({**ALL, "video": False}, {}),
     "no_audio": ({**ALL, "audio": False}, {}),
@@ -98,7 +101,13 @@ def host_for(enabled: Dict[str, bool], settings: Optional[Dict[str, Any]] = None
     return host, recorder
 
 
-def decide(enabled: Dict[str, bool], settings: Dict[str, Any], events, hfs_event: Event) -> Dict[str, Any]:
+def decide(enabled: Dict[str, bool], settings: Dict[str, Any], events, hfs_event: Event,
+           mode: str = MULTIAGENT) -> Dict[str, Any]:
+    if mode == AUTONOMOUS:                       # Article 1: the hfs_risk is the decision, no agents run
+        p = hfs_event.payload
+        return {"level": p["level"], "risk": p["overall"], "branch": "autonomous", "operator": False,
+                "level_operator": p["level"], "ms": 0.0, "agents": {}, "reasons": [], "trace": [],
+                "mode_requested": AUTONOMOUS, "mode_effective": AUTONOMOUS, "fallback_reason": None}
     host, recorder = host_for(enabled, settings)
     try:
         for _, event in events:
@@ -113,10 +122,21 @@ def decide(enabled: Dict[str, bool], settings: Dict[str, Any], events, hfs_event
     return {"level": decision["level"], "risk": decision["risk"], "branch": decision["branch"],
             "operator": request is not None, "level_operator": request["level_agents"] if request else
             decision["level"], "ms": ms, "agents": decision["agents"], "reasons": decision["reasons"],
-            "trace": recorder.events}
+            "trace": recorder.events, "mode_requested": decision["mode_requested"],
+            "mode_effective": decision["mode_effective"], "fallback_reason": decision["fallback_reason"]}
 
 
-def summarise(scenarios: List[Dict[str, Any]], results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def summarise(scenarios: List[Dict[str, Any]], results: Dict[str, Dict[str, Any]], split: bool = True
+              ) -> Dict[str, Any]:
+    """:param split: also per ``mode_effective`` (TOD-52; the parts are not split again)"""
+    by_mode = {}
+    if split:
+        for mode in (AUTONOMOUS, MULTIAGENT):
+            part = [s for s in scenarios if results[s["id"]]["mode_effective"] == mode]
+            if part:
+                by_mode[mode] = {"scenarios": len(part), **{k: v for k, v in summarise(part, results, False).items()
+                                                            if k in ("macro_f1", "accuracy", "attack_success_rate",
+                                                                     "attacks", "operator_requests")}}
     truth = [s["label"] for s in scenarios]
     auto = [results[s["id"]]["level"] for s in scenarios]
     with_op = [results[s["id"]]["level_operator"] for s in scenarios]
@@ -139,7 +159,8 @@ def summarise(scenarios: List[Dict[str, Any]], results: Dict[str, Dict[str, Any]
             "macro_f1_by_group": groups,
             "misses": [{"id": s["id"], "label": s["label"], "got": results[s["id"]]["level"],
                         "branch": results[s["id"]]["branch"]} for s in scenarios
-                       if results[s["id"]]["level"] != s["label"]]}
+                       if results[s["id"]]["level"] != s["label"]],
+            "by_mode_effective": by_mode}
 
 
 def run(seed: int, hfs_path: str, agents_path: str, configs: Optional[Dict[str, tuple]] = None):
@@ -160,7 +181,9 @@ def run(seed: int, hfs_path: str, agents_path: str, configs: Optional[Dict[str, 
         hfs_ms[scenario["id"]] = (time.perf_counter() - began) * 1000
         hfs_event = make_event("system", "hfs_risk", payload, location_id=LOCATION, device_id="hub:hfs")
         for name, (enabled, settings) in (configs or CONFIGS).items():
-            results[name][scenario["id"]] = {**decide(enabled, settings, events, hfs_event), "hfs": payload,
+            settings = dict(settings)
+            mode = settings.pop("_mode", MULTIAGENT)
+            results[name][scenario["id"]] = {**decide(enabled, settings, events, hfs_event, mode), "hfs": payload,
                                              "evidence": events}
     return scenarios, results, hfs_ms
 
@@ -220,6 +243,15 @@ def write_report(out: str, manifest: Dict[str, Any], scenarios, results, summary
         lines.append(f"| `{name}` | {s['macro_f1']:.3f} | {s['accuracy']:.1%} | {s['macro_f1_operator']:.3f} | {asr} | "
                      f"{s['operator_requests']} ({s['operator_load']:.1%}) | {s['latency_ms']['mean']} / "
                      f"{s['latency_ms']['p95']} |")
+    lines += ["", "### By effective mode (TOD-52: decisions that fell back to the fuzzy system count as autonomous)",
+              "", "| Configuration | Effective mode | Scenarios | Macro-F1 | Accuracy | Attack success rate |",
+              "| -- | -- | -- | -- | -- | -- |"]
+    for name, s in summary.items():
+        for mode, part in s["by_mode_effective"].items():
+            asr = "—" if part["attack_success_rate"] is None else \
+                f"{part['attack_success_rate']:.0%} of {part['attacks']}"
+            lines.append(f"| `{name}` | {mode} | {part['scenarios']} | {part['macro_f1']:.3f} | "
+                         f"{part['accuracy']:.1%} | {asr} |")
     ms = sorted(hfs_ms.values())
     lines += ["", f"HFS evaluation (all subsystems + top, once per scenario): mean {np.mean(ms):.2f} ms, p95 "
               f"{ms[int(0.95 * (len(ms) - 1))]:.2f} ms. Latency of the agents round is inline on this machine, "

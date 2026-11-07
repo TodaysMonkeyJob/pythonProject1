@@ -16,6 +16,13 @@ Decision round (one per fuzzy ``risk`` claim of a location):
    error / superseded}, ``claims`` (the ids used), versions, ``decided_by``; ``agent_operator_request`` when the
    validation agent asks the operator.
 
+M1 (TOD-52) modes: a location whose requested mode is ``autonomous`` gets no round (the fuzzy system decides there);
+while no location is multiagent the contributing agents are suspended (stopped, models unloaded) and receive nothing.
+Every decision carries ``mode_requested`` / ``mode_effective``: it falls back to the fuzzy corridor (``branch``
+``fallback``, ``mode_effective`` autonomous, ``fallback_reason``) when the validation agent is off or unhealthy, the
+network is down, an agent of ``agents.required`` did not answer in time, or an enabled agent is not healthy yet
+(still starting); the next decision returns to multiagent when the cause is gone.
+
 Agents run in their own thread each (``threaded=True``, the module) or inline (tests, replays: an answer is late when
 ``on_message`` took longer than the timeout). Agents never change rules, thresholds or configuration: they only
 return claims, and a claim type outside the manifest's ``publishes`` is dropped.
@@ -25,11 +32,12 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from agents.framework.base import Agent, Message
 from agents.framework.bus_adapter import Claim, ScopeFilter, SituationBoard
 from agents.framework.registry import AgentRegistry
+from core.mode import AUTONOMOUS, MULTIAGENT
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
@@ -129,14 +137,20 @@ class Round:
 class AgentHost:
     def __init__(self, registry: AgentRegistry, emit: Callable[[str, Dict[str, Any], str, str], None],
                  threaded: bool = False, clock: Callable[[], float] = time.time, board_max_age_s: float = 120.0,
-                 decides: bool = False):
+                 decides: Optional[bool] = None, mode: Callable[[str], str] = lambda location_id: MULTIAGENT,
+                 network_ok: Callable[[], Optional[bool]] = lambda: None, required: Sequence[str] = ()):
         """
         :param emit: (event type, payload, severity, location_id) → publishes on the bus
-        :param decides: ``agents.decides`` — decisions carry the severity of their level (they drive the location
-                        state, the aggregator snapshots them at once); False = a shadow, severity info
+        :param decides: None = decisions carry the severity of their level (they are the location's decision);
+                        False = a shadow, severity info (tests / replays)
+        :param mode: location → its requested mode (TOD-52)
+        :param network_ok: → False when the network is down (fallback), None = not checked
+        :param required: agents whose missing answer makes the decision fall back
         """
         self.registry, self.emit, self.threaded, self.clock = registry, emit, threaded, clock
         self.decides = decides
+        self.mode, self.network_ok, self.required = mode, network_ok, tuple(required)
+        self.suspended = False
         self.scope = ScopeFilter(registry.manifests.values())
         self.board = SituationBoard(board_max_age_s, clock)
         self.results: "queue.Queue[Result]" = queue.Queue()
@@ -175,12 +189,26 @@ class AgentHost:
         return reason
 
     # --- input --------------------------------------------------------------------------------------------------
+    def suspend(self, suspended: bool) -> None:
+        """No location multiagent → stop the contributing agents (models unloaded); back → start the enabled ones."""
+        if suspended == self.suspended:
+            return
+        self.suspended = suspended
+        if suspended:
+            self.registry.suspend()
+        else:
+            self.problems = self.registry.start_enabled()
+        self._sync_runners()
+        self.emit("agent_status", self.status(), "info", None)
+
     def observe(self, event) -> None:
         """A bus event: control messages for the host, evidence for the agents (within their scope)."""
         if event.type == "agent_control":
             p = event.payload
             self.set_enabled(str(p.get("agent")), bool(p.get("enabled")), str(p.get("by") or "dashboard"))
             return
+        if event.type != "hfs_risk" and self.mode(event.location_id) == AUTONOMOUS:
+            return                                       # agents receive nothing for an autonomous location
         for name in self.scope.event_receivers(event.type, self.runners):
             self.runners[name].submit(Message("event", event=event))
         self.drain()
@@ -243,7 +271,8 @@ class AgentHost:
         self.emit("agent_claim", claim.payload(), "info", claim.location_id)
         for name in self.scope.claim_receivers(claim, self.runners):
             self.runners[name].submit(Message("claim", claim=claim))
-        if claim.role == "fuzzy" and claim.claim == CORRIDOR_CLAIM and claim.interval is not None:
+        if claim.role == "fuzzy" and claim.claim == CORRIDOR_CLAIM and claim.interval is not None \
+                and self.mode(claim.location_id) != AUTONOMOUS:
             self._open(claim)
         return True
 
@@ -279,8 +308,9 @@ class AgentHost:
         corridor = rnd.corridor
         base = {"risk": corridor.value.get("risk"), "level": corridor.value.get("level"),
                 "interval": corridor.interval}
-        if validator is None:
-            decision = {**base, "branch": "fuzzy_only", "reasons": ["no validation agent: the fuzzy corridor"]}
+        fallback = self.fallback_reasons(rnd, validator)
+        if fallback:
+            decision = {**base, "branch": "fallback", "reasons": ["працює автономний режим: " + "; ".join(fallback)]}
             decided_by = corridor.agent
         else:
             confirmations = [c for c in self.board.view(rnd.location_id) if c.role in PHYSICAL_ROLES]
@@ -291,9 +321,13 @@ class AgentHost:
                 logger.exception("validation agent failed; the fuzzy corridor decides")
                 decision = {**base, "branch": "fuzzy_only", "reasons": [f"validation failed: {e}"]}
                 decided_by = corridor.agent
-        operator = decision.pop("operator_request", None)
+        operator = decision.pop("operator_request", None) if not fallback else None
         record = {"round_id": rnd.round_id, "location_id": rnd.location_id, **decision,
                   "decided_by": decided_by, "corridor": {"claim_id": corridor.claim_id, **base},
+                  "mode_requested": MULTIAGENT, "mode_effective": AUTONOMOUS if fallback else MULTIAGENT,
+                  "fallback_reason": "; ".join(fallback) or None,
+                  "contributing_agents": sorted(n for n, s in rnd.status.items() if s == "answered"),
+                  "rules_version": corridor.value.get("rules_version"),
                   "agents": dict(sorted(rnd.status.items())),
                   "missing": sorted(n for n, s in rnd.status.items() if s != "answered"),
                   "claims": [c.claim_id for c in claims],
@@ -302,12 +336,38 @@ class AgentHost:
                   "evidence_ids": sorted({e for c in [corridor, *claims] for e in c.evidence_ids}),
                   "latency_ms": round((now - rnd.opened_at) * 1000, 1)}
         self.decisions = (self.decisions + [record])[-200:]
+        decides = self.decides is not False
         severity = {"critical": "critical", "high": "warning"}.get(str(record.get("level")), "info") \
-            if self.decides else "info"
+            if decides else "info"
         self.emit("agent_decision", record, severity, rnd.location_id)
         if operator:
             self.emit("agent_operator_request", {"round_id": rnd.round_id, "location_id": rnd.location_id,
-                                                 **operator}, "warning" if self.decides else "info", rnd.location_id)
+                                                 **operator}, "warning" if decides else "info", rnd.location_id)
+
+    def fallback_reasons(self, rnd: Round, validator: Optional[Agent]) -> List[str]:
+        """:return: why this decision cannot be multi-agent (empty = it can) — TOD-52 automatic fallback"""
+        reasons = []
+        if validator is None:
+            reasons.append("агент валідації вимкнений")
+        elif self._health(validator) not in ("ok",):
+            reasons.append("агент валідації недоступний")
+        if self.network_ok() is False:
+            reasons.append("немає мережі")
+        late = [n for n in self.required if rnd.status.get(n) != "answered"]
+        if late:
+            reasons.append(f"не відповіли вчасно: {', '.join(late)}")
+        starting = [n for n, agent in self.registry.instances.items()
+                    if self.registry.manifests[n].contributes and self._health(agent) not in ("ok", "degraded")]
+        if starting:
+            reasons.append(f"агенти запускаються: {', '.join(sorted(starting))}")
+        return reasons
+
+    @staticmethod
+    def _health(agent: Agent) -> str:
+        try:
+            return str((agent.health() or {}).get("status", "ok"))
+        except Exception:
+            return "error"
 
     # --- status (dashboard page «Агенти») -----------------------------------------------------------------------
     def status(self) -> Dict[str, Any]:

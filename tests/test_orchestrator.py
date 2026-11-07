@@ -150,6 +150,9 @@ def test_person_enters_mic_active_within_one_second(tmp_path):
 
 def test_module_specs_from_config():
     config = load_config()
+    assert config["mode"] == "autonomous"                      # TOD-52: shipped default — no GPT worker
+    assert "llm" not in [s.name for s in Orchestrator.module_specs(config)]
+    config["mode"] = "multiagent"
     names = [s.name for s in Orchestrator.module_specs(config)]
     # cameras / microphones run per device
     assert names == ["gas", "actions", "identity", "aggregator", "llm", "hfs", "agents", "locations", "dashboard"]

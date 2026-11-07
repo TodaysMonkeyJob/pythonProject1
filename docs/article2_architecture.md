@@ -81,8 +81,9 @@ An agent that is late or missing is ignored for that round and named in the reco
   check this on all 46 Article 1 scenarios. In the comparison below, the multi-agent system also keeps the Article 1
   level on all 46.
 - Cloud agents, and the audio agent's `interpreter: llm`, never run in `mode: autonomous`.
-- `agents.decides: false` (the default) keeps the agents in shadow mode, so the location state follows the HFS or GPT
-  as before.
+- The mode (TOD-52, [`modes.md`](modes.md)) decides who decides: `autonomous` → the HFS, `multiagent` → the
+  validation agent, with an automatic fallback to the HFS when the validator, the network or a required agent is
+  missing.
 
 ## Comparison for the article
 

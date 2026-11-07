@@ -25,7 +25,8 @@ from typing import Any, Dict, List, Optional, Sequence
 from core.bus import CONTROL_STOP, publish
 from core.events import Event, make_event
 from core.logger import JsonlLogger
-from core.mode import LLM_PACKAGES, apply_mode, is_autonomous
+from core.mode import LLM_PACKAGES, any_multiagent, apply_mode, is_autonomous, mode_of, normalise, \
+    store_of
 from core.module import HEARTBEAT_INTERVAL, PLANNED_RESTART_EXIT
 from system_setup.logger_setup import init_logger
 
@@ -47,7 +48,7 @@ DEFAULT_MODULES = {
         "notification_acked", "escalation_resolved"]),   # F26: operator outcomes → fired-rule statistics
     "hfs": ("modules.hfs:run", "hfs", [            # A1 (TOD-41): gas / camera / audio subsystems → overall risk
         "gas_reading", "motion", "motion_level", "object_detected", "person_identified", "sound", "speech",
-        "sound_type", "audio_level"]),
+        "sound_type", "audio_level", "mode_changed"]),
     "agents": ("agents:run", "agents", ["*"]),     # B2 (TOD-49): plug-in agents; the host filters per agent scope
     "locations": ("modules.locations:run", "locations", ["*"]),   # F12 per-location state + notifications
     "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary", "agent_status"]),
@@ -170,6 +171,8 @@ class Orchestrator:
         :param device_scan: network config → [FoundDevice]; ``core.discovery.scan`` by default (tests inject a fake)
         """
         self.device_scan = device_scan
+        self.raw_config = config                    # M1 (TOD-52): before apply_mode — a runtime switch to multiagent
+        self.mode_store = store_of(config)          # starts the LLM worker from it
         config = apply_mode(config)                 # A1: autonomous → no LLM / GPT paths, local Whisper
         self.config = config
         self.cfg = config.get("orchestrator", {})
@@ -432,6 +435,12 @@ class Orchestrator:
                 logger.exception(f"Trust scoring failed for {event.type}: {e}")
         if self.log is not None:
             self.log.write(event)
+        if event.type == "mode_control":            # M1 (TOD-52): the dashboard asked for a switch
+            try:
+                self.switch_mode(event.payload)
+            except ValueError as e:
+                logger.warning(f"Mode switch refused: {e}")
+            return
         if event.type.startswith("device_"):  # every module may hold devices (locations, buffers to read)
             if self.devices is not None:
                 self.devices.on_event(event)
@@ -460,6 +469,54 @@ class Orchestrator:
             except Exception as e:
                 logger.exception(f"Trust registry tick failed: {e}")
         return count
+
+    def switch_mode(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        M1 (TOD-52): ``{mode, location_id?, by}`` → saved (survives restarts) + audit entry + ``mode_changed`` to every
+        module, effective from their next decision cycle. Any location in multiagent → the LLM worker runs (it only
+        logs); none → it is stopped.
+
+        :return: the ``mode_changed`` payload
+        """
+        mode = normalise(request.get("mode"))
+        location = request.get("location_id") or None
+        by = str(request.get("by") or "system")
+        previous = mode_of(self.config)
+        locations = dict(self.config.get("mode_locations") or {})
+        before = locations.get(location, previous) if location else previous
+        if location:
+            if mode == previous:
+                locations.pop(location, None)       # the same as the global mode: no override
+            else:
+                locations[location] = mode
+        global_mode = mode if not location else previous
+        locations = {k: v for k, v in locations.items() if v != global_mode}
+        self.mode_store.save(global_mode, locations, by)
+        audit = self.mode_store.audit({"by": by, "scope": "location" if location else "global",
+                                       "location_id": location, "from": before, "to": mode})
+        for config in (self.config, self.raw_config, self.child_config):
+            config["mode"], config["mode_locations"] = global_mode, dict(locations)
+        self._llm_follow_mode()
+        payload = {"mode": global_mode, "locations": locations, "scope": audit["scope"], "location_id": location,
+                   "from": before, "to": mode, "by": by, "at": audit["at"]}
+        self.emit(make_event("system", "mode_changed", payload))
+        logger.warning(f"mode {before} → {mode}" + (f" for {location}" if location else "") + f" by {by}")
+        return payload
+
+    def _llm_follow_mode(self) -> None:
+        """The GPT pipeline (logging only) runs while any location is multiagent."""
+        wanted = any_multiagent(self.config)
+        if wanted and "llm" not in self.modules:
+            if not (self.raw_config.get("llm") or {}).get("enabled", False):
+                return
+            self.child_config = self._child_config(apply_mode(self.raw_config))
+            target, _, subscribe = DEFAULT_MODULES["llm"]
+            override = (self.raw_config.get("orchestrator", {}).get("modules", {}) or {}).get("llm", {}) or {}
+            target = override.get("target", target)
+            if target_available(target):
+                self.add_module(ModuleSpec("llm", target, list(override.get("subscribe", subscribe))))
+        elif not wanted and "llm" in self.modules:
+            self.remove_module("llm")
 
     def emit(self, event: Event) -> None:
         """Publishes an orchestrator event into the router (logged and forwarded like any other)."""

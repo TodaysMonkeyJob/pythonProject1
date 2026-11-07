@@ -376,7 +376,7 @@ def test_hfs_ignores_hub_and_device_offline_drops_evidence():
 
 def test_hfs_module_publishes_hfs_risk_with_mode_severity():
     clock = Clock()
-    for mode, severity in (("autonomous", "critical"), ("hybrid", "info")):
+    for mode, severity in (("autonomous", "critical"), ("multiagent", "info")):
         system = HierarchicalFuzzySystem(CONFIG, clock=clock)
         events = queue.Queue()
         module = HFSModule(events, queue.Queue(), {"mode": mode}, system=system, clock=clock)
@@ -384,7 +384,8 @@ def test_hfs_module_publishes_hfs_risk_with_mode_severity():
         module.step()
         data = json.loads(events.get_nowait())
         assert data["type"] == "hfs_risk" and data["location_id"] == "lab" and data["severity"] == severity
-        assert data["payload"]["mode"] == mode and data["payload"]["level"] == "critical"
+        assert data["payload"]["mode_requested"] == mode and data["payload"]["level"] == "critical"
+        assert set(data["payload"]["rules_version"]) == {"gas", "camera", "audio", "top"}
 
 
 # --- location state ---------------------------------------------------------------------------------------------------
@@ -419,8 +420,9 @@ def test_apply_mode_switches_cloud_paths_off():
     assert out["llm"]["enabled"] is False and out["rules"]["suggestions"]["enabled"] is False
     assert out["audio"]["mic"]["whisper_backend"] == "local" and out["aggregator"]["queue_for_llm"] is False
     assert out["hfs"]["enabled"] is True and config["llm"]["enabled"] is True        # input untouched
-    assert apply_mode({"llm": {"enabled": True}}) == {"llm": {"enabled": True}}       # hybrid by default
-    assert mode_of({}) == "hybrid" and is_autonomous({"mode": "Autonomous"})
+    assert apply_mode({"llm": {"enabled": True}}) == {"llm": {"enabled": True}}       # multiagent by default
+    assert mode_of({}) == "multiagent" and mode_of({"mode": "hybrid"}) == "multiagent"   # TOD-52 rename
+    assert is_autonomous({"mode": "Autonomous"})
     with pytest.raises(ValueError):
         mode_of({"mode": "cloud"})
 

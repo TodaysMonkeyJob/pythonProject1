@@ -19,6 +19,7 @@ ENV_MAP = {
     "AZURE_OPENAI_API_VERSION": ("llm", "azure_api_version"),
     "DASHBOARD_USER": ("dashboard", "user"),
     "DASHBOARD_PASS": ("dashboard", "password"),
+    "DASHBOARD_VIEWERS": ("dashboard", "viewers"),   # TOD-52: "name:password,…" — read-only accounts (no mode switch)
     "TELEGRAM_BOT_TOKEN": ("locations", "telegram_bot_token"),
     "TELEGRAM_CHAT_ID": ("locations", "telegram_chat_id"),
 }

@@ -8,14 +8,16 @@ and every ``keepalive_sec`` anyway::
      "partial": true, "missing": ["audio"], "subsystems": {...}, "fired_rules_by_level": {"gas": [...], ...},
      "mode": "autonomous"}
 
-In autonomous mode the event carries the severity of its level (critical → critical, high → warning) and drives the
-location state; in hybrid mode it is a shadow (severity info). numpy + the fuzzy core only: no network, no LLM.
+For a location in mode autonomous (TOD-52: global or its override, ``mode_changed`` switches at runtime) the event
+carries the severity of its level (critical → critical, high → warning) and is the decision; in multiagent it is the
+fuzzy agent's corridor (severity info) and the validation agent decides. Every event carries ``mode_requested`` and
+``rules_version`` (gas / camera / audio / top). numpy + the fuzzy core only: no network, no LLM.
 """
 import time
 from typing import Any, Callable, Dict, List, Optional
 
 from core.events import Event, make_event
-from core.mode import is_autonomous
+from core.mode import AUTONOMOUS, location_mode
 from core.module import BaseModule
 from modules.hfs.audio import AudioSubsystem
 from modules.hfs.base import FuzzySubsystem
@@ -168,6 +170,16 @@ class HierarchicalFuzzySystem:
                 or abs(last.get("corridor_width", 0) - payload.get("corridor_width", 0)) >= self.min_delta)
 
 
+def rules_versions(system: HierarchicalFuzzySystem) -> Dict[str, str]:
+    """:return: the rule base version (F26 hash of the rules) of every level — carried by every decision (TOD-52)"""
+    from core.fuzzy import load_yaml
+    from core.fuzzy.governance import short, version_hash
+
+    paths = {name: s.path for name, s in system.subsystems.items()}
+    paths["top"] = system.top.path
+    return {name: short(version_hash({"rules": load_yaml(path).get("rules")})) for name, path in paths.items()}
+
+
 class HFSModule(BaseModule):
     name = "hfs"
     source = "system"
@@ -177,10 +189,16 @@ class HFSModule(BaseModule):
         super().__init__(event_queue, control_queue, config)
         self.system = system
         self.clock = clock
-        self.autonomous = is_autonomous(config)
         self.locations = None
+        self._versions: Optional[Dict[str, str]] = None
         self._devices: List[Dict[str, Any]] = []
         self._devices_at = 0.0
+
+    @property
+    def versions(self) -> Dict[str, str]:
+        if self._versions is None:
+            self._versions = rules_versions(self.system)
+        return self._versions
 
     def devices(self) -> List[Dict[str, Any]]:
         """Device records (cached 2 s; device_* events refresh at once)."""
@@ -197,7 +215,9 @@ class HFSModule(BaseModule):
             ignore = (network.get("hub_location") or "hub", "unknown")
             self.system = HierarchicalFuzzySystem(self.config, self.locations.rules, self.devices, self.clock,
                                                   ignore=ignore, names=self.locations.name)
-        logger.info(f"HFS ready ({'autonomous' if self.autonomous else 'hybrid: shadow'} mode)")
+        logger.info(f"HFS ready (mode {self.config.get('mode') or 'multiagent'}"
+                    + (f", per location {self.config['mode_locations']}" if self.config.get("mode_locations") else "")
+                    + ")")
 
     def teardown(self) -> None:
         if self.locations is not None:
@@ -208,6 +228,10 @@ class HFSModule(BaseModule):
             super().handle_control(message)
             return
         event = Event.from_json(message)
+        if event.type == "mode_changed":          # TOD-52: from the next decision cycle
+            self.config = {**self.config, "mode": event.payload["mode"],
+                           "mode_locations": event.payload.get("locations") or {}}
+            return
         if event.type.startswith("device_"):
             self._devices_at = 0.0
         self.system.observe(event)
@@ -215,9 +239,10 @@ class HFSModule(BaseModule):
     def step(self) -> None:
         for payload in self.system.tick():
             location_id = payload.pop("location_id")
-            severity = SEVERITY.get(payload["level"], "info") if self.autonomous else "info"
-            self.publish(make_event("system", "hfs_risk", {**payload,
-                                                           "mode": "autonomous" if self.autonomous else "hybrid"},
+            requested = location_mode(self.config, location_id)
+            severity = SEVERITY.get(payload["level"], "info") if requested == AUTONOMOUS else "info"
+            self.publish(make_event("system", "hfs_risk", {**payload, "mode_requested": requested,
+                                                           "rules_version": self.versions},
                                     severity=severity, device_id=self.device_id, location_id=location_id))
         time.sleep(0.1)
 

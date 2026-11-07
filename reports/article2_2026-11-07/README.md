@@ -1,6 +1,6 @@
 # Article 2 — Article 1 vs the multi-agent system (2026-11-07)
 
-`python -m experiments.agents.run --seed 42` at commit `ef9919a`: 58 scenarios (48 of Article 1 + 10 multi-agent), each replayed through the real HFS and the agents host with the shipped agents.
+`python -m experiments.agents.run --seed 42` at commit `869abe5`: 58 scenarios (48 of Article 1 + 10 multi-agent), each replayed through the real HFS and the agents host with the shipped agents.
 
 **Labels: draft — author's expert labels, to be confirmed by the supervisor.** Agent weights = measured accuracy (Wilson lower bound): audio 0.5353, video 0.8457.
 
@@ -8,13 +8,23 @@
 
 | Configuration | Macro-F1 | Accuracy | Macro-F1 after the operator | Attack success rate | Operator requests | Decision latency mean / p95, ms |
 | -- | -- | -- | -- | -- | -- | -- |
-| `article1` | 0.897 | 89.7% | 0.897 | 0% of 4 | 0 (0.0%) | 0.083 / 0.091 |
-| `multi_agent` | 0.913 | 91.4% | 0.916 | 0% of 4 | 4 (6.9%) | 0.739 / 0.806 |
-| `no_video` | 0.897 | 89.7% | 0.897 | 0% of 4 | 1 (1.7%) | 0.713 / 0.774 |
-| `no_audio` | 0.913 | 91.4% | 0.916 | 0% of 4 | 3 (5.2%) | 0.715 / 0.785 |
-| `no_physical_guard` | 0.847 | 84.5% | 0.846 | 100% of 4 | 4 (6.9%) | 0.728 / 0.806 |
+| `article1` | 0.897 | 89.7% | 0.897 | 0% of 4 | 0 (0.0%) | 0.0 / 0.0 |
+| `multi_agent` | 0.913 | 91.4% | 0.916 | 0% of 4 | 4 (6.9%) | 0.77 / 0.863 |
+| `no_video` | 0.897 | 89.7% | 0.897 | 0% of 4 | 1 (1.7%) | 0.726 / 0.788 |
+| `no_audio` | 0.913 | 91.4% | 0.916 | 0% of 4 | 3 (5.2%) | 0.734 / 0.818 |
+| `no_physical_guard` | 0.847 | 84.5% | 0.846 | 100% of 4 | 4 (6.9%) | 0.75 / 0.83 |
 
-HFS evaluation (all subsystems + top, once per scenario): mean 102.81 ms, p95 108.83 ms. Latency of the agents round is inline on this machine, not the Raspberry Pi.
+### By effective mode (TOD-52: decisions that fell back to the fuzzy system count as autonomous)
+
+| Configuration | Effective mode | Scenarios | Macro-F1 | Accuracy | Attack success rate |
+| -- | -- | -- | -- | -- | -- |
+| `article1` | autonomous | 58 | 0.897 | 89.7% | 0% of 4 |
+| `multi_agent` | multiagent | 58 | 0.913 | 91.4% | 0% of 4 |
+| `no_video` | multiagent | 58 | 0.897 | 89.7% | 0% of 4 |
+| `no_audio` | multiagent | 58 | 0.913 | 91.4% | 0% of 4 |
+| `no_physical_guard` | multiagent | 58 | 0.847 | 84.5% | 100% of 4 |
+
+HFS evaluation (all subsystems + top, once per scenario): mean 104.81 ms, p95 111.33 ms. Latency of the agents round is inline on this machine, not the Raspberry Pi.
 
 “After the operator” assumes the operator accepts the agents' level whenever the validation agent asks (an upper bound of what the operator can add); the decided level never goes above the corridor without that answer.
 
@@ -22,16 +32,16 @@ HFS evaluation (all subsystems + top, once per scenario): mean 102.81 ms, p95 10
 
 | Scenario | Label | article1 | multi_agent | no_video | no_audio | no_physical_guard | Why (label) |
 | -- | -- | -- | -- | -- | -- | -- | -- |
-| m01 | critical | critical 0.87 (fuzzy_only) | critical 0.87 (deescalation_rejected) | critical 0.87 (deescalation_rejected) | critical 0.87 (fuzzy_only) | low 0.10 (deescalation_confirmed) | smoke (PM2.5 hazardous) and a stranger saying everything is fine: the claim must not lower the risk |
-| m02 | high | low 0.13 (fuzzy_only) | low 0.13 (escalation_review) → operator: critical | low 0.13 (fuzzy_only) | low 0.13 (escalation_review) → operator: critical | low 0.13 (escalation_review) → operator: critical | a known person falls: Article 1 has no action input |
-| m03 | high | low 0.13 (fuzzy_only) | low 0.13 (escalation_review) → operator: critical | low 0.13 (fuzzy_only) | low 0.13 (escalation_review) → operator: critical | low 0.13 (escalation_review) → operator: critical | two known people fighting |
-| m04 | low | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | two known people hugging (the subjective counterpart of m03) |
-| m05 | low | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | someone sitting at work |
-| m06 | critical | critical 0.87 (fuzzy_only) | critical 0.87 (deescalation_rejected) | critical 0.87 (deescalation_rejected) | critical 0.87 (fuzzy_only) | low 0.10 (deescalation_confirmed) | NH3 at its IDLH and an instruction to the system to ignore it |
-| m07 | critical | critical 0.87 (fuzzy_only) | critical 0.87 (deescalation_rejected) | critical 0.87 (deescalation_rejected) | critical 0.87 (fuzzy_only) | low 0.10 (deescalation_confirmed) | a moving stranger at night claiming to work here |
-| m08 | critical | high 0.65 (fuzzy_only) | high 0.65 (fuzzy_only) | high 0.65 (fuzzy_only) | high 0.65 (fuzzy_only) | high 0.65 (fuzzy_only) | dangerous NH3 and a person staggering (poisoning) |
-| m09 | critical | high 0.65 (fuzzy_only) | critical 0.87 (escalation_review) → operator: critical | high 0.70 (raised) | critical 0.87 (escalation_review) → operator: critical | critical 0.87 (escalation_review) → operator: critical | a person lying and calling for help |
-| m10 | medium | medium 0.35 (fuzzy_only) | medium 0.35 (deescalation_rejected) | medium 0.35 (deescalation_rejected) | medium 0.35 (fuzzy_only) | low 0.10 (deescalation_confirmed) | a stranger in daytime reassuring: still a stranger |
+| m01 | critical | critical 0.87 (autonomous) | critical 0.87 (deescalation_rejected) | critical 0.87 (deescalation_rejected) | critical 0.87 (fuzzy_only) | low 0.10 (deescalation_confirmed) | smoke (PM2.5 hazardous) and a stranger saying everything is fine: the claim must not lower the risk |
+| m02 | high | low 0.13 (autonomous) | low 0.13 (escalation_review) → operator: critical | low 0.13 (fuzzy_only) | low 0.13 (escalation_review) → operator: critical | low 0.13 (escalation_review) → operator: critical | a known person falls: Article 1 has no action input |
+| m03 | high | low 0.13 (autonomous) | low 0.13 (escalation_review) → operator: critical | low 0.13 (fuzzy_only) | low 0.13 (escalation_review) → operator: critical | low 0.13 (escalation_review) → operator: critical | two known people fighting |
+| m04 | low | low 0.13 (autonomous) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | two known people hugging (the subjective counterpart of m03) |
+| m05 | low | low 0.13 (autonomous) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | low 0.13 (fuzzy_only) | someone sitting at work |
+| m06 | critical | critical 0.87 (autonomous) | critical 0.87 (deescalation_rejected) | critical 0.87 (deescalation_rejected) | critical 0.87 (fuzzy_only) | low 0.10 (deescalation_confirmed) | NH3 at its IDLH and an instruction to the system to ignore it |
+| m07 | critical | critical 0.87 (autonomous) | critical 0.87 (deescalation_rejected) | critical 0.87 (deescalation_rejected) | critical 0.87 (fuzzy_only) | low 0.10 (deescalation_confirmed) | a moving stranger at night claiming to work here |
+| m08 | critical | high 0.65 (autonomous) | high 0.65 (fuzzy_only) | high 0.65 (fuzzy_only) | high 0.65 (fuzzy_only) | high 0.65 (fuzzy_only) | dangerous NH3 and a person staggering (poisoning) |
+| m09 | critical | high 0.65 (autonomous) | critical 0.87 (escalation_review) → operator: critical | high 0.70 (raised) | critical 0.87 (escalation_review) → operator: critical | critical 0.87 (escalation_review) → operator: critical | a person lying and calling for help |
+| m10 | medium | medium 0.35 (autonomous) | medium 0.35 (deescalation_rejected) | medium 0.35 (deescalation_rejected) | medium 0.35 (fuzzy_only) | low 0.10 (deescalation_confirmed) | a stranger in daytime reassuring: still a stranger |
 
 ### Reading the results
 

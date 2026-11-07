@@ -68,6 +68,8 @@ EVENT_TYPES = (
     "agent_control",        # B2: dashboard switch of an agent (agent, enabled, by)
     "air_quality_index",    # A7 (TOD-48): index-only gas sensors (ENS160 AQI-UBA / TVOC / eCO2), never concentrations
     "gas_sensor_choice",    # A7: the user picked a driver for an unknown gas device (key, driver) → rediscovery
+    "mode_control",         # M1 (TOD-52): the dashboard asks for a mode switch (mode, location_id?, by) — admin only
+    "mode_changed",         # M1: the orchestrator switched (mode, locations, scope, from, to, by, at) → every module
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"
