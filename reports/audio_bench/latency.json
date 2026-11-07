@@ -1,0 +1,23 @@
+{
+ "machine": "Darwin arm64",
+ "python": "3.12.3",
+ "frame_ms": {
+  "mean": 0.026,
+  "p95": 0.057
+ },
+ "sound_type_ms_per_2s_clip": {
+  "mean": 6.352,
+  "p95": 10.656
+ },
+ "keywords_ms": {
+  "mean": 1.545,
+  "p95": 3.241
+ },
+ "whisper": {
+  "model": "tiny",
+  "audio_sec": 1.6,
+  "ms": 340,
+  "rtf": 0.21,
+  "chars": 24
+ }
+}

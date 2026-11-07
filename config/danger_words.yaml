@@ -1,0 +1,55 @@
+# A4 (TOD-44) danger words in speech, graded: the HFS audio input keyword_danger = the highest grade found in a
+# transcript (0 = none). Ukrainian + English; matched on the normalised transcript (modules/audio/keywords.py):
+# exact form → listed form → stem + Ukrainian ending → edit distance (≤ 1 for 5–7 letters, ≤ 2 for 8+; words of
+# up to 4 letters exact only). A fuzzy hit that is itself a common word (common_words) is rejected.
+#
+# An entry is a word or {word, forms}: forms = inflections / spellings Whisper writes that the stem rule misses.
+# Phrases (several words) are matched as consecutive tokens.
+grades:
+  alarming: 0.4       # тривожні
+  dangerous: 0.7      # небезпечні
+  critical: 1.0       # критичні
+
+words:
+  alarming:
+    - {word: "ой", forms: ["ой-ой", "ойой", "оой"]}
+    - {word: "ай", forms: ["ай-ай", "айай", "ая"]}
+    - {word: "болить", forms: ["боляче", "больно"]}
+    - "відпусти"
+    - "не чіпай"
+    - "стоп"
+    - "ouch"
+    - "oh no"
+    - "stop it"
+    - "let me go"
+    - "it hurts"
+  dangerous:
+    - {word: "небезпека", forms: ["небезпечно", "небезпеки"]}
+    - {word: "допоможіть", forms: ["допоможи", "допомога", "допомоги", "на допомогу"]}
+    - {word: "рятуйте", forms: ["рятуй", "рятунок"]}
+    - {word: "поліція", forms: ["поліцію", "поліції", "викличте поліцію"]}
+    - {word: "ніж", forms: ["ножа", "ножем"]}
+    - {word: "пістолет", forms: ["пістолета"]}
+    - {word: "зброя", forms: ["зброю", "зброї"]}
+    - {word: "стріляють", forms: ["стріляє", "стрілянина"]}
+    - {word: "швидка", forms: ["швидку", "викличте швидку"]}
+    - "danger"
+    - "help"
+    - "help me"
+    - "call the police"
+    - "ambulance"
+    - "knife"
+    - "gun"
+  critical:
+    - {word: "пожежа", forms: ["пожежу", "пожежі", "пожар", "горить", "горимо"]}
+    - {word: "вибух", forms: ["вибуху", "вибухне", "вибухнуло", "вибухнув", "вибухнула", "вибухівка"]}
+    - {word: "газ", forms: ["газу", "газом", "газ тече", "витік газу"]}
+    - "fire"
+    - "explosion"
+    - "gas leak"
+    - "bomb"
+
+# Frequent words one edit away from a danger word: never a fuzzy match (exact entries above still count).
+# (Fire- / danger-related words like «пожежна», «небезпечний» are deliberately not listed: they should match.)
+common_words: ["раз", "газета", "газети", "газон", "вибір", "вибору", "виборах", "вибув", "поліцай", "fine", "five",
+               "hire", "file", "gum", "gin", "held", "hell", "helm", "knit", "bob"]

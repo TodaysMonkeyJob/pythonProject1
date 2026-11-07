@@ -289,6 +289,12 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   Locations page) | on | off — light mode loads no pose / action models; turning off exits the process with
   `core.module.PLANNED_RESTART_EXIT` (the orchestrator restarts it at once, no alert) because unloading in place keeps
   the memory. `python -m tools.camera_bench` → `reports/camera_bench/` (light vs actions RAM, false motion, min fps).
+  A4 (TOD-44) audio (`docs/audio.md`): mic controller → `audio_level` (dB above the mic's background,
+  `modules/audio/intensity.py`, unlogged), `sound_type` per speech segment's background / non-speech burst
+  (`noise_stage.py` noise profile + optional Wiener `denoise`; `sound_type.py` features + `models/sound_types.joblib`
+  — none trained yet: `unknown`, `danger: null`; `python -m tools.train_sound_types --data <dir>/<type>/*.wav`),
+  `speech.danger_words` (`keywords.py`, `config/danger_words.yaml`, `config/audio_types.yaml`). HFS audio inputs
+  intensity / sound_type_danger / keyword_danger / speaker_unknown, 108-rule table. `python -m tools.audio_bench`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

@@ -70,23 +70,23 @@
    "implication": "prod",
    "aggregation": "sum"
   },
-  "rules": 81,
+  "rules": 108,
   "inputs": {
-   "sound_level": {
+   "intensity": {
     "steps": 13310,
     "falls": 0,
     "share": 0.0,
     "max_fall": 0.0,
     "level_drops": 0
    },
-   "sound_type": {
+   "sound_type_danger": {
     "steps": 13310,
     "falls": 0,
     "share": 0.0,
     "max_fall": 0.0,
     "level_drops": 0
    },
-   "danger_keywords": {
+   "keyword_danger": {
     "steps": 13310,
     "falls": 0,
     "share": 0.0,

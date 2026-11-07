@@ -6,7 +6,8 @@ Article 1: every decision is made locally by a two-level fuzzy system — no LLM
 gas_reading ─▶ gas    (max_norm, dynamics, mixture_index: c / c_crit)          ─▶ risk 1 ┐
 motion(_level), object_detected, person_identified ─▶ camera (unknown_share,       ─▶ risk 2 ├─▶ top ─▶ overall risk
                                               motion_intensity, activity_time)           │        per location
-sound, speech ─▶ audio (sound_level, sound_type, danger_keywords, speaker_unknown) ─▶ risk 3 ┘   (hfs_risk event)
+audio_level, sound_type, speech ─▶ audio (intensity, sound_type_danger,             ─▶ risk 3 ┘   (hfs_risk event)
+                                    keyword_danger, speaker_unknown)
 ```
 
 | Level | Rule base | Rules | Update |
@@ -57,5 +58,6 @@ for the TOD-45 FOU); `motion_intensity` = smoothed moving share of the frame fro
 weekdays, `object_type` presets apartment / office / warehouse / factory). No people count, no actions: the actions
 mode is a per-location toggle that only logs. Benchmarks: `reports/camera_bench/`.
 
-Audio inputs are first versions; A4 refines them. Change a table by
+Audio (A4 / TOD-44): intensity above each microphone's background, sound types of the noise stage (no trained model
+yet: `unknown`, not evidence), graded danger words, speaker identity — `docs/audio.md`. Change a table by
 changing its policy in `policy.py` and the YAML together (the test compares them).

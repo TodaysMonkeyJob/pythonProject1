@@ -18,6 +18,13 @@ and published as one ``speech`` event per segment — who (``person_id``, ``spea
 ``device_id``) — and written to ``logs/<date>/transcripts.jsonl`` + ``transcripts.txt``. Forwarded
 ``object_detected`` / ``person_identified`` events tell who is in view, so a new voice is linked to the face of the
 person who is alone in view while speaking (``core.cooccurrence``).
+
+A4 (TOD-44): every frame updates this microphone's background level (``intensity.BackgroundLevel``) → ``audio_level``
+events (dB above the background, not logged) and the noise stage (``noise_stage.NoiseProfile``, non-speech frames).
+The background around every speech segment and every non-speech sound burst is classified
+(``sound_type.SoundTypeClassifier``, own thread) → one ``sound_type`` event per segment (type, confidence, danger;
+``danger: null`` without a trained model). Speech events carry ``danger_words`` (``keywords.DangerWords``: graded
+words of ``config/danger_words.yaml``). ``denoise: true`` applies the noise stage's soft Wiener mask before Whisper.
 """
 import collections
 import math
@@ -33,6 +40,8 @@ import numpy as np
 from core.cooccurrence import PresenceTracker, VoiceFaceLinker
 from core.events import Event, make_event
 from core.module import BaseModule
+from modules.audio.intensity import BackgroundLevel
+from modules.audio.noise_stage import NoiseProfile, SoundBurst
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
@@ -275,6 +284,18 @@ class MicController(BaseModule):
         self._was_loud = False
         self._last_sound_event = float("-inf")
         self._lock = threading.Lock()
+        # A4 (TOD-44): intensity above this microphone's background, the noise stage and sound types
+        self.background = BackgroundLevel(float(cfg.get("background_window_sec", 300)),
+                                          float(cfg.get("background_percentile", 20)),
+                                          float(cfg.get("intensity_smooth_sec", 2)), cfg.get("background_db"))
+        self.noise = NoiseProfile(self.sample_rate, float(cfg.get("noise_keep_sec", 3)))
+        self.burst = SoundBurst(self.sample_rate, float(cfg.get("burst_min_db", 10)),
+                                float(cfg.get("burst_min_sec", 0.3)), float(cfg.get("burst_max_sec", 3)))
+        self.level_event_sec = float(cfg.get("level_event_sec", 2))
+        self._last_level_at, self._last_level = float("-inf"), 0.0
+        self.sound_types = None                     # SoundTypeClassifier, created in the sound thread
+        self.danger_words = None                    # keywords.DangerWords
+        self.sound_executor: Optional[ThreadPoolExecutor] = None
         from modules.trust.health import HealthPublisher, registry_config
 
         health_cfg = registry_config(config)    # F23 (TOD-34): microphone self-diagnostics → device_health
@@ -315,6 +336,8 @@ class MicController(BaseModule):
         if self.vad is None:
             self.vad = webrtc_vad(int(self.cfg.get("vad_aggressiveness", 2)), self.sample_rate)
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="whisper")
+        # sound types never wait behind a slow Whisper call
+        self.sound_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sound-type")
         self.executor.submit(self._warm_up)  # in the Whisper thread: start-up and scene handling stay fast
         self._open_source()
 
@@ -326,6 +349,8 @@ class MicController(BaseModule):
                 logger.debug(f"Error closing microphone: {e}")
         if self.executor is not None:
             self.executor.shutdown(wait=True, cancel_futures=True)
+        if self.sound_executor is not None:
+            self.sound_executor.shutdown(wait=True, cancel_futures=True)
         if self.transcript_log is not None:
             self.transcript_log.close()
 
@@ -383,16 +408,73 @@ class MicController(BaseModule):
         db = rms_dbfs(frame)
         loud = db >= self.sound_threshold_db
         speech = bool(self.vad(frame))
+        now = self.clock()
+        intensity = self.background.update(db, now)
+        relative = self.background.relative(db)
+        self.noise.update(frame, speech)
         self._update_state(loud, speech, db)
+        self._publish_level(intensity, db, now)
+        burst = self.burst.push(frame, relative, speech)
+        if burst is not None:
+            self._submit_sound(burst, "sound", self.burst.take_peak())
         segment = self.segmenter.push(frame, speech, allowed=self.state.state == ACTIVE)
         if segment is not None:
+            if self.noise.seconds >= 0.5:           # the background heard around this speech
+                self._submit_sound(self.noise.audio(), "background", self.background.intensity)
             self._submit(segment)
+
+    # --- A4 (TOD-44): intensity, noise stage, sound types ---------------------------------------------------------
+
+    def _publish_level(self, intensity: float, db: float, now: float) -> None:
+        """``audio_level`` (not logged): dB above the background, at most every ``level_event_sec`` while it changes."""
+        if now - self._last_level_at < self.level_event_sec or self.background.background is None:
+            return
+        level = round(intensity, 1)
+        if abs(level - self._last_level) < 0.5:
+            return
+        self._last_level_at, self._last_level = now, level
+        self.emit("audio_level", {"intensity_db": level, "background_db": round(self.background.background, 1),
+                                  "rms_db": round(db, 1)})
+
+    def _submit_sound(self, audio: np.ndarray, source: str, relative_db: float) -> None:
+        if self.sound_executor is not None:
+            self.sound_executor.submit(self._classify_sound, np.array(audio, copy=True), source, relative_db)
+        else:
+            self._classify_sound(audio, source, relative_db)
+
+    def _classify_sound(self, audio: np.ndarray, source: str, relative_db: float) -> None:
+        """One ``sound_type`` event per processed segment: the background of a speech segment or a sound burst."""
+        if self.sound_types is None:
+            from modules.audio.sound_type import SoundTypeClassifier
+
+            try:
+                self.sound_types = SoundTypeClassifier.from_config(self.cfg)
+            except Exception as e:
+                logger.error(f"Sound types unavailable ({e})")
+                self.sound_types = False
+        if not self.sound_types:
+            return
+        started = time.perf_counter()
+        result = self.sound_types.classify(audio)
+        self.emit("sound_type", {**result.payload(), "source": source,
+                                 "duration_sec": round(len(audio) / self.sample_rate, 2),
+                                 "relative_db": round(float(relative_db), 1),
+                                 "ms": round((time.perf_counter() - started) * 1000, 1)})
+
+    def _danger_words(self, text: str) -> Dict[str, Any]:
+        if self.danger_words is None:
+            from modules.audio.keywords import DangerWords
+
+            self.danger_words = DangerWords.load(self.cfg.get("danger_words", "config/danger_words.yaml"))
+        grade, matches = self.danger_words.grade(text)
+        return {"grade": grade, "matches": [m.payload() for m in matches[:3]]}
 
     def _update_state(self, loud: bool, speech: bool, db: Optional[float] = None) -> None:
         now = self.clock()
         if loud and not self._was_loud and now - self._last_sound_event >= self.sound_cooldown_sec:
             self._last_sound_event = now
-            self.emit("sound", {"rms_db": round(db, 1), "state": self.state.state})
+            self.emit("sound", {"rms_db": round(db, 1), "relative_db": self.background.relative(db),
+                                "state": self.state.state})
         self._was_loud = loud
         change = self.state.update(now, self.scene_active, loud, speech)
         if change:
@@ -464,6 +546,11 @@ class MicController(BaseModule):
             logger.warning(f"Whisper is {self.transcriptions - number} segments behind: "
                            f"skipping a {duration} s segment")
             return
+        if self.cfg.get("denoise"):                 # A4: soft Wiener mask from the noise stage (off by default)
+            from modules.audio.noise_stage import wiener_denoise
+
+            clean = wiener_denoise(segment, self.noise.psd, float(self.cfg.get("denoise_min_gain", 0.1)))
+            segment = np.clip(clean * 32768.0, -32768, 32767).astype(np.int16)
         try:
             result = self._get_transcriber()(segment, self.sample_rate)
         except Exception as e:
@@ -489,6 +576,7 @@ class MicController(BaseModule):
                        "start": iso(chunk_start + piece.start), "end": iso(chunk_start + piece.end)}
             if piece.confidence is not None:
                 payload["asr_confidence"] = piece.confidence
+            payload["danger_words"] = self._danger_words(piece.text)       # A4: graded danger words
             if piece.overlap:
                 payload["speaker_overlap"] = True
             if diarization is not None:
