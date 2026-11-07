@@ -28,7 +28,8 @@ with and without its action events.
 
 ## Messages
 
-Every agent publishes typed claims. Each claim is logged as an `agent_claim` event in `logs/<date>/events.jsonl`,
+Every agent publishes typed claims. Each claim is logged as an `agent_claim` event in `logs/<date>/agents.jsonl` (its
+own file, so `events.jsonl` and the dashboard feed stay readable; the decisions themselves stay in `events.jsonl`),
 together with the agent's version:
 
 ```json

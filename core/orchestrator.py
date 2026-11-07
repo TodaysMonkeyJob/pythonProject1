@@ -57,6 +57,9 @@ SELF_LOGGING_SECTIONS = ("vision", "actions", "identity")
 PER_DEVICE_MODULES = ("vision", "audio")   # with network.discovery: one process per camera / microphone
 # frequent status: explicit subscribers only, not logged
 UNLOGGED_EVENTS = ("heartbeat", "location_summary", "motion_level", "audio_level", "agent_status")
+# Machine traffic between agents: its own file logs/<date>/agents.jsonl (kept for the article's traces), never in
+# events.jsonl, the dashboard feed or the CSV export (explicit subscribers only) — events.jsonl stays readable
+AGENT_LOG_EVENTS = ("agent_claim",)
 # Files a module can't start without: (config section, key, how to get it)
 REQUIRED_FILES = {
     "gas": [("gas", "classifier_path", "python -m modules.gas.train"),
@@ -190,6 +193,8 @@ class Orchestrator:
         log_cfg = config.get("logging", {})
         self.log = JsonlLogger("events", log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048),
                                log_cfg.get("check_every", 100)) if self.cfg.get("log_events", True) else None
+        self.agent_log = JsonlLogger("agents", log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048),
+                                     log_cfg.get("check_every", 100)) if self.cfg.get("log_events", True) else None
         self.frame_buffer = None
         self.device_buffers: Dict[str, Any] = {}    # module name → SharedFrameBuffer of its camera
         self.devices = None                         # DeviceManager (network.discovery)
@@ -415,7 +420,9 @@ class Orchestrator:
         except ValueError as e:
             logger.warning(f"Dropping malformed event: {e}")
             return
-        if event.type in UNLOGGED_EVENTS:
+        if event.type in AGENT_LOG_EVENTS and self.agent_log is not None:
+            self.agent_log.write(event)
+        if event.type in UNLOGGED_EVENTS or event.type in AGENT_LOG_EVENTS:
             module = self.modules.get(event.payload.get("module")) if event.type == "heartbeat" else None
             if module is not None:
                 module.last_heartbeat = self.clock()
