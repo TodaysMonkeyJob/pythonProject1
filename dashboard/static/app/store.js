@@ -15,6 +15,7 @@ export const store = {
   connected: false,
   trust: [],              // F23: /api/trust channels (device × channel)
   trustError: null,
+  mode: null,             // TOD-52: /api/mode {mode, locations, labels, role, effective, fallback, history}
 };
 const MAX_EVENTS = 3000;
 const listeners = {};
@@ -86,6 +87,12 @@ export function deviceTrust(deviceId) {
   return rows.reduce((a, b) => (b.tau < a.tau ? b : a));
 }
 export async function loadStatus() { store.status = await get("/api/status"); emit("status"); }
+export async function loadMode() { store.mode = await get("/api/mode"); emit("mode"); }
+export async function switchMode(mode, locationId = null) {
+  const r = await api("POST", "/api/mode", { mode, location_id: locationId, confirm: true });
+  setTimeout(() => loadMode().catch(() => {}), 800);
+  return r;
+}
 export const history = (params) => get("/api/history?" + new URLSearchParams(params)).then((j) => j.events);
 
 export const unacked = () => store.notifications.filter((n) => !n.acknowledged_at);
@@ -123,6 +130,7 @@ function handle(ev) {
   emit("event", ev);
   if (ev.type === "notification") { store.notifications.unshift(p); emit("notifications"); emit("notify", p); }
   else if (ev.type === "notification_acked") loadNotifications();
+  else if (ev.type === "mode_changed") loadMode().catch(() => {});
   else if (ev.type === "device_health") loadTrust();
   else if (ev.type.startsWith("device_")) loadDevices();
   else if (ev.type.startsWith("identity_")) {
@@ -136,10 +144,11 @@ function handle(ev) {
 
 export async function start() {
   await Promise.allSettled([loadLocations(), loadDevices(), loadPersons(), loadNotifications(), loadStatus(),
-                            loadDuplicates(), loadTrust()]);
+                            loadDuplicates(), loadTrust(), loadMode()]);
   connect();
   setInterval(() => loadStatus().catch(() => {}), 3000);
   setInterval(() => loadDevices().catch(() => {}), 10000);
   setInterval(() => loadLocations().catch(() => {}), 15000);
   setInterval(() => loadTrust(), 10000);
+  setInterval(() => loadMode().catch(() => {}), 5000);      // effective mode / fallback per location
 }

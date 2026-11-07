@@ -326,12 +326,18 @@ def test_only_the_fuzzy_agent_reproduces_article1(enabled):
         host.observe(event)
     decisions = bus.of("agent_decision")
     assert len(decisions) == len(events)
-    assert {s for t, _, s, _ in bus.events if t == "agent_decision"} == {"info"}        # a shadow by default
+    severities = {p["level"]: s for t, p, s, _ in bus.events if t == "agent_decision"}   # TOD-52: the decision
+    assert severities.get("critical", "critical") == "critical" and severities.get("low", "info") == "info"
     for event, decision in zip(events, decisions, strict=True):
         p = event.payload
         assert (decision["level"], decision["risk"], decision["interval"]) == (p["level"], p["overall"],
                                                                                p["interval"])
-        assert decision["branch"] == "fuzzy_only" and decision["evidence_ids"] == [event.event_id]
+        assert decision["evidence_ids"] == [event.event_id] and decision["mode_requested"] == "multiagent"
+        if enabled["validation"]:
+            assert decision["branch"] == "fuzzy_only" and decision["mode_effective"] == "multiagent"
+        else:                                    # TOD-52: no validation agent → automatic fallback to autonomous
+            assert decision["branch"] == "fallback" and decision["mode_effective"] == "autonomous"
+            assert decision["fallback_reason"] == "агент валідації вимкнений"
     host.stop()
 
 

@@ -19,8 +19,9 @@ audio_level, sound_type, speech ─▶ audio (intensity, sound_type_danger,     
 
 **Mode.** `config.yaml` → `mode: autonomous` (`core/mode.py`): the LLM worker, GPT gating, the risk envelope and GPT
 rule suggestions are not started or imported, the aggregator queues nothing for GPT, Whisper runs locally. The
-location state follows `hfs_risk` (high / critical → danger, medium → attention). `mode: hybrid` (default) keeps the
-GPT pipeline; the HFS then runs as a shadow (logged, shown on the dashboard, no effect on the state).
+location state follows `hfs_risk` (high / critical → danger, medium → attention). `mode: multiagent` (TOD-52,
+`docs/modes.md`; `hybrid` is its old name) runs the agents: the HFS is the fuzzy agent's corridor and the validation
+agent decides. The mode can be switched per location at runtime on the dashboard.
 
 **Contract.** `FuzzySubsystem` (`base.py`): `observe(event)`, `features(location) → inputs | None` (None = no data),
 `infer(inputs) → {risk, level, interval, fired_rules, inputs, partial}`, own `update_sec`. `TopLevel.combine()`

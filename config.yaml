@@ -1,9 +1,14 @@
 # IoT security system configuration.
 # Secrets (Azure keys, dashboard credentials) are NOT stored here — see .env.example.
 
-mode: hybrid                # A1 (TOD-41): autonomous = every decision by the local hierarchical fuzzy system (hfs),
-                            # no LLM worker / GPT gating / rule suggestions, local Whisper, no cloud calls;
-                            # hybrid = fuzzy layers around GPT (Article 2), the hfs runs as a shadow
+mode: autonomous            # M1 (TOD-52, docs/modes.md): autonomous (Article 1) = every decision by the local
+                            # hierarchical fuzzy system, no agents, no GPT, local Whisper, no cloud calls;
+                            # multiagent (Article 2) = AI agents add claims, the validation agent decides within the
+                            # fuzzy corridor; the GPT pipeline runs but only logs. Start-up: --mode / IOT_MODE → the
+                            # choice saved on the dashboard (data/mode.json) → this value.
+mode_store:                 # the dashboard's choice (survives restarts) + the audit log of every switch
+  state_path: data/mode.json
+  audit_path: data/mode_audit.jsonl
 
 network:                    # F11: devices of this node, found automatically (no extra programs needed)
   discovery: true           # one pipeline per camera / microphone found; false = the single vision.device + mic
@@ -383,8 +388,8 @@ hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule ba
 
 agents:                     # B2 (TOD-49): plug-in agents (agents/<name>/agent.yaml + code), docs/agents.md
   enabled: true             # the host process; dashboard page «Агенти» switches single agents on / off
-  decides: false            # true: the location state follows agent_decision (validation agent) instead of
-                            # hfs_risk / llm_decision; false: decisions are logged and shown only
+  required: []              # TOD-52: agents whose missing answer makes a decision fall back to autonomous
+  network_probe: {host: 1.1.1.1, port: 53, every_sec: 30, timeout_sec: 2}   # multiagent only: no network → fallback
   state_path: data/agents_state.json   # dashboard switches (survive restarts; git-ignored)
   roots: []                 # more folders with agent folders (agents/ is always searched)
   entry_points: true        # installed plug-ins (entry point group iot_guard.agents)

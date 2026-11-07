@@ -210,6 +210,11 @@ class AgentRegistry:
         self._save()
         return None
 
+    def suspend(self) -> None:
+        """TOD-52 mode autonomous: stop every contributing agent (models freed), keep the switches as they are."""
+        for name in [n for n in self.instances if self.manifests[n].contributes]:
+            self._stop(name)
+
     def stop_all(self) -> None:
         for name in list(self.instances):
             self._stop(name)

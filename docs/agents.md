@@ -151,8 +151,9 @@ raises) or `estimate` (the default: an overall risk, which may lower only when i
    - corridor, `agents` (answered / late / missing / error / superseded), missing;
    - claims (the ids used), versions (of every agent that took part), evidence_ids, latency_ms.
 
-With `agents.decides: true` the location state follows `agent_decision` instead of `hfs_risk` / GPT. The default,
-`false`, only logs and shows the decisions.
+In `mode: multiagent` (TOD-52, [`modes.md`](modes.md)) the location state follows `agent_decision`; in
+`mode: autonomous` there are no rounds and the `hfs_risk` decides. A decision falls back to the fuzzy corridor
+(`mode_effective: autonomous`) when the validator, the network or a required agent is missing.
 
 ## Dashboard
 

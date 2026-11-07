@@ -370,6 +370,23 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   stateless); `HierarchicalFuzzySystem.combine(location, results, now)` builds the context (names, object_type,
   `FuzzySubsystem.devices_of`); result `escalation` + `explanation`; `policy_level` takes `calm` for inactive
   subsystems. A strong but uncertain signal (e.g. a danger word, δ 0.465) is not "active" and does not escalate.
+- M1 (TOD-52) modes (`docs/modes.md`): `autonomous` (Article 1, HFS decides) | `multiagent` (Article 2, validation
+  agent decides within the corridor; GPT pipeline runs but only logs — `llm_decision` no longer drives the location
+  state); `hybrid` = alias of multiagent; a config without `mode` = multiagent, `config.yaml` ships `autonomous`.
+  `core/mode.py`: `normalise`, `location_mode(config, loc)` (`mode_locations` overrides), `any_multiagent`,
+  `ModeStore` (`mode_store.state_path` data/mode.json + `audit_path` data/mode_audit.jsonl, guarded), `start_mode` /
+  `resolve` (main.py `--mode` → env `IOT_MODE` → saved → config; only main.py resolves, so tests never read the saved
+  file). Orchestrator: `mode_control` event (dashboard) → `switch_mode` (save, audit, LLM worker start / stop,
+  `mode_changed` to every module; hfs subscribes explicitly). Agents host: `mode` callable (no rounds / events for
+  autonomous locations), `suspend()` (contributors stopped while no location is multiagent), `fallback_reasons`
+  (validator off / unhealthy, `network_ok` False via `core/network.NetworkProbe` `agents.network_probe`,
+  `agents.required` missing, agents starting) → `branch: fallback`, `mode_effective` autonomous; decisions carry
+  `mode_requested`, `mode_effective`, `fallback_reason`, `contributing_agents`, `rules_version`. Locations:
+  `cfg["mode"]` callable → `decision()` (agents silent > `agents_fallback_sec` → HFS, «агенти не відповідають»),
+  summary `mode`. Aggregator `follow_mode` (outbox only while multiagent). Dashboard: roles admin (DASHBOARD_USER) /
+  viewer (`DASHBOARD_VIEWERS`), `/api/mode` GET / POST (admin, `confirm: true`), header chip + dialog
+  (`views/mode.js`), fallback banner, card badge. Article 2 harness: `article1` = mode autonomous; summary
+  `by_mode_effective`.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

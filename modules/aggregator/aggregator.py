@@ -413,8 +413,8 @@ class Aggregator:
         self.snapshot_dir = agg.get("snapshot_dir", os.path.join(export_dir, "snapshots"))
         self.write_files = agg.get("write_snapshot_files", True)
         # A1 (TOD-41): mode autonomous → nothing is queued for GPT (snapshots / incidents stay local)
-        self.outbox = Outbox(agg.get("outbox_path", os.path.join(export_dir, "outbox.db"))) \
-            if agg.get("queue_for_llm", True) else None
+        self.outbox_path = agg.get("outbox_path", os.path.join(export_dir, "outbox.db"))
+        self.outbox = Outbox(self.outbox_path) if agg.get("queue_for_llm", True) else None
         self.csv = EventCsv(export_dir) if agg.get("export_csv", True) else None
         self.builder = SnapshotBuilder(self.cfg, agg.get("schema_path", SCHEMA_PATH))
         self.clock, self.local_now = clock, local_now
@@ -451,9 +451,22 @@ class Aggregator:
     def location_name(self, location_id: str) -> str:
         return self.locations.name(location_id) if self.locations is not None else location_id
 
+    def follow_mode(self, payload: Dict[str, Any]) -> None:
+        """M1 (TOD-52): snapshots are queued for GPT only while some location is multiagent (GPT only logs there)."""
+        from core.mode import any_multiagent
+
+        wanted = any_multiagent({"mode": payload.get("mode"), "mode_locations": payload.get("locations") or {}})
+        if wanted and self.outbox is None:
+            self.outbox = Outbox(self.outbox_path)
+        elif not wanted and self.outbox is not None:
+            self.outbox.close()
+            self.outbox = None
+
     def on_event(self, event: Event) -> Optional[Dict[str, Any]]:
         """:return: the snapshot if this event produced one immediately"""
         now = self.clock()
+        if event.type == "mode_changed":
+            self.follow_mode(event.payload)
         if self.csv is not None:
             self.csv.write(event)
         if self.incidents is not None:

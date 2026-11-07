@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict, Optional
 
 from core.events import Event, make_event
-from core.mode import is_autonomous
+from core.mode import location_mode
 from core.module import BaseModule
 from modules.locations.state import ATTENTION, DANGER, OFFLINE, LocationStateEngine
 from system_setup.logger_setup import init_logger
@@ -51,9 +51,8 @@ class LocationsModule(BaseModule):
             self.locations = LocationRegistry(network.get("devices_path", "data/devices.db"), publish=self.publish,
                                               seed_file=self.cfg.get("seed_file", "config/locations.yaml"))
             ignore = (network.get("hub_location") or "hub", "unknown")
-            agents = self.config.get("agents") or {}
-            cfg = {**self.cfg, "hfs_decides": is_autonomous(self.config),      # A1: HFS risk instead of GPT
-                   "agents_decide": bool(agents.get("enabled") and agents.get("decides"))}   # B2: validation agent
+            # M1 (TOD-52): autonomous → the HFS decides, multiagent → the validation agent (HFS when it is silent)
+            cfg = {**self.cfg, "mode": lambda location_id: location_mode(self.config, location_id)}
             self.engine = LocationStateEngine(self.locations.name, self.locations.rules, self.devices, cfg,
                                               ignore=ignore)
         if self.notifications is None:
@@ -75,6 +74,12 @@ class LocationsModule(BaseModule):
         now = self.clock()
         if event.type.startswith("device_"):
             self._devices_at = 0.0
+        if event.type == "mode_changed":                  # TOD-52: from the next decision
+            self.config = {**self.config, "mode": event.payload["mode"],
+                           "mode_locations": event.payload.get("locations") or {}}
+            self.engine.dirty.update(self.engine.live)
+            self.transitions(self.engine.evaluate(now))
+            return
         if event.type == "notification_acked" and event.payload.get("location_id"):
             self.transitions(self.engine.acknowledge(event.payload["location_id"], now))
             return

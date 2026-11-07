@@ -218,4 +218,5 @@ def test_isolation_only_fuzzy_on_is_article1():
                                 configs={"article1": CONFIGS["article1"]})
     for s in scenarios:
         r = results["article1"][s["id"]]
-        assert (r["level"], r["risk"]) == (r["hfs"]["level"], r["hfs"]["overall"]) and r["branch"] == "fuzzy_only"
+        assert (r["level"], r["risk"]) == (r["hfs"]["level"], r["hfs"]["overall"]) and r["mode_effective"] == \
+            "autonomous"

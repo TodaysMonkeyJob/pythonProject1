@@ -7,6 +7,7 @@ import { STATE_LABEL, $, clear, h, plural, toast } from "./ui.js";
 import { connectVideo, syncSubscriptions } from "./video.js";
 import { renderDevices, renderLocations, renderPeople } from "./views/admin.js";
 import { renderTrust } from "./views/trust.js";
+import { drawMode, openModeDialog } from "./views/mode.js";
 import { renderRules } from "./views/rules.js";
 import { renderSuggestions } from "./views/suggestions.js";
 import { renderAgents } from "./views/agents.js";
@@ -150,6 +151,8 @@ on("notify", (n) => {
 });
 for (const topic of ["summary", "locations", "devices", "notifications", "persons", "duplicates", "connection", "trust"]) on(topic, render);
 on("status", drawTopbar);
+on("mode", () => { drawMode(); render(); });
+$("#mode").addEventListener("click", openModeDialog);
 on("event", (ev) => { onOverviewEvent(ev); onLocationEvent(ev); });
 setInterval(() => clear($("#clock"), new Date().toLocaleTimeString("uk-UA", { hour12: false })), 1000);
 

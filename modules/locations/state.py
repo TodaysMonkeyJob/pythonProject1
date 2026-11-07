@@ -13,6 +13,12 @@ valid ``hfs_valid_min``) takes the place of the GPT risk: ``high`` / ``critical`
 hybrid mode it is only shown (``summary()["hfs"]``). B2 (TOD-49) ``agents_decide`` (``agents.decides``): the latest
 ``agent_decision`` (validation agent) takes that place instead, the same way; otherwise it is only shown.
 
+M1 (TOD-52) ``mode`` (location → its requested mode): autonomous → the ``hfs_risk`` decides; multiagent → the
+``agent_decision`` decides (its own ``mode_effective`` / ``fallback_reason`` when the agents fell back), and when the
+agents stop answering (no decision for ``agents_fallback_sec`` after an ``hfs_risk``) the ``hfs_risk`` decides with
+the reason «агенти не відповідають». GPT (``llm_decision``) no longer decides then — it is shown only.
+``summary()["mode"]`` = {requested, effective, reason}.
+
 ``danger`` de-escalates only after ``cooldown_min`` without new critical events; acknowledging clears the location's
 alerts (and the GPT risk) at once. Every transition is returned as a ``location_state_changed`` payload; ``summary()``
 is the live object pushed to the dashboard.
@@ -37,7 +43,8 @@ ENVELOPE_FIELDS = ("risk_level_final", "risk_llm", "risk_floor", "risk_ceil", "c
 # A1 (TOD-41) hierarchical fuzzy system values shown on the dashboard
 HFS_FIELDS = ("risk1", "risk2", "risk3", "overall", "level", "interval", "partial", "missing", "fired_rules_by_level",
               "subsystems", "corridor_width", "widened_by", "excluded")
-AGENT_FIELDS = ("round_id", "risk", "level", "interval", "branch", "reasons", "decided_by", "missing")
+AGENT_FIELDS = ("round_id", "risk", "level", "interval", "branch", "reasons", "decided_by", "missing",
+                "mode_effective", "fallback_reason")
 
 
 @dataclass
@@ -60,6 +67,7 @@ class LocationLive:
     last_llm: Optional[Dict[str, Any]] = None
     last_hfs: Optional[Dict[str, Any]] = None
     last_agents: Optional[Dict[str, Any]] = None
+    mode: Optional[Dict[str, Any]] = None                   # TOD-52 {requested, effective, reason}
     alerts: List[Alert] = field(default_factory=list)
     warnings: Deque[Tuple[float, str, str]] = field(default_factory=collections.deque)
     last_critical: float = float("-inf")
@@ -126,6 +134,10 @@ class LocationStateEngine:
         self.hfs_decides = bool(cfg.get("hfs_decides", False))
         self.hfs_valid = float(cfg.get("hfs_valid_min", 2)) * 60
         self.agents_decide = bool(cfg.get("agents_decide", False))
+        self.mode: Optional[Callable[[str], str]] = cfg.get("mode")          # TOD-52
+        self.agents_fallback = float(cfg.get("agents_fallback_sec", 10))
+        self.llm_decides = bool(cfg.get("llm_decides", self.mode is None and not self.hfs_decides
+                                        and not self.agents_decide))       # GPT decides only in the TOD-41 hybrid
         self.local_now = local_now
         self.ignore = ignore
         self.live: Dict[str, LocationLive] = {}
@@ -234,7 +246,7 @@ class LocationStateEngine:
             loc.warnings.popleft()
         loc.alerts = [a for a in loc.alerts if not a.acknowledged or now - a.ts < 3600]   # keep an hour of history
         open_alerts = [a for a in loc.alerts if not a.acknowledged]
-        llm = loc.last_llm if loc.last_llm and now - loc.last_llm["at"] < self.llm_valid \
+        llm = loc.last_llm if self.llm_decides and loc.last_llm and now - loc.last_llm["at"] < self.llm_valid \
             and loc.last_llm["at"] > loc.acknowledged_at else None
         risk = (llm.get("risk_level_final") or llm["risk_level"]) if llm else None   # F17: the bounded risk
         if open_alerts and now - loc.last_critical < cooldown:
@@ -242,10 +254,10 @@ class LocationStateEngine:
             return DANGER, reasons, [a.event_id for a in open_alerts]
         if risk in ("high", "critical"):
             return DANGER, f"GPT: {llm['summary']}", [llm["event_id"]]
-        decision = loc.last_agents if self.agents_decide else loc.last_hfs if self.hfs_decides else None
+        decision, from_agents = self.decision(loc, now)
         hfs = decision if decision and now - decision["at"] < self.hfs_valid \
             and decision["at"] > loc.acknowledged_at else None
-        why = agents_reason if self.agents_decide else hfs_reason
+        why = agents_reason if from_agents else hfs_reason
         if hfs and hfs.get("level") in ("high", "critical"):
             return DANGER, why(hfs), [hfs["event_id"]]
         devices = [d for d in self.devices() if d["location_id"] == loc.location_id and d["enabled"]]
@@ -262,6 +274,29 @@ class LocationStateEngine:
         if hfs and hfs.get("level") == "medium":
             return ATTENTION, why(hfs), [hfs["event_id"]]
         return SAFE, "", []
+
+    def requested(self, location_id: str) -> Optional[str]:
+        if self.mode is not None:
+            return self.mode(location_id)
+        return "multiagent" if self.agents_decide else "autonomous" if self.hfs_decides else None
+
+    def decision(self, loc: "LocationLive", now: float) -> Tuple[Optional[Dict[str, Any]], bool]:
+        """:return: (the deciding record, it is the agents'), and sets ``loc.mode`` (TOD-52)"""
+        requested = self.requested(loc.location_id)
+        if requested is None:
+            loc.mode = None
+            return None, False
+        if requested == "autonomous":
+            loc.mode = {"requested": requested, "effective": "autonomous", "reason": None}
+            return loc.last_hfs, False
+        agents, hfs = loc.last_agents, loc.last_hfs
+        if agents is not None and (hfs is None or hfs["at"] - agents["at"] <= self.agents_fallback):
+            loc.mode = {"requested": requested, "effective": agents.get("mode_effective") or "multiagent",
+                        "reason": agents.get("fallback_reason")}
+            return agents, True
+        loc.mode = {"requested": requested, "effective": "autonomous",
+                    "reason": "агенти не відповідають" if hfs is not None else None}
+        return hfs, False
 
     def evaluate(self, now: float, location_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Recomputes states (time-based de-escalation, offline). :return: transitions"""
@@ -297,6 +332,7 @@ class LocationStateEngine:
                 "hfs": {k: loc.last_hfs[k] for k in ("ts", *HFS_FIELDS) if k in loc.last_hfs} if loc.last_hfs else None,
                 "agents": {k: loc.last_agents[k] for k in ("ts", *AGENT_FIELDS) if k in loc.last_agents}
                 if loc.last_agents else None,
+                "mode": loc.mode,
                 "active_alerts": sum(not a.acknowledged for a in loc.alerts),
                 "updated_at": utc_timestamp()}
 

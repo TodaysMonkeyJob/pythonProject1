@@ -271,3 +271,11 @@ dialog pre, .json { white-space: pre-wrap; overflow-wrap: anywhere; background: 
 .suggestion-detail { background: var(--panel); border-radius: 8px; padding: 8px; overflow-y: auto; }
 .suggestion-list tr.selected td { background: var(--panel2); }
 @media (max-width: 900px) { .suggestion-columns { grid-template-columns: 1fr; } }
+
+/* TOD-52 mode switch */
+.mode-chip { white-space: nowrap; padding: 4px 10px; border: 1px solid var(--line); border-radius: 14px; background: none;
+             color: inherit; cursor: pointer; font: inherit; }
+.mode-chip.multi { border-color: var(--attention); }
+.mode-banner { padding: 6px 14px; background: var(--attention); color: #000; font-weight: 600; }
+.mode-badge { margin-top: 4px; }
+#dlg button.on { outline: 2px solid var(--attention); }

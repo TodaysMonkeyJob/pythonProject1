@@ -19,10 +19,12 @@
     <nav id="nav" class="admin-nav" aria-label="налаштування">
       <a href="#/people">Люди</a><a href="#/devices">Пристрої</a><a href="#/locations">Локації</a><a href="#/trust">Довіра</a><a href="#/rules">Правила</a><a href="#/suggestions">Пропозиції правил</a><a href="#/agents">Агенти</a>
     </nav>
+    <button id="mode" class="mode-chip" aria-haspopup="dialog" title="режим роботи (TOD-52)">режим…</button>
     <span id="clock" class="muted mono"></span>
     <button id="bell" aria-label="сповіщення">🔔<span id="bell-count" hidden></span></button>
     <button id="theme" aria-label="світла / темна тема">◐</button>
   </header>
+  <div id="mode-banner" class="mode-banner" role="status" hidden></div>
   <main id="view" class="view"></main>
   <footer id="hint" class="hint">← → на клавіатурі або стрілки поруч із вкладками — перемикання територій · Home — Огляд · 1–9 — територія за номером</footer>
 </div>
