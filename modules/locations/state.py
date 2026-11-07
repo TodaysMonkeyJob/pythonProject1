@@ -34,7 +34,8 @@ ENVELOPE_FIELDS = ("risk_level_final", "risk_llm", "risk_floor", "risk_ceil", "c
                    "envelope_applied", "envelope_reason", "over_reaction", "source",
                    "y_l", "y_r", "L", "U", "r_D", "h", "policy_branch", "escalation_review", "risk_width")
 # A1 (TOD-41) hierarchical fuzzy system values shown on the dashboard
-HFS_FIELDS = ("risk1", "risk2", "risk3", "overall", "level", "interval", "partial", "missing", "fired_rules_by_level")
+HFS_FIELDS = ("risk1", "risk2", "risk3", "overall", "level", "interval", "partial", "missing", "fired_rules_by_level",
+              "subsystems", "corridor_width", "widened_by", "excluded")
 
 
 @dataclass

@@ -295,6 +295,12 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   — none trained yet: `unknown`, `danger: null`; `python -m tools.train_sound_types --data <dir>/<type>/*.wav`),
   `speech.danger_words` (`keywords.py`, `config/danger_words.yaml`, `config/audio_types.yaml`). HFS audio inputs
   intensity / sound_type_danger / keyword_danger / speaker_unknown, 108-rule table. `python -m tools.audio_bench`.
+  A5 (TOD-45) corridor (`docs/uncertainty.md`): `config/uncertainty.yaml` (`python -m tools.fit_uncertainty`: δ per
+  input with source / date / status; unmeasured = 0) → `modules/hfs/uncertainty.py` → subsystem `features()` return
+  `_deltas` → `FuzzyEngine2(area_weighted=True).infer(deltas=…)` (δ = 0 ≡ type-1; `sigma_k` = Gaussian uncertain σ)
+  → `interval` = [y_l, y_r], `corridor_width`, `widened_by`; the top level takes subsystem corridors as IT2 inputs.
+  `device_health` excluding checks / offline → device excluded (`hfs_risk.excluded`, `hfs.health.exclude`). Autonomous
+  mode creates no TrustScorer (no Beta registry import).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

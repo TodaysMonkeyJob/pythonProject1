@@ -27,6 +27,11 @@ from system_setup.logger_setup import init_logger
 logger = init_logger()
 
 EVIDENCE_EVENTS = ["gas_reading", "motion", "object_detected", "person_identified", "sound", "speech"]
+# A5 (TOD-45): device self-diagnostics (device_health) that make a device's data unusable — no counters, no graded
+# trust: the device is excluded until it reports healthy, its subsystem works with the rest (partial)
+EXCLUDING_CHECKS = ("no_frames", "frozen_frame", "lens_covered", "stuck_silence", "wrong_sample_rate",
+                    "sensor_error", "flat_readings", "out_of_range")
+KIND_SUBSYSTEM = {"gas": "gas", "camera": "camera", "mic": "audio"}
 SEVERITY = {"critical": "critical", "high": "warning"}
 
 
@@ -49,6 +54,9 @@ class HierarchicalFuzzySystem:
         self.devices, self.clock, self.ignore = devices, clock, ignore
         self.min_delta = float(cfg.get("min_delta", 0.05))
         self.keepalive = float(cfg.get("keepalive_sec", 30))
+        self.exclude_checks = tuple((cfg.get("health") or {}).get("exclude") or EXCLUDING_CHECKS)
+        # device → {"kind", "location_id", "reasons"}: offline / failing an excluding check
+        self.excluded: Dict[str, Dict[str, Any]] = {}
         self.results: Dict[str, Dict[str, Optional[Dict[str, Any]]]] = {}    # location → subsystem → result
         self.due: Dict[tuple, float] = {}                                     # (location, subsystem / top) → time
         self.published: Dict[str, Dict[str, Any]] = {}                         # location → last payload
@@ -56,13 +64,40 @@ class HierarchicalFuzzySystem:
 
     def observe(self, event: Event) -> None:
         now = self.clock()
-        if event.type == "device_offline":
-            for subsystem in self.subsystems.values():
-                subsystem.forget_device(event.payload.get("device_id") or event.device_id)
+        if event.type in ("device_offline", "device_online", "device_health"):
+            self._health(event)
             return
+        if event.device_id in self.excluded:
+            return                                   # an excluded device's evidence does not count
         for subsystem in self.subsystems.values():
             if subsystem.wants(event):
                 subsystem.observe(event, now)
+
+    def _health(self, event: Event) -> None:
+        """Offline / failing devices are excluded (A5), with the reason, until they are back and healthy."""
+        p = event.payload
+        device = p.get("device_id") or event.device_id
+        if event.type == "device_offline":
+            reasons = ["offline"]
+        elif event.type == "device_online":
+            reasons = [r for r in (self.excluded.get(device) or {}).get("reasons", []) if r != "offline"]
+        else:
+            failing = p.get("failing") or {}
+            reasons = [f"{check}" + (f" ({info.get('detail')})" if (info or {}).get("detail") else "")
+                       for check, info in failing.items() if check in self.exclude_checks]
+        if reasons:
+            if device not in self.excluded:
+                for subsystem in self.subsystems.values():
+                    subsystem.forget_device(device)
+            self.excluded[device] = {"device_id": device, "kind": p.get("kind"), "location_id": event.location_id
+                                     if event.type == "device_health" else p.get("location_id", event.location_id),
+                                     "reasons": reasons}
+        else:
+            self.excluded.pop(device, None)
+
+    def excluded_in(self, location_id: str, subsystem: Optional[str] = None) -> List[Dict[str, Any]]:
+        return [e for e in self.excluded.values() if e.get("location_id") == location_id
+                and (subsystem is None or KIND_SUBSYSTEM.get(e.get("kind")) == subsystem)]
 
     def locations(self) -> List[str]:
         found = {d.get("location_id") for d in self.devices() if d.get("enabled", True)}
@@ -72,7 +107,7 @@ class HierarchicalFuzzySystem:
 
     def available(self, kind: Optional[str], location_id: str) -> bool:
         return any(d.get("kind") == kind and d.get("location_id") == location_id and d.get("status") == "online"
-                   and d.get("enabled", True) for d in self.devices())
+                   and d.get("enabled", True) and d.get("device_id") not in self.excluded for d in self.devices())
 
     def evaluate(self, location_id: str, now: float) -> Optional[Dict[str, Any]]:
         """Re-runs the subsystems that are due, then the top level. :return: the hfs_risk payload or None"""
@@ -82,7 +117,13 @@ class HierarchicalFuzzySystem:
                 self.due[(location_id, name)] = now + subsystem.update_sec
                 results[name] = subsystem.evaluate(location_id, now, self.available(subsystem.device_kind,
                                                                                      location_id))
-        return self.top.combine({name: results.get(name) for name in SUBSYSTEMS})
+                excluded = self.excluded_in(location_id, name)
+                if excluded and results[name] is not None:          # the rest of its devices still report
+                    results[name] = {**results[name], "partial": True, "excluded": excluded}
+        payload = self.top.combine({name: results.get(name) for name in SUBSYSTEMS})
+        if payload is not None:
+            payload["excluded"] = self.excluded_in(location_id)
+        return payload
 
     def tick(self) -> List[Dict[str, Any]]:
         """:return: payloads (with ``location_id``) to publish now"""
@@ -103,7 +144,9 @@ class HierarchicalFuzzySystem:
         if last is None or now - self.published_at.get(location_id, 0.0) >= self.keepalive:
             return True
         return (last["level"] != payload["level"] or last["missing"] != payload["missing"]
-                or last["partial"] != payload["partial"] or abs(last["overall"] - payload["overall"]) >= self.min_delta)
+                or last["partial"] != payload["partial"] or last.get("excluded") != payload.get("excluded")
+                or abs(last["overall"] - payload["overall"]) >= self.min_delta
+                or abs(last.get("corridor_width", 0) - payload.get("corridor_width", 0)) >= self.min_delta)
 
 
 class HFSModule(BaseModule):

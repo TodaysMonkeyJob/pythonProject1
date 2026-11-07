@@ -455,6 +455,7 @@ for event in (make_event("gas", "gas_reading", {"gas": "ammonia", "concentration
     system.observe(event)
 payloads = system.tick()
 loaded = sorted(m for m in sys.modules if any(m == p or m.startswith(p + ".") for p in LLM_PACKAGES))
+loaded += sorted(m for m in ("modules.trust.registry", "modules.trust.scorer") if m in sys.modules)   # A5: no Beta
 print(json.dumps({"specs": [s.name for s in specs], "loaded": loaded, "blocked": blocked,
                   "level": payloads[0]["level"], "missing": payloads[0]["missing"]}))
 """

@@ -254,6 +254,10 @@ class Orchestrator:
         cfg = config.get("trust", {})
         if not cfg.get("enabled", True):
             return None
+        if is_autonomous(config):
+            # A5 (TOD-45): Article 1 trusts sensors by their measured error (config/uncertainty.yaml, the HFS IT2
+            # corridor), not by Beta confirmation counters — the trust registry is never imported here
+            return None
         path = cfg.get("fuzzy_config", "config/fuzzy.yaml")
         if not os.path.isfile(path):
             logger.warning(f"Trust scoring off: {path} not found")

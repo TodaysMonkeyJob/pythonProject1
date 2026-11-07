@@ -63,6 +63,20 @@ class BackgroundLevel:
         self.intensity += alpha * (relative - self.intensity)
         return self.intensity
 
+    def spread(self) -> float:
+        """:return: half the spread (p30 − p10) / 2 of the per-second background levels, dB — how far the background
+                    estimate can be off (A5 / TOD-45 intensity error); 0 with a calibrated ``background_db``"""
+        if self.fixed is not None or len(self.seconds) < self.warmup_sec:
+            return 0.0
+        values = sorted(self.seconds)
+
+        def at(q: float) -> float:
+            rank = (len(values) - 1) * q / 100
+            low, high = math.floor(rank), math.ceil(rank)
+            return values[low] + (values[high] - values[low]) * (rank - low)
+
+        return round(max(0.0, at(self.percentile + 10) - at(max(0.0, self.percentile - 10))) / 2, 2)
+
     def relative(self, db: float) -> float:
         """:return: dB above the background of one level (0 before calibration)"""
         background = self.background

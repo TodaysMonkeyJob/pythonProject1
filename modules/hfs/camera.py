@@ -185,8 +185,12 @@ class CameraSubsystem(FuzzySubsystem):
             return None
         unknown, total = self.counts(location_id, now)
         lo, hi = share_interval(unknown, total, 1 - self.accuracy, self.quantile)
-        return {"unknown_share": round(unknown / total, 4) if total else 0.0,
+        share = round(unknown / total, 4) if total else 0.0
+        return {"unknown_share": share,
                 "motion_intensity": self.motion_intensity(location_id, now),
                 "activity_time": self.activity_time(location_id),
                 "_intervals": {"unknown_share": [lo, hi]},
-                "_persons": {"unknown": unknown, "total": total}}
+                "_persons": {"unknown": unknown, "total": total},
+                # A5 (TOD-45): binomial interval of the share, the detector's static-scene noise, the clock: exact
+                "_deltas": {"unknown_share": self.uncertainty.interval_delta(share, [lo, hi]),
+                            "motion_intensity": self.uncertainty.constant("camera", "motion_intensity")}}

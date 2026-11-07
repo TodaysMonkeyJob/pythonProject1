@@ -108,16 +108,17 @@ def run_clip(kind: str, adaptive: bool, fps: float, seconds: float, seed: int = 
     background, foliage = scene(rng), leaves(rng)
     detector = MotionDetector(min_area=400, adaptive=adaptive, fps=fps)
     frames = int(seconds * fps)
-    moving, in_view_flags, times = [], [], []
+    moving, in_view_flags, times, ratios = [], [], [], []
     for i in range(frames):
         t = i / fps
         frame, in_view = render(kind, t, background, foliage, rng)
         result = detector.detect(frame)
         if i >= detector.warmup_frames:
             moving.append(result.motion)
+            ratios.append(result.area_ratio)
             in_view_flags.append(in_view)
             times.append(t)
-    out: Dict[str, Any] = {"frames": len(moving)}
+    out: Dict[str, Any] = {"frames": len(moving), "_ratios": ratios}
     if kind == "walk":
         hits = [m for m, v in zip(moving, in_view_flags, strict=True) if v]
         out["recall"] = round(sum(hits) / max(1, len(hits)), 3)
@@ -199,12 +200,22 @@ def main(argv=None) -> int:
         with open(os.path.join(args.out, "actions.json"), "w", encoding="utf-8") as f:
             json.dump(actions, f, indent=1)
     report: Dict[str, Any] = {"fps": args.fps, "seconds": args.seconds, "clips": {}, "fps_sweep": {}}
+    static = []                                 # A5 (TOD-45): motion_intensity noise on scenes without anyone
     for kind in ("lighting", "foliage", "noise", "walk"):
         report["clips"][kind] = {name: run_clip(kind, adaptive, args.fps, args.seconds)
                                  for name, adaptive in (("before", False), ("after", True))}
+        if kind != "walk":
+            static += report["clips"][kind]["after"]["_ratios"]
+        for result in report["clips"][kind].values():
+            result.pop("_ratios")
         print(kind, json.dumps(report["clips"][kind]))
+    report["static_noise"] = {"frames": len(static), "p95_area_ratio": round(float(np.percentile(static, 95)), 4),
+                              "max_area_ratio": round(float(max(static)), 4),
+                              "note": "moving share of the frame reported by the adaptive detector on the lighting, "
+                                      "foliage and noise clips (nobody there) — the motion_intensity error (A5)"}
     for fps in (1, 2, 3, 5, 10, 15):
         report["fps_sweep"][fps] = run_clip("walk", True, fps, args.seconds)
+        report["fps_sweep"][fps].pop("_ratios")
         print("fps", fps, json.dumps(report["fps_sweep"][fps]))
     with open(os.path.join(args.out, "motion.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)

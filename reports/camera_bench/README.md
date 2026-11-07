@@ -4,12 +4,12 @@
 
 | | Light mode | Actions mode | Unloaded in place | After the planned restart |
 | -- | -- | -- | -- | -- |
-| Resident memory, MB | 50 | 392 | 571 | 50 (a fresh light process) |
-| Pose per frame, ms (mean / p95) | 0 (skipped) | 16.1 / 18.0 | 0 | 0 |
+| Resident memory, MB | 51 | 396 | 563 | 51 (a fresh light process) |
+| Pose per frame, ms (mean / p95) | 0 (skipped) | 16.3 / 18.2 | 0 | 0 |
 
 Unloading in place does not give the memory back (torch / ultralytics stay imported, the allocator keeps its pages), so in the orchestrator the actions process turns actions off by exiting with `PLANNED_RESTART_EXIT` and is restarted at once in light mode.
 
-Models load in 1.64 s; imgsz 320, 2 threads, 3 persons in the test frame (`bus.jpg`). The vision detector (YOLO + motion) runs the same in both modes.
+Models load in 2.31 s; imgsz 320, 2 threads, 3 persons in the test frame (`bus.jpg`). The vision detector (YOLO + motion) runs the same in both modes.
 
 ## Motion detection
 

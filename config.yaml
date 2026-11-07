@@ -338,7 +338,12 @@ aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
 
 hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule bases config/fuzzy/{gas,camera,audio,top}.yaml
   enabled: true             # one hfs_risk event per location on change (python -m modules.hfs --check / explain)
-  min_delta: 0.05           # overall risk change that is published even without a level change
+  it2: true                 # A5 (TOD-45): corridor [y_l, y_r] from measured input errors (false = type-1 only)
+  uncertainty: config/uncertainty.yaml   # python -m tools.fit_uncertainty (sources + dates of every δ)
+  health:                   # device_health checks that exclude a device (offline is always excluded)
+    exclude: [no_frames, frozen_frame, lens_covered, stuck_silence, wrong_sample_rate, sensor_error, flat_readings,
+              out_of_range]
+  min_delta: 0.05           # overall risk / corridor width change that is published even without a level change
   keepalive_sec: 30         # … and every this long anyway
   gas:                      # A2 (TOD-42): substances as c / c_crit — periods and sensors: docs/sensors.md
     gases: config/gases.yaml   # critical concentrations (NIOSH IDLH, EPA AQI Hazardous for PM2.5)

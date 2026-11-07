@@ -149,5 +149,11 @@
    "crossings_detected": 6,
    "false_motion_rate": 0.103
   }
+ },
+ "static_noise": {
+  "frames": 1710,
+  "p95_area_ratio": 0.0,
+  "max_area_ratio": 0.0066,
+  "note": "moving share of the frame reported by the adaptive detector on the lighting, foliage and noise clips (nobody there) \u2014 the motion_intensity error (A5)"
  }
 }

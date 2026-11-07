@@ -1,0 +1,134 @@
+# A5 (TOD-45) measurement errors of the HFS inputs — written by python -m tools.fit_uncertainty; do not edit.
+# δ in the input's units moves every membership edge by ±δ (IT2 FOU) → corridor [y_l, y_r]. docs/uncertainty.md
+generated: '2026-11-07T09:35:18+00:00'
+generator: python -m tools.fit_uncertainty
+z: 1.96
+gas:
+  concentration:
+    sensors:
+      graphene_fet:
+        kind: absolute
+        unit: vol_pct
+        per_gas:
+          ethanol:
+            absolute: 0.0176
+            n_test: 7
+          ammonia:
+            absolute: 0.0108
+            n_test: 7
+          acetone:
+            absolute: 0.0121
+            n_test: 7
+          toluol:
+            absolute: 0.0074
+            n_test: 7
+        source: 'reports/gas_metrics.json: concentration regressor MAE per gas, max(cross-validation, test) in vol %'
+        date: '2026-10-15'
+        status: measured
+      dfrobot_sen0469:
+        kind: relative
+        unit: ppm
+        relative: 0.1
+        absolute: 5.0
+        source: 'DFRobot SEN0469 (NH3 0–100 ppm): ±10 % of reading or ±5 % FS, the greater — DFRobot forum reply (docs/sensors.md);
+          confirm against the datasheet'
+        date: '2026-11-06'
+        status: datasheet
+      dfrobot_sen0466:
+        kind: unmeasured
+        unit: ppm
+        source: 'DFRobot SEN0466 (CO 0–1000 ppm): accuracy not published on the wiki (docs/sensors.md)'
+        date: '2026-11-06'
+        status: unmeasured
+      sds011:
+        kind: relative
+        unit: ug_m3
+        relative: 0.15
+        absolute: 10.0
+        source: 'Nova Fitness SDS011 datasheet copy: max of ±15 % and ±10 µg/m³ (docs/sensors.md)'
+        date: '2026-11-06'
+        status: datasheet
+      sps30:
+        kind: relative
+        unit: ug_m3
+        relative: 0.1
+        absolute: 10.0
+        source: 'Sensirion SPS30: ±10 µg/m³ (0–100), ±10 % (100–1000) — Sensirion datasheet copy / secondary table (docs/sensors.md)'
+        date: '2026-11-06'
+        status: datasheet
+    default_by_unit:
+      vol_pct: graphene_fet
+      ug_m3: sds011
+    default_by_gas:
+      ammonia: dfrobot_sen0469
+  dynamics:
+    kind: live
+    formula: 'least-squares slope error from δ_c (≈ 95 % bound) and the sample times: δ = δ_c_norm · 60 / sqrt(Σ (t − t̄)²)
+      per minute'
+    status: derived
+    source: propagated from gas.concentration and the sampling period (docs/sensors.md)
+camera:
+  unknown_share:
+    kind: live
+    formula: 'binomial interval of the unknown count: each of n identities wrong with probability 1 − p, its 95 % quantile
+      f → δ = f / n'
+    p: 0.9941
+    source: Wilson 95 % lower bound of 650/650 correct decisions at threshold 0.45 (identity_eval_lfw.json)
+    date: '2026-10-16'
+    status: measured
+  motion_intensity:
+    kind: absolute
+    delta: 0.0066
+    status: measured
+    source: 'reports/camera_bench/motion.json: the largest moving share of the frame the adaptive detector reported on scenes
+      without anyone (lighting, foliage, noise clips; 1710 frames; its 95th percentile is 0.0: false motion is rare but not
+      zero) — synthetic clips'
+    date: '2026-11-07'
+  activity_time:
+    kind: absolute
+    delta: 0.0
+    status: exact
+    source: 'the location''s schedule and the clock: no measurement error'
+audio:
+  intensity:
+    kind: live
+    status: derived
+    formula: half the spread (p30 − p10) / 2 of this microphone's per-second background levels over the background window,
+      dB
+    calibration: unmeasured — no reference microphone; the absolute mic calibration error is not in the corridor
+    source: modules/audio/intensity.py (live statistics of the microphone itself)
+  sound_type_danger:
+    kind: live
+    status: unmeasured
+    formula: 1 − per-type accuracy (Wilson lower bound) when reports/sound_types/metrics.json exists, else 1 − the classifier's
+      confidence of that sound
+    source: 'no trained model yet (TOD-44): sound types are not evidence'
+  keyword_danger:
+    kind: decision
+    delta: 0.4647
+    accuracy: 0.7391
+    accuracy_lower: 0.5353
+    n: 23
+    source: 'data/calibration/asr_phrases.csv (sha db92533b1ec4): danger-dictionary words said vs heard by faster-whisper-base
+      on 320 synthetic TTS phrases with noise (−5 … 30 dB SNR): 17 right, 6 missed / false'
+    alternative: 'SNR ≥ 10 dB / clean only: 11 right, 1 wrong (Wilson lower bound 0.6461) — not used: no cherry-picking; few
+      danger words in the set, record more'
+    date: '2026-10-22'
+    status: measured
+  speaker_unknown:
+    kind: decision
+    delta: 0.0708
+    eer: 0.0533
+    n: 825
+    source: 'config/calibration/speaker.yaml: held-out speaker verification EER 0.0533 on 825 pairs (synthetic TTS voices),
+      Wilson upper bound of the error'
+    note: at the deployed identity.voice_threshold 0.3 the error is 47/150 — raise the threshold toward the EER point or the
+      corridor understates it
+    date: '2026-10-22'
+    status: measured
+top:
+  risk:
+    kind: live
+    status: derived
+    formula: the subsystem corridor [y_l, y_r] → input m = (y_l + y_r) / 2, δ = (y_r − y_l) / 2
+    source: the subsystems' interval type-2 inference
