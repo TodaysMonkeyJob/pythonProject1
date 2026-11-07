@@ -309,6 +309,22 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   scenarios, draft expert labels) through `HierarchicalFuzzySystem` × configs tri_type1 / tri_it2 / gauss_in_type1 /
   gauss_in_it2 / gauss_all_type1 / tri_it2_no_mixture (`variants.py`), macro-F1 / Brier / ECE / corridor coverage, δ
   sweep (`hfs.uncertainty_scale`), monotonicity + surfaces triangular vs Gaussian, latency (not the Pi).
+- `agents/` — B2 (TOD-49) agent plug-in framework (Article 2), see `docs/agents.md`. An agent = folder
+  `agents/<name>/` with `agent.yaml` (`framework/manifest.py`: role, version, entry, subscribes, publishes, backend,
+  resources, `data_scope` {events, claims}, timeout_s, enabled_default, required, eval_file, config) + code (subclass
+  of `framework/base.Agent`: load / unload / on_message / tick / health); also entry points `iot_guard.agents`. Code is
+  imported only when enabled; disable → stop() + object dropped. `framework/registry.py` (switches: manifest <
+  `agents.enabled_agents` < dashboard, persisted in `agents.state_path` = data/agents_state.json, guarded; required
+  agents stay on, cloud_model never in autonomous, one fuzzy / validation agent), `bus_adapter.py` (`Claim` →
+  `agent_claim` event; scope filter: subscriptions ∩ data_scope always; per-location situation board),
+  `orchestrator.py` `AgentHost` (thread per agent or inline; a fuzzy `risk` claim opens a decision round, deadlines per
+  agent → late / missing / superseded, validation agent decides, no validator → corridor = `fuzzy_only`;
+  `agent_decision` + `agent_operator_request`; claims outside `publishes` dropped). Shipped: `fuzzy` (hfs_risk →
+  corridor claim, required), `validation` (risk_opinion weighted by measured accuracy, unmeasured = 0; below the
+  corridor only video / gas may lower, above → operator; no modules.envelope import), `echo` (template). Module
+  `agents:run` (subscribe "*"; `agent_status` unlogged), dashboard `#/agents` «Агенти» (`/api/agents`, POST switch →
+  `agent_control`); `agents.decides: true` → location state follows `agent_decision`. All agents but fuzzy off =
+  Article 1 decisions (test on the 46 scenarios).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

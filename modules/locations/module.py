@@ -51,7 +51,9 @@ class LocationsModule(BaseModule):
             self.locations = LocationRegistry(network.get("devices_path", "data/devices.db"), publish=self.publish,
                                               seed_file=self.cfg.get("seed_file", "config/locations.yaml"))
             ignore = (network.get("hub_location") or "hub", "unknown")
-            cfg = {**self.cfg, "hfs_decides": is_autonomous(self.config)}     # A1: HFS risk instead of GPT
+            agents = self.config.get("agents") or {}
+            cfg = {**self.cfg, "hfs_decides": is_autonomous(self.config),      # A1: HFS risk instead of GPT
+                   "agents_decide": bool(agents.get("enabled") and agents.get("decides"))}   # B2: validation agent
             self.engine = LocationStateEngine(self.locations.name, self.locations.rules, self.devices, cfg,
                                               ignore=ignore)
         if self.notifications is None:

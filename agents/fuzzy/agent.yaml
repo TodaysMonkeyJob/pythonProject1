@@ -1,0 +1,17 @@
+name: fuzzy
+role: fuzzy
+version: 1.0.0
+description: >-
+  Article 1 hierarchical fuzzy system (modules/hfs) as an agent: every hfs_risk of a location becomes a risk claim
+  (overall risk, level, IT2 corridor) that opens a decision round. The safety baseline — cannot be switched off.
+entry: agent:FuzzyAgent
+subscribes: [hfs_risk]
+publishes: [risk]
+backend: {kind: rules}
+resources: {ram_mb: 0, gpu: false}     # the HFS runs in its own module process; the agent only translates
+data_scope:
+  events: [hfs_risk]
+  claims: []
+timeout_s: 0.5
+enabled_default: true
+required: true

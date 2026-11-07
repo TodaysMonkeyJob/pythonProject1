@@ -140,6 +140,8 @@ class DashboardState:
         self.locations = None      # core.locations.LocationRegistry (F12)
         self.notifications = None  # modules.notify.service.NotificationService (F12; list / acknowledge)
         self.summaries: Dict[str, Dict[str, Any]] = {}   # location_id → latest location_summary
+        self.agents: Optional[Dict[str, Any]] = None     # B2: latest agent_status of the agents module
+        self.agents_at = 0.0
         self.publish = None        # BaseModule.publish of the dashboard module
         from dashboard.node import NodeHub
 
@@ -153,6 +155,9 @@ class DashboardState:
             return
         if event.type == "heartbeat":
             self.heartbeats[event.payload.get("module", "?")] = {**event.payload, "at": time.time()}
+            return
+        if event.type == "agent_status":      # B2 (TOD-49): page «Агенти» polls /api/agents
+            self.agents, self.agents_at = event.payload, time.time()
             return
         if event.type == "location_summary":  # live, every ~2 s: pushed, not kept in the event history
             self.summaries[event.payload["location_id"]] = event.payload
@@ -600,6 +605,30 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
             if body.get(key) is not None:
                 payload[key] = str(body[key])[:2000]
         state.publish(make_event("system", "trust_feedback", payload))
+        return {"accepted": True, **payload}
+
+    # --- B2 (TOD-49): agents — status from the agents module, switches go back as agent_control events ----------
+    @app.get("/api/agents", dependencies=[Depends(auth)])
+    def api_agents():
+        if state.agents is None:
+            raise HTTPException(503, "agents module not running (agents.enabled in config.yaml)")
+        return {**state.agents, "age_sec": round(time.time() - state.agents_at, 1)}
+
+    @app.post("/api/agents/{name}", dependencies=[Depends(auth)])
+    def api_agent_switch(name: str, body: Dict[str, Any], request: Request):
+        if not isinstance(body.get("enabled"), bool):
+            raise HTTPException(400, "enabled: true / false required")
+        known = {a["name"]: a for a in (state.agents or {}).get("agents", [])}
+        if name not in known:
+            raise HTTPException(404, f"unknown agent {name!r}")
+        if known[name].get("required") and not body["enabled"]:
+            raise HTTPException(409, f"{name} is required and cannot be switched off")
+        if state.publish is None:
+            raise HTTPException(503, "event bus not available")
+        from core.events import make_event
+
+        payload = {"agent": name, "enabled": body["enabled"], "by": user_of(request)}
+        state.publish(make_event("system", "agent_control", payload))
         return {"accepted": True, **payload}
 
     # --- F26 (TOD-37): rule governance, read-only (changes go through python -m tools.rules approve) -------------

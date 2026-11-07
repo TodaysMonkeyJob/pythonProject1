@@ -61,6 +61,11 @@ EVENT_TYPES = (
     "audio_level",          # A4: dB above the microphone's background (not logged; HFS audio input)
     "motion_level",         # A3 (TOD-43): smoothed moving share of a camera's frame (not logged; HFS camera input)
     "hfs_risk",             # A1 (TOD-41): risk1..3 + overall of a location from the hierarchical fuzzy system
+    "agent_claim",          # B2 (TOD-49): a typed claim of an agent (agent, role, version, claim, value, confidence, …)
+    "agent_decision",       # B2: final decision of a round (validation agent): risk, level, interval, branch, agents
+    "agent_operator_request",   # B2: the validation agent asks the operator (agents above the corridor)
+    "agent_status",         # B2: every agent's status / latency / last claims (dashboard only, not logged)
+    "agent_control",        # B2: dashboard switch of an agent (agent, enabled, by)
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"

@@ -48,13 +48,14 @@ DEFAULT_MODULES = {
     "hfs": ("modules.hfs:run", "hfs", [            # A1 (TOD-41): gas / camera / audio subsystems → overall risk
         "gas_reading", "motion", "motion_level", "object_detected", "person_identified", "sound", "speech",
         "sound_type", "audio_level"]),
+    "agents": ("agents:run", "agents", ["*"]),     # B2 (TOD-49): plug-in agents; the host filters per agent scope
     "locations": ("modules.locations:run", "locations", ["*"]),   # F12 per-location state + notifications
-    "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary"]),
+    "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary", "agent_status"]),
 }
 SELF_LOGGING_SECTIONS = ("vision", "actions", "identity")
 PER_DEVICE_MODULES = ("vision", "audio")   # with network.discovery: one process per camera / microphone
 # frequent status: explicit subscribers only, not logged
-UNLOGGED_EVENTS = ("heartbeat", "location_summary", "motion_level", "audio_level")
+UNLOGGED_EVENTS = ("heartbeat", "location_summary", "motion_level", "audio_level", "agent_status")
 # Files a module can't start without: (config section, key, how to get it)
 REQUIRED_FILES = {
     "gas": [("gas", "classifier_path", "python -m modules.gas.train"),
