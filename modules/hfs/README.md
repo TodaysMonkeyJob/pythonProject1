@@ -37,8 +37,10 @@ grid steps. Tests check every table cell against its policy.
 Because the top level is monotonic, a missing input neither escalates nor blocks anything, so the result rests on the
 remaining subsystems. It is marked `partial` and lists `missing`.
 
-**Interval.** Subsystem: α-cut (0.5) of the aggregated output set. Top: the subsystem intervals propagated through
-the monotonic top level. A5 / TOD-45 replaces both with the IT2 corridor.
+**Corridor (A5 / TOD-45).** Every input carries its measured error δ (`config/uncertainty.yaml`,
+`python -m tools.fit_uncertainty`); the interval type-2 inference (`core/fuzzy/engine2.py`, Karnik–Mendel,
+area-weighted: δ = 0 is exactly type-1) gives each subsystem's corridor [y_l, y_r]; the top level takes them as
+interval inputs. Offline / failing devices are excluded (no Beta counters in autonomous mode). `docs/uncertainty.md`.
 
 ```bash
 python -m modules.hfs --check                                  # validate + metadata of the four rule bases

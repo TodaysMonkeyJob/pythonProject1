@@ -434,7 +434,7 @@ class MicController(BaseModule):
             return
         self._last_level_at, self._last_level = now, level
         self.emit("audio_level", {"intensity_db": level, "background_db": round(self.background.background, 1),
-                                  "rms_db": round(db, 1)})
+                                  "background_spread_db": self.background.spread(), "rms_db": round(db, 1)})
 
     def _submit_sound(self, audio: np.ndarray, source: str, relative_db: float) -> None:
         if self.sound_executor is not None:

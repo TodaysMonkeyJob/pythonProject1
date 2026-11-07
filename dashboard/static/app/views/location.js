@@ -41,19 +41,28 @@ async function loadData(id) {
 const HFS_PARTS = [["risk1", "gas", "Газ"], ["risk2", "camera", "Камера"], ["risk3", "audio", "Звук"]];
 const HFS_LEVEL_UA = { gas: "газ", camera: "камера", audio: "звук", top: "загальний" };
 
-function hfsMeter(label, value, level, note) {
+// A5 (TOD-45): the corridor [y_l, y_r] from the measured sensor errors is the band on the bar
+function hfsMeter(label, value, level, note, interval) {
   const missing = value === null || value === undefined;
-  return h("div", { class: `hfs-meter${missing ? " missing" : ""}`, title: note || "" },
+  const band = !missing && interval && interval[1] - interval[0] > 0.005 ? interval : null;
+  const pct = (v) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
+  return h("div", { class: `hfs-meter${missing ? " missing" : ""}`,
+                    title: [note, band ? `коридор ${fmt2(band[0])}–${fmt2(band[1])} (похибки датчиків)` : ""].filter(Boolean).join("\n") },
     h("span", { class: "muted small" }, label),
-    h("b", { class: `lvl ${level || ""}` }, missing ? "—" : fmt2(value)),
-    h("div", { class: "hfs-bar" }, missing ? null : h("div", { class: `fill ${level || ""}`, style: { width: `${Math.round(value * 100)}%` } })));
+    h("b", { class: `lvl ${level || ""}` }, missing ? "—" : fmt2(value),
+      band ? h("span", { class: "muted small corridor-w" }, ` ±${fmt2((band[1] - band[0]) / 2)}`) : null),
+    h("div", { class: "hfs-bar" }, missing ? null : h("div", { class: `fill ${level || ""}`, style: { width: pct(value) } }),
+      band ? h("div", { class: "band", style: { left: pct(band[0]), width: pct(band[1] - band[0]) } }) : null));
 }
 
 function hfsDialog(p) {
   const by = p.fired_rules_by_level || {};
   dialog("Нечітка система: чому такий ризик",
     h("p", {}, `Загальний ризик ${fmt2(p.overall)} (${LEVEL_LABEL[p.level] || p.level}), інтервал ${fmt2((p.interval || [])[0])}–${fmt2((p.interval || [])[1])}`,
-      p.partial ? ` · часткова оцінка: немає ${(p.missing || []).map((m) => HFS_LEVEL_UA[m] || m).join(", ") || "частини даних"}` : ""),
+      p.partial ? ` · часткова оцінка: немає ${(p.missing || []).map((m) => HFS_LEVEL_UA[m] || m).join(", ") || "частини даних"}` : "",
+      p.corridor_width ? ` · коридор ширина ${fmt2(p.corridor_width)}${(p.widened_by || []).length ? ` (найбільше: ${p.widened_by.map((w) => HFS_LEVEL_UA[w.variable] || w.variable).join(", ")})` : ""}` : ""),
+    (p.excluded || []).length ? h("p", { class: "muted" }, "Виключені пристрої: " +
+      p.excluded.map((e) => `${e.device_id} — ${(e.reasons || []).join(", ")}`).join("; ")) : null,
     ...["top", "gas", "camera", "audio"].filter((k) => (by[k] || []).length).map((k) => h("div", {},
       h("h3", {}, k === "top" ? "Верхній рівень" : `Підсистема: ${HFS_LEVEL_UA[k]}`),
       h("ul", { class: "env-reasons" }, by[k].map((r) => h("li", {}, `${r.id}: ${r.explanation}`))))));
@@ -64,8 +73,9 @@ function hfsStrip(p) {
   const level = (name) => ((p.subsystems || {})[name] || {}).level;
   return h("button", { class: "hfs-strip", "aria-label": "ризики нечіткої системи, натисніть для пояснення", onclick: () => hfsDialog(p) },
     ...HFS_PARTS.map(([key, name, label]) => hfsMeter(label, p[key], level(name),
-      p[key] === null || p[key] === undefined ? "немає даних (пристрій офлайн)" : ((p.fired_rules_by_level || {})[name] || [])[0]?.explanation)),
-    hfsMeter("Загалом", p.overall, p.level, ((p.fired_rules_by_level || {}).top || [])[0]?.explanation),
+      p[key] === null || p[key] === undefined ? "немає даних (пристрій офлайн)" : ((p.fired_rules_by_level || {})[name] || [])[0]?.explanation,
+      ((p.subsystems || {})[name] || {}).interval)),
+    hfsMeter("Загалом", p.overall, p.level, ((p.fired_rules_by_level || {}).top || [])[0]?.explanation, p.interval),
     p.partial ? h("span", { class: "badge-partial", title: "оцінка без частини підсистем" }, "часткова") : null);
 }
 

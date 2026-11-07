@@ -4,7 +4,9 @@ Interval type-2 building blocks (F24 / TOD-35), numpy-free scalars for speed on 
 * **IT2 membership** of a type-1 term with an uncertainty δ (in the variable's units): the upper function (UMF)
   moves every sloped edge outwards by δ, the lower one (LMF) inwards; shoulders on the universe edges stay where they
   are. When the inward edges cross, the LMF is the min of its two ramps — a triangle lower than 1 (the plateau is
-  gone). Gaussians get an uncertain mean m ± δ. δ = 0 gives LMF = UMF = the type-1 function exactly.
+  gone). Gaussians get an uncertain mean m ± δ, or (A5 / TOD-45, ``sigma_k``) an uncertain width
+  σ ∈ [σ(1 − k), σ(1 + k)] — UMF with σ(1 + k), LMF with σ(1 − k), the same peak. δ = 0 (k = 0) gives
+  LMF = UMF = the type-1 function exactly.
 * **Karnik–Mendel** centre-of-sets type reduction of rule centroids y_i with firing intervals [f̲_i, f̄_i] →
   [y_l, y_r]; ``brute_force_cos`` checks every switch point (tests).
 """
@@ -57,11 +59,24 @@ def gauss_interval(x: float, mean: float, sigma: float, delta: float) -> Interva
     return lower, upper
 
 
-def term_interval(parts: Sequence[tuple], x: float, delta: float, low: float, high: float) -> Interval:
-    """:param parts: a parsed type-1 term (``membership.parse_term``; several parts = their max)"""
+def gauss_sigma_interval(x: float, mean: float, sigma: float, k: float) -> Interval:
+    """:return: (LMF, UMF) of a Gaussian with uncertain width σ ∈ [σ(1 − k), σ(1 + k)], 0 ≤ k < 1"""
+    k = min(max(0.0, k), 0.999)
+    z = (x - mean) ** 2
+    return math.exp(-0.5 * z / (sigma * (1 - k)) ** 2), math.exp(-0.5 * z / (sigma * (1 + k)) ** 2)
+
+
+def term_interval(parts: Sequence[tuple], x: float, delta: float, low: float, high: float,
+                  sigma_k: Optional[float] = None) -> Interval:
+    """
+    :param parts: a parsed type-1 term (``membership.parse_term``; several parts = their max)
+    :param sigma_k: Gaussians: uncertain width ±k·σ instead of an uncertain mean ±delta
+    """
     lo = hi = 0.0
     for shape, params in parts:
-        if shape == "gauss":
+        if shape == "gauss" and sigma_k is not None:
+            part = gauss_sigma_interval(x, params[0], params[1], sigma_k)
+        elif shape == "gauss":
             part = gauss_interval(x, params[0], params[1], delta)
         elif shape == "tri":
             part = trap_interval(x, params[0], params[1], params[1], params[2], delta, low, high)

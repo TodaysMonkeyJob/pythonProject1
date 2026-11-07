@@ -40,18 +40,20 @@ class AudioSubsystem(FuzzySubsystem):
         self.sounds: Dict[str, List[tuple]] = {}          # (ts, device, relative dB)
         self.types: Dict[str, List[tuple]] = {}           # (ts, device, danger, type)
         self.speech: Dict[str, List[tuple]] = {}          # (ts, device, grade, speaker score, words)
-        self.levels: Dict[str, Dict[str, tuple]] = {}     # location → {device: (ts, intensity dB)}
+        self.levels: Dict[str, Dict[str, tuple]] = {}     # location → {device: (ts, intensity dB, background spread)}
 
     def observe(self, event: Event, now: float) -> None:
         super().observe(event, now)
         p, loc, device = event.payload, event.location_id, event.device_id
         if event.type == "audio_level":
-            self.levels.setdefault(loc, {})[device] = (now, float(p.get("intensity_db") or 0.0))
+            self.levels.setdefault(loc, {})[device] = (now, float(p.get("intensity_db") or 0.0),
+                                                       float(p.get("background_spread_db") or 0.0))
         elif event.type == "sound":
             self.sounds.setdefault(loc, []).append((now, device, float(p.get("relative_db") or 0.0)))
         elif event.type == "sound_type":
             if p.get("danger") is not None:
-                self.types.setdefault(loc, []).append((now, device, float(p["danger"]), p.get("type")))
+                self.types.setdefault(loc, []).append((now, device, float(p["danger"]), p.get("type"),
+                                                       float(p.get("confidence") or 0.0)))
         else:
             words = p.get("danger_words")
             if words is None:
@@ -69,11 +71,17 @@ class AudioSubsystem(FuzzySubsystem):
             levels.pop(device_id, None)
 
     def intensity(self, location_id: str, now: float) -> float:
-        levels = [v for ts, v in (self.levels.get(location_id) or {}).values() if now - ts <= self.level_stale]
+        return self._intensity(location_id, now)[0]
+
+    def _intensity(self, location_id: str, now: float):
+        """:return: (intensity dB, its δ = the background spread of that microphone)"""
+        levels = [(v, spread) for ts, v, spread in (self.levels.get(location_id) or {}).values()
+                  if now - ts <= self.level_stale]
         if levels:
-            return round(max(levels), 2)
+            value, spread = max(levels)
+            return round(value, 2), spread
         sounds = window(self.sounds.get(location_id, []), now, self.window_sec)
-        return round(max((s[2] for s in sounds), default=0.0), 2)
+        return round(max((s[2] for s in sounds), default=0.0), 2), 0.0
 
     def features(self, location_id: str, now: float, available: bool) -> Optional[Dict[str, Any]]:
         if not (available or self.recent(location_id, now)):
@@ -82,7 +90,15 @@ class AudioSubsystem(FuzzySubsystem):
         speech = window(self.speech.get(location_id, []), now, self.window_sec)
         loudest_type = max(types, key=lambda t: t[2], default=None)
         words = [m for s in speech for m in s[4]]
-        return {"intensity": self.intensity(location_id, now),
+        intensity, spread = self._intensity(location_id, now)
+        u = self.uncertainty
+        deltas = {"intensity": spread,                                   # A5 (TOD-45): measured errors
+                  "sound_type_danger": u.sound_type_delta(loudest_type[3], loudest_type[4]) if loudest_type else 0,
+                  # ASR / speaker decisions only exist when somebody spoke
+                  "keyword_danger": u.constant("audio", "keyword_danger") if speech else 0.0,
+                  "speaker_unknown": u.constant("audio", "speaker_unknown") if speech else 0.0}
+        return {"_deltas": deltas,
+                "intensity": intensity,
                 "sound_type_danger": round(loudest_type[2], 4) if loudest_type else 0.0,
                 "keyword_danger": round(max((s[2] for s in speech), default=0.0), 4),
                 "speaker_unknown": round(max((s[3] for s in speech), default=0.0), 4),

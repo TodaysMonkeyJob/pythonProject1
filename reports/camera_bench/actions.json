@@ -1,10 +1,10 @@
 {
- "rss_light_mb": 50,
- "rss_actions_mb": 392,
- "rss_after_unload_mb": 571,
- "load_sec": 1.64,
- "pose_ms_mean": 16.1,
- "pose_ms_p95": 18.0,
+ "rss_light_mb": 51,
+ "rss_actions_mb": 396,
+ "rss_after_unload_mb": 563,
+ "load_sec": 2.31,
+ "pose_ms_mean": 16.3,
+ "pose_ms_p95": 18.2,
  "persons": 3,
  "imgsz": 320,
  "threads": 2

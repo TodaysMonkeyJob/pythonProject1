@@ -10,6 +10,11 @@ footprints of uncertainty (FOU) on the inputs and Karnik–Mendel centre-of-sets
   ``type1`` = the same reduction with type-1 firing (Σ f·c / Σ f);
 * explanation: the inputs ranked by how much the interval shrinks when their δ is set to 0.
 
+A5 (TOD-45, the autonomous HFS): ``infer(…, deltas={var: δ})`` takes δ directly in the variable's units (measured
+sensor / decision errors, ``config/uncertainty.yaml``) and ``sigma_k={var: k}`` gives Gaussians an uncertain width.
+``area_weighted=True`` weights every rule centroid by its consequent's area: for product implication + sum
+aggregation that is exactly the type-1 Mamdani centroid, so δ = 0 reproduces ``FuzzyEngine.infer`` (crisp).
+
 ``FuzzyEngine2.from_config(path, location_id)`` takes the same overrides as ``FuzzyEngine``. ≈ 0.1 ms per inference
 on the dev Mac without the explanation (target ≤ 10 ms on the Pi with it).
 """
@@ -41,10 +46,11 @@ def interval_strength(node: Node, fuzzified: Dict[str, Dict[str, Interval]], t_n
 
 
 class FuzzyEngine2:
-    def __init__(self, engine: FuzzyEngine, k: Optional[Dict[str, float]] = None):
+    def __init__(self, engine: FuzzyEngine, k: Optional[Dict[str, float]] = None, area_weighted: bool = False):
         """
         :param engine: A type-1 engine (variables, rules, operators, location overrides already applied)
         :param k: δ per unit of uncertainty for each input variable (missing = 0: that input stays type-1)
+        :param area_weighted: weight rule centroids by the consequent's area (product / sum Mamdani, A5)
         """
         self.base = engine
         self.k = {name: float(v) for name, v in (k or {}).items()}
@@ -53,6 +59,7 @@ class FuzzyEngine2:
         grid, curves = engine.variables[engine.output].curves()
         self.centroids = {term: float((grid * mu).sum() / mu.sum()) if mu.sum() > 0 else float(grid.mean())
                           for term, mu in curves.items()}
+        self.areas = {term: float(mu.sum()) if area_weighted else 1.0 for term, mu in curves.items()}
 
     @classmethod
     def from_config(cls, path: str = "config/fuzzy.yaml", location_id: Optional[str] = None,
@@ -74,7 +81,8 @@ class FuzzyEngine2:
         return {var: self.k.get(var, 0.0) * min(1.0, max(0.0, float(u)))
                 for var, u in (uncertainty or {}).items() if var in self.base.variables}
 
-    def _fuzzify(self, inputs: Dict[str, Any], deltas: Dict[str, float]):
+    def _fuzzify(self, inputs: Dict[str, Any], deltas: Dict[str, float],
+                 sigma_k: Optional[Dict[str, float]] = None):
         fuzzified: Dict[str, Dict[str, Interval]] = {}
         described: Dict[str, Dict[str, Any]] = {}
         for name, variable in self.base.variables.items():
@@ -88,9 +96,11 @@ class FuzzyEngine2:
             variant = inputs.get(variable.variants_by) if variable.variants_by else None
             value = variable.clamp(float(raw))
             delta = 0.0 if defaulted else deltas.get(name, 0.0)
-            fuzzified[name] = {term: term_interval(parts, value, delta, variable.low, variable.high)
+            k = None if defaulted else (sigma_k or {}).get(name)
+            fuzzified[name] = {term: term_interval(parts, value, delta, variable.low, variable.high, k)
                                for term, parts in variable.term_set(variant).items()}
             described[name] = {"value": value, "defaulted": defaulted, "delta": round(delta, 4),
+                               **({"sigma_k": round(k, 4)} if k is not None else {}),
                                **({"variant": variant} if variant else {})}
         return fuzzified, described
 
@@ -100,8 +110,9 @@ class FuzzyEngine2:
             if not rule.variables() <= fuzzified.keys():
                 continue
             lo, hi = interval_strength(rule.antecedent, fuzzified, self.t_norm, self.s_norm)
-            lo, hi = lo * rule.weight, hi * rule.weight
-            if hi <= MIN_UPPER:
+            area = self.areas[rule.term]
+            lo, hi = lo * rule.weight * area, hi * rule.weight * area
+            if hi <= MIN_UPPER * area:
                 continue
             firing.append({"id": rule.id, "term": rule.term, "lo": lo, "hi": hi, "centroid": self.centroids[rule.term],
                            "rule": rule})
@@ -110,16 +121,20 @@ class FuzzyEngine2:
         return firing, interval
 
     def infer(self, inputs: Dict[str, Any], uncertainty: Optional[Dict[str, float]] = None,
-              explain: bool = True) -> Dict[str, Any]:
+              explain: bool = True, deltas: Optional[Dict[str, float]] = None,
+              sigma_k: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """
         :param inputs: {variable: crisp value} (+ selectors such as ``"gas"``), as for ``FuzzyEngine.infer``
         :param uncertainty: {variable: u ∈ [0, 1]} — widens that input's FOU by k_var · u
         :param explain: rank the inputs by their contribution to the interval width (one extra pass per input)
+        :param deltas: {variable: δ in its units} — measured errors (A5); win over k · u
+        :param sigma_k: {variable: k} — Gaussian terms of that variable get the uncertain width σ(1 ± k)
         :return: {"interval": [y_l, y_r], "width", "type1" {crisp, firing}, "firing" [{id, term, lo, hi}],
                   "fou" {var: {term: [lmf, umf]}}, "inputs", "widened_by" [{variable, width}], "location_id"}
         """
-        deltas = self.deltas(uncertainty)
-        fuzzified, described = self._fuzzify(inputs, deltas)
+        deltas = {**self.deltas(uncertainty),
+                  **{v: max(0.0, float(d)) for v, d in (deltas or {}).items() if v in self.base.variables}}
+        fuzzified, described = self._fuzzify(inputs, deltas, sigma_k)
         firing, interval = self._reduce(fuzzified)
         default = self.base.default_output
         y_l, y_r = interval if interval is not None else (default, default)
@@ -130,7 +145,7 @@ class FuzzyEngine2:
             for var, delta in deltas.items():
                 if delta <= 0 or var not in fuzzified:
                     continue
-                reduced = self._reduce(self._fuzzify(inputs, {**deltas, var: 0.0})[0])[1]
+                reduced = self._reduce(self._fuzzify(inputs, {**deltas, var: 0.0}, sigma_k)[0])[1]
                 narrower = width - ((reduced[1] - reduced[0]) if reduced else 0.0)
                 if narrower > 1e-6:
                     widened.append({"variable": var, "width": round(narrower, 4), "delta": round(delta, 4)})
@@ -147,7 +162,7 @@ class FuzzyEngine2:
     def type1(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Type-1 centre-of-sets: Σ f_i · c_i / Σ f_i over the rules' type-1 firing (no FOU)."""
         fuzzified, _ = self._fuzzify(inputs, {})
-        firing, _ = self._reduce(fuzzified)
+        firing, _ = self._reduce(fuzzified)          # hi = lo = f · area (area 1 unless area_weighted)
         total = sum(f["hi"] for f in firing)
         crisp = sum(f["hi"] * f["centroid"] for f in firing) / total if total > 0 else self.base.default_output
         return {"crisp": round(crisp, 6), "firing": {f["id"]: round(f["hi"], 6) for f in firing}}

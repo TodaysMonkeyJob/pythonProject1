@@ -123,7 +123,10 @@ h2 { font-size: .78em; text-transform: uppercase; letter-spacing: .07em; color: 
 .hfs-meter b { justify-self: end; font-variant-numeric: tabular-nums; }
 .hfs-meter.missing b { color: var(--muted); }
 .hfs-bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+.hfs-bar { position: relative; }
 .hfs-bar .fill { height: 100%; background: var(--muted); }
+.hfs-bar .band { position: absolute; top: -2px; bottom: -2px; border: 1px solid var(--text); border-radius: 3px; opacity: .8; }
+.corridor-w { font-weight: 400; }
 .hfs-bar .fill.low { background: var(--low); } .hfs-bar .fill.medium { background: var(--medium); }
 .hfs-bar .fill.high { background: var(--high); } .hfs-bar .fill.critical { background: var(--critical); }
 .badge-partial { align-self: center; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--muted); color: var(--muted); font-size: .8em; }
