@@ -336,6 +336,20 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `python -m experiments.agents.run --seed 42` → `reports/article2_<date>/` (56 scenarios = Article 1 +
   `experiments/agents/scenarios.yaml`; article1 / multi_agent / no_video / no_audio / no_physical_guard; macro-F1,
   attack success, operator load, latency; `trace_m01.jsonl` end to end).
+- A7 (TOD-48) gas sensor drivers (`docs/sensors.md` "Drivers and discovery"): `drivers/gas/` — `base.py` (`Driver`
+  probe / read, `Descriptor`, `Quantity` with unit / kind / range / resolution / accuracy), `buses.py` (`I2CBus` /
+  `SerialPort` interfaces; smbus2 / pyserial imported lazily), drivers `graphene_fet` (serial JSON handshake, curve →
+  GasPredictor, vol %), `electrochemical` (DFRobot Gravity frames, ppm), `particle` (PMS5003 / SDS011 frames, SPS30
+  I2C with CRC-8, µg/m³), `mos_analog` (MQ via ADS1115 — cannot identify, declared / chosen), `index_only` (ENS160);
+  `discovery.py` (`Discovery`: I2C ACK scan + identification per address, serial listen-then-ask, unknown devices,
+  `config/sensors.yaml` devices + `choices` via `save_choice`; `python -m drivers.gas.discovery`). `gas.mode: drivers`
+  → `modules/gas/drivers_mode.DriverPoller` (state `gas.sensors_state`, one `gas_reading` per sensor with
+  `readings: [{gas, concentration, unit, range, resolution, accuracy, saturated}]`, `air_quality_index` events,
+  `gas_sensor_choice` → rediscovery). `modules/hfs/gas_model_builder.py` → `config/fuzzy/gas_generated.yaml`
+  (git-ignored; native-unit inputs, terms = gas.yaml max_norm fractions × C_crit, δ from the descriptor, saturation
+  flag); `GasSubsystem` uses a reading's own accuracy / range (full scale below C_crit → open upper bound,
+  `saturated`). Dashboard Devices → «Газові сенсори» (`/api/gas_sensors`, POST `/api/gas_sensors/choice`). Not run on
+  real hardware yet.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

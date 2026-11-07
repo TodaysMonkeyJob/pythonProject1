@@ -607,6 +607,37 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         state.publish(make_event("system", "trust_feedback", payload))
         return {"accepted": True, **payload}
 
+    # --- A7 (TOD-48): gas sensors found by the gas module (gas.mode drivers); driver choice for unknown devices ---
+    gas_cfg = config.get("gas") or {}
+
+    @app.get("/api/gas_sensors", dependencies=[Depends(auth)])
+    def api_gas_sensors():
+        path = gas_cfg.get("sensors_state", "data/gas_sensors.json")
+        if not os.path.isfile(path):
+            raise HTTPException(503, "no gas sensor discovery yet (gas.mode: drivers)")
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+
+    @app.post("/api/gas_sensors/choice", dependencies=[Depends(auth)])
+    def api_gas_sensor_choice(body: Dict[str, Any], request: Request):
+        from drivers.gas.discovery import save_choice
+
+        key, driver = str(body.get("key") or ""), str(body.get("driver") or "")
+        options = body.get("options")
+        if not key or (options is not None and not isinstance(options, dict)):
+            raise HTTPException(400, "key, driver and optional options {} required")
+        try:
+            choice = save_choice(key, driver, options, gas_cfg.get("sensors_config", "config/sensors.yaml"),
+                                 by=user_of(request))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if state.publish is not None:
+            from core.events import make_event
+
+            state.publish(make_event("system", "gas_sensor_choice", {"key": key, "driver": driver,
+                                                                     "by": user_of(request)}))
+        return {"saved": True, "key": key, **choice}
+
     # --- B2 (TOD-49): agents — status from the agents module, switches go back as agent_control events ----------
     @app.get("/api/agents", dependencies=[Depends(auth)])
     def api_agents():

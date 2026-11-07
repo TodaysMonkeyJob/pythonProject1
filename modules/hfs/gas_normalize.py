@@ -117,6 +117,23 @@ def readings_of(payload: Dict[str, Any]) -> List[Tuple[str, float, str]]:
     return out
 
 
+def reading_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """:return: the readings of a ``gas_reading`` as dicts {gas, value, unit, range?, resolution?, accuracy?} — the
+    sensor's own range / accuracy travel with each reading (TOD-48 drivers)"""
+    items = payload.get("readings") or [payload]
+    out = []
+    for item in items:
+        if item.get("concentration") is not None:
+            value, unit = float(item["concentration"]), str(item.get("unit") or "ppm")
+        elif item.get("concentration_pct") is not None:
+            value, unit = float(item["concentration_pct"]), "vol_pct"
+        else:
+            continue
+        out.append({"gas": item.get("gas"), "value": value, "unit": unit,
+                    **{k: item[k] for k in ("range", "resolution", "accuracy") if item.get(k) is not None}})
+    return out
+
+
 def mixture_index(norms: Sequence[float]) -> float:
     return float(sum(norms))
 

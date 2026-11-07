@@ -1,8 +1,8 @@
 # Gas and particle sensors (A2 / TOD-42)
 
 The gas subsystem compares every substance as a share of its critical concentration, c_norm = c / C_crit
-(`config/gases.yaml`). Sensors and their models keep their native units (vol %, ppm, µg/m³). Detecting the sensors
-and building the per-sensor inputs is TOD-48. This page records what the candidate sensors measure, and how
+(`config/gases.yaml`). Sensors and their models keep their native units (vol %, ppm, µg/m³). The sensors are found
+and the per-sensor inputs are built automatically (TOD-48, [Drivers and discovery](#drivers-and-discovery-tod-48)). This page records what the candidate sensors measure, and how
 accurately, relative to C_crit. The accuracy column feeds the FOU of TOD-45.
 
 ## Critical concentrations
@@ -58,3 +58,81 @@ Their own problem is the opposite one: their range ends below C_crit (TOD-48 fla
 The `dynamics` universe is ±0.5 C_crit per minute, i.e. from clean air to the critical level in 2 minutes. `rising`
 peaks at 0.1 / min (critical in about 10 minutes) and `sharp_rise` is full from 0.25 / min (critical within about
 4 minutes).
+
+## Drivers and discovery (TOD-48)
+
+With `gas.mode: drivers` the gas module finds the sensors connected to the Raspberry Pi at start-up, and again after
+a driver choice on the dashboard. It then reads each one in its native unit. `python -m drivers.gas.discovery`
+prints what is connected.
+
+| Driver | Device | Bus | How it is identified | Native unit | Protocol source |
+| -- | -- | -- | -- | -- | -- |
+| `graphene_fet` | our graphene FET board | serial / USB, 115200 | handshake `ID?` → JSON descriptor | vol % (trained model) | the board protocol below |
+| `dfrobot_gravity` / `_uart` | DFRobot Gravity NH₃ SEN0469, CO SEN0466, … | I2C 0x74–0x77 / UART 9600 | checksum-valid answer to command 0x86, gas type byte | ppm | DFRobot_MultiGasSensor library |
+| `mq_ads1115` | Winsen MQ via an ADS1115 ADC | I2C 0x48–0x4B | **cannot be identified**: declared, or chosen on the dashboard | ppm (approximate, own calibration) | ADS1115 datasheet registers, the MQ datasheet curve |
+| `pms5003` | Plantower PMS5003 | UART 9600 | frames `42 4D` with a valid sum | µg/m³ | Plantower frame layout |
+| `sds011` | Nova Fitness SDS011 | UART / USB 9600 | frames `AA C0 … AB` with a valid sum | µg/m³ | Nova datasheet |
+| `sps30` | Sensirion SPS30 | I2C 0x69 | product type `00080000` (CRC-8 checked) | µg/m³ | Sensirion embedded-sps driver |
+| `ens160` | ScioSense ENS160 | I2C 0x52 / 0x53 | part ID 0x0160 | index (AQI-UBA 1–5, TVOC ppb, eCO2) | Adafruit ENS160 driver |
+
+None of the drivers has been run against real hardware yet. They are tested with recorded and constructed frames
+(`tests/test_gas_drivers.py`), so check each one on the Pi before relying on it.
+
+**Discovery.**
+1. **I2C:** every bus is scanned for ACKs. Each answering address is offered to the drivers that use it. Exactly one
+   positive identification gives the device. Otherwise the device is listed as **unknown**, with the candidate
+   drivers: several drivers can share an address, and an ADC cannot say which sensor is behind it.
+2. **Serial / USB:** each port is first listened to (sensors that send on their own), then queried (the graphene
+   handshake, the DFRobot UART query). A port that sends data no driver recognises is listed as unknown.
+3. **Manual devices:** `config/sensors.yaml` (copy `config/sensors.example.yaml`) declares devices by hand.
+4. **Your choices:** the dashboard (Devices → «Газові сенсори») saves the driver you pick for an unknown device under
+   `choices`. The gas module then runs discovery again.
+
+**Descriptor and readings.** Each sensor reports
+`{driver, device_id, model, bus, address, quantities: [{gas, unit, kind, range, resolution, accuracy, sample_period,
+source}], needs_model}`.
+- One `gas_reading` per sensor and poll carries `readings: [{gas, concentration, unit, range, resolution, accuracy,
+  saturated}]`.
+- The graphene board's reading keeps `gas`, `gas_confidence` and `concentration_pct` (vol %, as the model outputs
+  it).
+- Index sensors send `air_quality_index` events instead.
+
+**Per-sensor model.** `config/fuzzy/gas_generated.yaml` is written after every discovery. It is machine-specific and
+git-ignored. You can also rebuild it with `python -m modules.hfs.gas_model_builder`. Each concentration quantity
+becomes an input in its native unit:
+- C_crit is converted to that unit (NH₃ 300 ppm = 0.03 vol % for the graphene model; CO 1200 ppm = 1374.7 mg/m³).
+- The terms sit at the fractions of C_crit used by the `max_norm` terms of `config/fuzzy/gas.yaml` (0.1 / 0.3 /
+  0.6 / 1.0).
+- δ(c) = max(absolute, relative · c, resolution / 2) comes from the descriptor. Where no accuracy is published, δ is
+  unknown.
+- When the sensor's range ends below C_crit, the input is flagged `saturation`. Index quantities get their own
+  inputs.
+
+Every value carries a provenance entry. The gas subsystem applies the same δ to each reading, because the readings
+carry their sensor's accuracy and range.
+
+**Range below C_crit.** Example: the NH₃ module reads 0–100 ppm, but C_crit is 300 ppm. A full-scale reading
+(100 ppm) is "at least 100 ppm", so its c / C_crit interval is open up to 1.2:
+- the risk corridor widens towards critical;
+- the HFS result lists the substance under `saturated`;
+- the log says the sensor cannot confirm a critical concentration.
+
+### Graphene board protocol
+
+Serial or USB at 115200 baud, one JSON object per line. The board firmware must implement:
+
+| Host sends | Board answers |
+| -- | -- |
+| `ID?\n` | `{"device": "graphene_fet", "serial": "<id>", "gates": 16, "vg": [0.0, 1.5], "unit": "vol_pct"}` |
+| `READ\n` | `{"r": [16 resistances in Ω for V_G = 0.0 … 1.5 V]}` |
+
+The curve goes unchanged to the trained TOD-19 model (`modules/gas/inference.GasPredictor`), which outputs the gas
+and its concentration in vol %. A board reporting another unit is rejected, because the model was trained in vol %.
+
+### On the Raspberry Pi
+
+1. Enable the interfaces: `sudo raspi-config` → Interface Options → I2C and Serial Port (login shell over serial:
+   off).
+2. Add the user to the `i2c` and `dialout` groups.
+3. Install the requirements: `smbus2`, `pyserial`.
+4. Run `python -m drivers.gas.discovery`, then set `gas.mode: drivers`.

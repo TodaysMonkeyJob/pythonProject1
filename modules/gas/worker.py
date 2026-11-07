@@ -3,7 +3,9 @@ Gas worker: reads an R(Ug) curve every ``gas_poll_sec``, classifies it and publi
 
 Curve sources (``gas.mode``):
   * ``replay`` — rows of ``gas.replay_csv`` (see modules.gas.data.write_replay_csv), looped if ``replay_loop``;
-  * ``sensor`` — ``gas.reader: "package.module:function"`` returning 16 resistance values for Ug = 0.0..1.5 V.
+  * ``sensor`` — ``gas.reader: "package.module:function"`` returning 16 resistance values for Ug = 0.0..1.5 V;
+  * ``drivers`` (A7 / TOD-48) — every sensor on this Pi found automatically and read in its native unit
+    (``modules/gas/drivers_mode.py``, ``drivers/gas``).
 
 Events:
   * ``gas_reading`` (info) every poll: gas, gas_confidence, concentration_pct, trend, sensor_id, curve summary;
@@ -144,8 +146,15 @@ class GasWorker(BaseModule):
             "refresh_sec", 300)) if health_cfg is not None else None
         self._last_selftest = float("-inf")
         self._drift: Optional[Dict[str, Any]] = None
+        self.poller = None                      # TOD-48 gas.mode drivers
 
     def setup(self) -> None:
+        if self.gas_config.get("mode") == "drivers":
+            from modules.gas.drivers_mode import DriverPoller
+
+            self.poller = self.poller or DriverPoller(self.gas_config, self.emit, self.clock)
+            self.poller.discover()
+            return
         if self.predictor is None:
             from modules.gas.inference import GasPredictor
             self.predictor = GasPredictor(self.gas_config["classifier_path"], self.gas_config["regressor_path"])
@@ -160,7 +169,23 @@ class GasWorker(BaseModule):
             except Exception as e:  # self-diagnostics must never stop the sensor
                 logger.warning(f"Gas self-diagnostics off: {e}")
 
+    def handle_control(self, message: Any) -> None:
+        if self.poller is not None and isinstance(message, str) and message.startswith("{"):
+            from core.events import Event
+
+            self.poller.handle_event(Event.from_json(message))
+            return
+        super().handle_control(message)
+
+    def teardown(self) -> None:
+        if self.poller is not None:
+            self.poller.close()
+
     def step(self) -> None:
+        if self.poller is not None:
+            self.poller.step()
+            time.sleep(0.05)
+            return
         now = self.clock()
         if now < self._next_poll:
             time.sleep(min(0.1, self._next_poll - now))

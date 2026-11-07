@@ -294,7 +294,8 @@ audio:
 
 gas:
   enabled: true
-  mode: replay                 # replay | sensor
+  mode: replay                 # replay | sensor | drivers (TOD-48: sensors on this Pi found automatically,
+                               # each read in its native unit — docs/sensors.md, python -m drivers.gas.discovery)
   replay_csv: data/gas/replay_demo.csv
   replay_loop: true
   reader: ""                   # sensor mode: "package.module:function" returning 16 R values for Ug 0.0..1.5 V
@@ -311,6 +312,11 @@ gas:
   trend_window_sec: 60
   trend_stable_band: 0.2       # |rate| below this (%/min) → trend "stable"
   alert_cooldown_sec: 30       # repeat the same alert reason at most this often
+  sensors_config: config/sensors.yaml   # drivers mode: declared devices + drivers chosen for unknown ones
+  sensors_state: data/gas_sensors.json  # last discovery (dashboard Devices page)
+  generated_model: config/fuzzy/gas_generated.yaml   # per-sensor inputs in native units (generated)
+  gases: config/gases.yaml     # C_crit for the generated inputs
+  rediscover_sec: 0            # 0 = only at start and after a driver choice
 
 aggregator:                 # F5: JSON snapshots for GPT + CSV of all events
   enabled: true

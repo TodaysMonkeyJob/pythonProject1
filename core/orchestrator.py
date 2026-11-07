@@ -35,7 +35,7 @@ logger = init_logger()
 IDENTITY_EVENTS = ["identity_created", "identity_renamed", "identity_merged", "identity_linked", "identity_deleted"]
 # name → (target, config section with `enabled`, event types forwarded to its control queue; "*" = all)
 DEFAULT_MODULES = {
-    "gas": ("modules.gas:run", "gas", []),
+    "gas": ("modules.gas:run", "gas", ["gas_sensor_choice"]),     # TOD-48: a driver chosen on the dashboard
     "vision": ("modules.vision.detector:run", "vision", ["person_identified"]),       # names on the overlay
     "actions": ("modules.vision.actions:run", "actions", ["object_detected"]),
     "identity": ("modules.vision.identity:run", "identity", ["object_detected", *IDENTITY_EVENTS]),
@@ -105,6 +105,8 @@ def missing_files(name: str, config: Dict[str, Any]) -> List[str]:
              downloaded by ultralytics and don't count as missing
     """
     problems = []
+    if name == "gas" and config.get("gas", {}).get("mode") == "drivers":
+        return problems         # TOD-48: the graphene driver loads the models only when a board is detected
     for section, key, hint in REQUIRED_FILES.get(name, []):
         path = config.get(section, {}).get(key)
         if not path or (os.sep not in str(path) and str(path).endswith(".pt")):

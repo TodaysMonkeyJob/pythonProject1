@@ -1,0 +1,151 @@
+"""
+Gas module, ``gas.mode: drivers`` (A7 / TOD-48): the sensors connected to this Raspberry Pi are found automatically
+(``drivers.gas.discovery``) and each is read in its native unit.
+
+* start-up: discovery → ``gas.sensors_state`` (JSON for the dashboard: sensors, unknown devices, errors) →
+  ``modules.hfs.gas_model_builder`` → ``gas.generated_model`` (``config/fuzzy/gas_generated.yaml``);
+* every sensor is polled at its quantities' ``sample_period``; one ``gas_reading`` per sensor and poll, device =
+  the sensor (``Descriptor.device_id``)::
+
+      {"readings": [{"gas": "ammonia", "concentration": 42.0, "unit": "ppm", "range": [0, 100],
+                     "resolution": 1.0, "accuracy": {"relative": 0.1, "absolute": 5.0}, "saturated": false}],
+       "driver": "dfrobot_gravity", "sensor_model": "DFRobot SEN0469 (NH3)", "sensor_id": "gas-dfrobot…"}
+
+  the graphene board's reading keeps the TOD-19 fields (``gas``, ``gas_confidence``, ``concentration_pct`` in
+  vol % as the trained model outputs it, ``curve``) plus ``unit: vol_pct`` and the same ``readings`` list;
+* index-only quantities → ``air_quality_index`` events (never mixed with concentrations);
+* a read error → ``alert`` ``sensor_error`` (warning) for that sensor, the others go on; ``gas_sensor_choice`` (the
+  dashboard saved a driver for an unknown device) or ``rediscover_sec`` → discovery again.
+"""
+import time
+from typing import Any, Callable, Dict, List, Optional
+
+from system_setup.logger_setup import init_logger
+
+logger = init_logger()
+
+
+class DriverPoller:
+    def __init__(self, gas_config: Dict[str, Any], emit: Callable[..., Any],
+                 clock: Callable[[], float] = time.monotonic, discovery_factory: Optional[Callable[[], Any]] = None):
+        """
+        :param emit: ``BaseModule.emit`` (type, payload, severity=, confidence=, device_id=)
+        :param discovery_factory: → a ``Discovery`` (tests pass one with fake buses)
+        """
+        self.cfg, self.emit, self.clock = gas_config, emit, clock
+        self.discovery_factory = discovery_factory or self._discovery
+        self.rediscover_sec = float(gas_config.get("rediscover_sec", 0) or 0)
+        self.drivers: List[Any] = []
+        self.due: Dict[str, float] = {}
+        self.result: Dict[str, Any] = {"sensors": [], "unknown": [], "errors": []}
+        self.discovered_at = float("-inf")
+        self.discovery = None
+
+    def _discovery(self):
+        from drivers.gas.discovery import Discovery, load_config
+
+        options = {"graphene_fet": {"classifier_path": self.cfg.get("classifier_path"),
+                                    "regressor_path": self.cfg.get("regressor_path")}}
+        return Discovery(load_config(self.cfg.get("sensors_config", "config/sensors.yaml")), driver_options=options)
+
+    def discover(self) -> Dict[str, Any]:
+        from drivers.gas.discovery import report, write_state
+        from modules.hfs.gas_model_builder import build, write
+        from modules.hfs.gas_normalize import GasTable
+
+        self.close()
+        self.discovery = self.discovery_factory()
+        self.result = self.discovery.run()
+        self.drivers = self.discovery.drivers(self.result)
+        self.discovered_at = self.clock()
+        state = self.cfg.get("sensors_state", "data/gas_sensors.json")
+        if state:
+            write_state(self.result, state)
+        generated = self.cfg.get("generated_model", "config/fuzzy/gas_generated.yaml")
+        if generated:
+            write(build(report(self.result)["sensors"], GasTable.load(self.cfg.get("gases", "config/gases.yaml"))),
+                  generated)
+        found = ", ".join(f"{d.descriptor.model} ({', '.join(sorted({q.unit for q in d.descriptor.quantities}))})"
+                          for d in self.drivers)
+        logger.info(f"gas sensors: {found or 'none'}; unknown: {len(self.result['unknown'])}")
+        return self.result
+
+    def close(self) -> None:
+        for driver in self.drivers:
+            try:
+                driver.close()
+            except Exception:
+                pass
+        self.drivers, self.due = [], {}
+
+    def handle_event(self, event) -> None:
+        if event.type == "gas_sensor_choice":
+            self.discover()
+
+    def step(self) -> int:
+        """:return: readings published"""
+        now = self.clock()
+        if self.rediscover_sec and now - self.discovered_at >= self.rediscover_sec:
+            self.discover()
+        count = 0
+        for driver in self.drivers:
+            desc = driver.descriptor
+            if now < self.due.get(desc.device_id, 0.0):
+                continue
+            self.due[desc.device_id] = now + min((q.sample_period for q in desc.quantities), default=1.0)
+            if self.poll(driver):
+                count += 1
+        return count
+
+    def poll(self, driver) -> bool:
+        desc = driver.descriptor
+        try:
+            values = driver.read()
+        except Exception as e:                       # one broken sensor never stops the others
+            logger.warning(f"gas sensor {desc.model} ({desc.device_id}): {e}")
+            self.emit("alert", {"reason": "sensor_error", "sensor_id": desc.device_id, "driver": desc.driver,
+                                "error": str(e)}, severity="warning", device_id=desc.device_id)
+            return False
+        if desc.needs_model:
+            return self._model_reading(desc, values)
+        readings, indices = [], []
+        for q in desc.quantities:
+            value = values.get(q.key)
+            if value is None:
+                continue
+            if q.kind == "index":
+                indices.append({"quantity": q.key, "value": value, "unit": q.unit, "range": q.range})
+                continue
+            readings.append(self._item(q, q.gas, value))
+        base = {"driver": desc.driver, "sensor_model": desc.model, "sensor_id": desc.device_id}
+        if readings:
+            self.emit("gas_reading", {"readings": readings, **base}, device_id=desc.device_id)
+        if indices:
+            self.emit("air_quality_index", {"indices": indices, **base,
+                                            **({"validity": values["validity"]} if "validity" in values else {})},
+                      device_id=desc.device_id)
+        return bool(readings or indices)
+
+    @staticmethod
+    def _item(q, gas: str, value: float) -> Dict[str, Any]:
+        from modules.hfs.gas_model_builder import saturated
+
+        return {"gas": gas, "concentration": value, "unit": q.unit, "range": q.range, "resolution": q.resolution,
+                "accuracy": q.accuracy, "saturated": saturated(value, q.range, q.resolution)}
+
+    def _model_reading(self, desc, values: Dict[str, Any]) -> bool:
+        """Graphene board: the trained model's gas + vol % as it outputs them (no conversion of its input)."""
+        from modules.gas.worker import curve_summary
+
+        gas = values["gas"]
+        quantity = next((q for q in desc.quantities if q.gas == gas), None)
+        payload = {"gas": gas, "gas_confidence": values["gas_confidence"], "concentration_pct": values["concentration"],
+                   "unit": "vol_pct", "driver": desc.driver, "sensor_model": "graphene_fet",
+                   "sensor_id": desc.device_id,
+                   "readings": [] if quantity is None else [self._item(quantity, gas, values["concentration"])]}
+        voltages = desc.details.get("vg") or [0.0, 1.5]
+        gates = len(values["curve"])
+        grid = [voltages[0] + (voltages[1] - voltages[0]) * i / max(1, gates - 1) for i in range(gates)]
+        payload["curve"] = curve_summary(values["curve"], grid)
+        self.emit("gas_reading", payload, confidence=values["gas_confidence"], device_id=desc.device_id)
+        return True

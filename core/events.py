@@ -66,6 +66,8 @@ EVENT_TYPES = (
     "agent_operator_request",   # B2: the validation agent asks the operator (agents above the corridor)
     "agent_status",         # B2: every agent's status / latency / last claims (dashboard only, not logged)
     "agent_control",        # B2: dashboard switch of an agent (agent, enabled, by)
+    "air_quality_index",    # A7 (TOD-48): index-only gas sensors (ENS160 AQI-UBA / TVOC / eCO2), never concentrations
+    "gas_sensor_choice",    # A7: the user picked a driver for an unknown gas device (key, driver) → rediscovery
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"

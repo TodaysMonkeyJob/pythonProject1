@@ -27,6 +27,9 @@ data/trust_registry.db*
 data/rule_suggestions.db*
 data/devices.db*
 data/agents_state.json
+data/gas_sensors.json
+config/sensors.yaml
+config/fuzzy/gas_generated.yaml
 data/tls/
 data/node_agent/
 *.pt
