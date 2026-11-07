@@ -1,7 +1,7 @@
 // Separate pages from the top bar: People (possible duplicates, rename / merge / delete, merge history with undo),
 // Devices (locations, on/off, pairing, RTSP, ONVIF), Locations (create / rename / reorder / rules / delete).
 import { api, loadDevices, loadDuplicates, loadLocations, loadPersons, store } from "../store.js";
-import { dialog, h, hms } from "../ui.js";
+import { dialog, h, hms, toast } from "../ui.js";
 
 const LLM_STATUS = { ok: "працює", auth_error: "ключ не прийнято", not_found: "немає деплойменту",
                      rate_limited: "ліміт запитів", unreachable: "недоступний", disabled: "вимкнено (немає ключів)",
@@ -129,7 +129,40 @@ export function renderDevices(root) {
       }) }, "IP-камера (RTSP)"),
       h("button", { onclick: guard(onvif) }, "Пошук ONVIF")),
     h("div", { class: "devlist" }, rows.length ? rows : h("div", { class: "muted" }, "пристроїв ще немає")),
+    h("h2", {}, "Газові сенсори"), gasSensors(),
     h("h2", {}, "Система"), system, h("h2", {}, "Модулі"), modules));
+}
+
+// TOD-48: gas sensors found by gas.mode drivers — unit / range / accuracy per quantity; an unknown device gets a driver
+// chosen here (saved to config/sensors.yaml, the gas module detects again).
+const UNIT = { vol_pct: "об. %", ppm: "ppm", mg_m3: "мг/м³", ug_m3: "мкг/м³", index: "індекс", ppb: "ppb", ohm: "Ом" };
+
+function gasSensors() {
+  const box = h("div", { class: "devlist" }, h("div", { class: "muted" }, "завантаження…"));
+  api("GET", "/api/gas_sensors").then((j) => {
+    const accuracy = (q) => (q.accuracy ? [q.accuracy.relative ? `±${Math.round(q.accuracy.relative * 100)} %` : null,
+      q.accuracy.absolute ? `±${q.accuracy.absolute} ${UNIT[q.unit] || q.unit}` : null].filter(Boolean).join(" або ") : "точність невідома");
+    const sensors = j.sensors.map((s) => h("div", { class: "devrow" }, h("span", { class: "dot on" }),
+      h("span", { title: s.device_id }, s.model), h("span", { class: "muted" }, `${s.bus}${s.address != null ? " 0x" + s.address.toString(16) : ""}`),
+      h("span", {}, s.quantities.map((q) => `${q.gas}: ${UNIT[q.unit] || q.unit}${q.range ? ` ${q.range[0]}–${q.range[1]}` : ""} (${accuracy(q)})`).join("; "))));
+    const unknown = j.unknown.map((u) => h("div", { class: "devrow offline" }, h("span", { class: "dot" }),
+      h("span", {}, `невідомий пристрій ${u.key}`), h("span", { class: "muted" }, u.reason),
+      h("select", { "aria-label": `драйвер для ${u.key}`, onchange: guard(async (e) => {
+        const driver = e.target.value; if (!driver) return;
+        let options;
+        if (driver === "mq_ads1115") {
+          const text = prompt('Параметри MQ (JSON): {"channel":0,"model":"MQ-137","gas":"ammonia","curve":{"a":…,"b":…},"r0_ohm":…}');
+          if (!text) { e.target.value = ""; return; }
+          options = JSON.parse(text);
+        }
+        await api("POST", "/api/gas_sensors/choice", { key: u.key, driver, options });
+        toast("Газові сенсори", `${u.key}: ${driver} збережено, пошук сенсорів…`, "safe");
+      }) }, h("option", { value: "" }, "обрати драйвер…"),
+        (u.candidates.length ? u.candidates : j.drivers.map((d) => d.name)).map((n) => h("option", { value: n }, n)))));
+    box.replaceChildren(...sensors, ...unknown, ...(j.errors || []).map((e) => h("div", { class: "muted small" }, e)));
+    if (!sensors.length && !unknown.length) box.replaceChildren(h("div", { class: "muted" }, "сенсорів не знайдено"));
+  }).catch((e) => box.replaceChildren(h("div", { class: "muted" }, `немає даних: ${e.message}`)));
+  return box;
 }
 
 async function pairPhone() {

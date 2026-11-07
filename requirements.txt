@@ -34,3 +34,5 @@ ncnn>=1.0.20260526
 jsonschema~=4.26
 fastapi~=0.143
 uvicorn~=0.54
+smbus2~=0.6.1           # TOD-48 gas sensors on the Pi (I2C)
+pyserial~=3.5           # TOD-48 gas sensors on the Pi (UART / USB)

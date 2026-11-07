@@ -1,0 +1,22 @@
+# Gas sensors (TOD-48) — copy to config/sensors.yaml (git-ignored) when a device must be declared by hand.
+# Most sensors are found automatically (gas.mode: drivers, python -m drivers.gas.discovery); declare what discovery
+# cannot identify, e.g. an MQ sensor behind an ADS1115 ADC. The dashboard (Devices → Газові сенсори) writes
+# `choices` when you pick a driver for an unknown device.
+buses: [1]                  # I2C buses to scan (default: every /dev/i2c-*)
+# ports: [/dev/ttyUSB0]     # serial ports to probe (default: /dev/serial0, /dev/ttyAMA0, /dev/ttyUSB*, /dev/ttyACM*)
+devices: []
+# An MQ-137 (NH3) on AIN0 of the ADS1115 at 0x48 — fill in the values of YOUR sensor after calibration:
+#  - driver: mq_ads1115
+#    bus: i2c-1
+#    address: 0x48
+#    channel: 0
+#    model: MQ-137
+#    gas: ammonia
+#    range: [5, 500]          # ppm, Winsen product page (docs/sensors.md)
+#    curve: {a: …, b: …}      # ppm = a · (Rs/R0)^b — fitted to the datasheet plot, checked against a reference
+#    r0_ohm: …                # Rs of this sensor in clean air after burn-in
+#    rl_ohm: 10000            # load resistor of the module
+#    vc: 5.0                  # circuit voltage
+#    divider: 1.0             # V_out / V_adc when a divider scales 5 V down to the ADC
+#  - {driver: dfrobot_gravity_uart, port: /dev/ttyUSB1, baud: 9600}
+choices: {}
