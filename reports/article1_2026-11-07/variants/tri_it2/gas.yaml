@@ -1,0 +1,587 @@
+version: 2
+output: risk
+update_sec: 2
+defuzzification: centroid
+operators:
+  and: prod
+  or: probor
+  implication: prod
+  aggregation: sum
+default_output: 0.0
+variables:
+  max_norm:
+    universe:
+    - 0
+    - 1.2
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: c / C_crit of config/gases.yaml (NIOSH IDLH, EPA AQI 2024 Hazardous), clipped to 0..1.2 to keep an exceedance
+          visible (TOD-42)
+      terms:
+        kind: requirement
+        text: terms at fixed fractions of C_crit 0.1 / 0.3 / 0.6 / 1.0 (TOD-48), critical = 1 at ≥ 1.0 C_crit (TOD-42); Ruspini
+          partition (design, monotonicity)
+    terms:
+      safe:
+      - trap
+      - 0
+      - 0
+      - 0.1
+      - 0.3
+      moderate:
+      - tri
+      - 0.1
+      - 0.3
+      - 0.6
+      dangerous:
+      - tri
+      - 0.3
+      - 0.6
+      - 1.0
+      critical:
+      - trap
+      - 0.6
+      - 1.0
+      - 1.2
+      - 1.2
+  dynamics:
+    universe:
+    - -0.5
+    - 0.5
+    - 0.005
+    source:
+      universe:
+        kind: expert
+        text: ±0.5 C_crit per minute = from clean air to the critical level in 2 minutes; faster changes saturate
+      terms:
+        kind: expert
+        text: rising peaks at 0.1 / min (critical in ~10 min), sharp_rise full from 0.25 / min (critical within ~4 min, less
+          than an evacuation takes); stable ±0.1 / min covers the slope error of a 60 s window (config/uncertainty.yaml dynamics)
+    unit: /min
+    default: 0
+    terms:
+      falling:
+      - trap
+      - -0.5
+      - -0.5
+      - -0.1
+      - 0
+      stable:
+      - tri
+      - -0.1
+      - 0
+      - 0.1
+      rising:
+      - tri
+      - 0
+      - 0.1
+      - 0.25
+      sharp_rise:
+      - trap
+      - 0.1
+      - 0.25
+      - 0.5
+      - 0.5
+  mixture_index:
+    universe:
+    - 0
+    - 3.6
+    - 0.01
+    source:
+      universe:
+        kind: design
+        text: Σ c / C_crit of up to three substances at the 1.2 clip
+      terms:
+        kind: normative
+        text: 'high = Σ C_i / L_i ≥ 1: the additive mixture rule, OSHA 29 CFR 1910.1000(d)(2)(i) (E_m must not exceed unity);
+          low / noticeable split at 0.3 / 0.7 = the max_norm fractions (expert)'
+    default: 0
+    terms:
+      low:
+      - trap
+      - 0
+      - 0
+      - 0.3
+      - 0.7
+      noticeable:
+      - tri
+      - 0.3
+      - 0.7
+      - 1.0
+      high:
+      - trap
+      - 0.7
+      - 1.0
+      - 3.6
+      - 3.6
+  risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: risk 0..1
+      terms:
+        kind: design
+        text: equal areas (0.25) so the centroid is a weighted mean of the term centroids — exact monotonicity with product
+          / sum inference (modules/hfs/policy.py); centroids 0.13 / 0.35 / 0.65 / 0.87 are the top level's input peaks
+    terms:
+      low:
+      - trap
+      - 0
+      - 0
+      - 0.125
+      - 0.375
+      medium:
+      - tri
+      - 0.1
+      - 0.35
+      - 0.6
+      high:
+      - tri
+      - 0.4
+      - 0.65
+      - 0.9
+      critical:
+      - trap
+      - 0.625
+      - 0.875
+      - 1
+      - 1
+rules:
+- id: G000
+  rule: IF max_norm IS safe AND dynamics IS falling AND mixture_index IS low THEN risk IS low
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: &id001 2026-11-06
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G001
+  rule: IF max_norm IS safe AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS low
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G002
+  rule: IF max_norm IS safe AND dynamics IS falling AND mixture_index IS high THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G010
+  rule: IF max_norm IS safe AND dynamics IS stable AND mixture_index IS low THEN risk IS low
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G011
+  rule: IF max_norm IS safe AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS low
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G012
+  rule: IF max_norm IS safe AND dynamics IS stable AND mixture_index IS high THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G020
+  rule: IF max_norm IS safe AND dynamics IS rising AND mixture_index IS low THEN risk IS low
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G021
+  rule: IF max_norm IS safe AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS low
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G022
+  rule: IF max_norm IS safe AND dynamics IS rising AND mixture_index IS high THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G030
+  rule: IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G031
+  rule: IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G032
+  rule: IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G100
+  rule: IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS low THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G101
+  rule: IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G102
+  rule: IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS high THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G110
+  rule: IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS low THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G111
+  rule: IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G112
+  rule: IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS high THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G120
+  rule: IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS low THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G121
+  rule: IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS medium
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G122
+  rule: IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS high THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G130
+  rule: IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G131
+  rule: IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G132
+  rule: IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G200
+  rule: IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS low THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G201
+  rule: IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G202
+  rule: IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G210
+  rule: IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS low THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G211
+  rule: IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G212
+  rule: IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G220
+  rule: IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS low THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G221
+  rule: IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS high
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G222
+  rule: IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G230
+  rule: IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G231
+  rule: IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G232
+  rule: IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G300
+  rule: IF max_norm IS critical AND dynamics IS falling AND mixture_index IS low THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G301
+  rule: IF max_norm IS critical AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G302
+  rule: IF max_norm IS critical AND dynamics IS falling AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G310
+  rule: IF max_norm IS critical AND dynamics IS stable AND mixture_index IS low THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G311
+  rule: IF max_norm IS critical AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G312
+  rule: IF max_norm IS critical AND dynamics IS stable AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G320
+  rule: IF max_norm IS critical AND dynamics IS rising AND mixture_index IS low THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G321
+  rule: IF max_norm IS critical AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G322
+  rule: IF max_norm IS critical AND dynamics IS rising AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G330
+  rule: IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G331
+  rule: IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'
+- id: G332
+  rule: IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical
+  meta:
+    source: A2 (TOD-42), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate
+      / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one
+      level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level.'

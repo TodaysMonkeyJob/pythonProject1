@@ -81,6 +81,8 @@ class FuzzySubsystem:
         hfs = config.get("hfs") or {}
         self.uncertainty = Uncertainty.load(hfs.get("uncertainty", DEFAULT_PATH) if hfs.get("it2", True) else None,
                                             getattr(self, "table", None))
+        self.uncertainty_scale = float(hfs.get("uncertainty_scale", 1.0))   # A6 experiments: corridor vs δ
+        self.it2 = bool(hfs.get("it2", True))            # false: the type-1 system, every δ ignored
 
     def engine_for(self, location_id: Optional[str]) -> FuzzyEngine:
         """Per-location overrides from the ``locations:`` block of the rule base (same format as fuzzy.yaml)."""
@@ -122,7 +124,8 @@ class FuzzySubsystem:
         """
         if inputs is None:
             return None
-        deltas = {k: float(v) for k, v in (inputs.get("_deltas") or {}).items() if v}
+        deltas = {k: float(v) * self.uncertainty_scale for k, v in (inputs.get("_deltas") or {}).items()
+                  if v and self.it2}
         extras = {("input_intervals" if k == "_intervals" else k[1:]): v for k, v in inputs.items()
                   if k[:1] == "_" and k != "_deltas"}
         crisp = {k: v for k, v in inputs.items() if k[:1] != "_"}

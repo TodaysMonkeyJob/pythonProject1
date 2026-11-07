@@ -1,0 +1,1241 @@
+version: 2
+output: risk
+update_sec: 1
+defuzzification: centroid
+operators:
+  and: prod
+  or: probor
+  implication: prod
+  aggregation: sum
+default_output: 0.0
+variables:
+  intensity:
+    universe:
+    - 0
+    - 40
+    - 0.1
+    source:
+      universe:
+        kind: design
+        text: dB above this microphone's own background (modules/audio/intensity.py), 0..40 dB
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    unit: dB
+    default: 0
+    terms:
+      low:
+      - gauss
+      - 0.0
+      - 5.520591701872124
+      medium:
+      - gauss
+      - 10.0
+      - 3.609617651224081
+      high:
+      - gauss
+      - 40.0
+      - 21.233045007200477
+  sound_type_danger:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: danger degree 0..1 of the sound type (config/audio_types.yaml)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      safe:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      suspicious:
+      - gauss
+      - 0.4
+      - 0.12739827004320287
+      dangerous:
+      - gauss
+      - 1.0
+      - 0.38219481012960854
+  keyword_danger:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: highest grade of the danger words heard 0..1 (config/danger_words.yaml)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      none:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      alarming:
+      - gauss
+      - 0.4
+      - 0.12739827004320287
+      dangerous:
+      - gauss
+      - 0.7
+      - 0.12739827004320284
+      critical:
+      - gauss
+      - 1.0
+      - 0.12739827004320287
+  speaker_unknown:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: 'speaker identification outcome as a number: known 0, uncertain 0.5, unknown 1'
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      known:
+      - gauss
+      - 0.0
+      - 0.29726263010080667
+      uncertain:
+      - gauss
+      - 0.5
+      - 0.12739827004320287
+      unknown:
+      - gauss
+      - 1.0
+      - 0.29726263010080667
+  risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: risk 0..1
+      terms:
+        kind: design
+        text: equal areas, see gas.risk
+    terms:
+      low:
+      - trap
+      - 0
+      - 0
+      - 0.125
+      - 0.375
+      medium:
+      - tri
+      - 0.1
+      - 0.35
+      - 0.6
+      high:
+      - tri
+      - 0.4
+      - 0.65
+      - 0.9
+      critical:
+      - trap
+      - 0.625
+      - 0.875
+      - 1
+      - 1
+maps:
+  speaker_unknown:
+    known: 0.0
+    uncertain: 0.5
+    unknown: 1.0
+rules:
+- id: A0000
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS known THEN risk
+    IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: &id001 2026-11-07
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0001
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS uncertain THEN
+    risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0002
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS unknown THEN risk
+    IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0010
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS known THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0011
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0012
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS unknown THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0020
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS known THEN
+    risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0021
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0022
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS unknown THEN
+    risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0030
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS known THEN
+    risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0031
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0032
+  rule: IF intensity IS low AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS unknown THEN
+    risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0100
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS known THEN
+    risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0101
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS uncertain
+    THEN risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0102
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS unknown
+    THEN risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0110
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS known
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0111
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0112
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS unknown
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0120
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS known
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0121
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0122
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0130
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS known
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0131
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0132
+  rule: IF intensity IS low AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS unknown
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0200
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS known THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0201
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0202
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS unknown THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0210
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS known
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0211
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0212
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS unknown
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0220
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS known
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0221
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0222
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0230
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS known
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0231
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A0232
+  rule: IF intensity IS low AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS unknown
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1000
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS known THEN
+    risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1001
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS uncertain THEN
+    risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1002
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS unknown THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1010
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS known THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1011
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1012
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1020
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS known
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1021
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1022
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1030
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS known THEN
+    risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1031
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1032
+  rule: IF intensity IS medium AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS unknown
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1100
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS known
+    THEN risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1101
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS uncertain
+    THEN risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1102
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS unknown
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1110
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS known
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1111
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1112
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1120
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS
+    known THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1121
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS
+    uncertain THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1122
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS
+    unknown THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1130
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS known
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1131
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1132
+  rule: IF intensity IS medium AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS unknown
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1200
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS known
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1201
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1202
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS unknown
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1210
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS known
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1211
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1212
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1220
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS known
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1221
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1222
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1230
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS known
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1231
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A1232
+  rule: IF intensity IS medium AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS unknown
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2000
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS known THEN risk
+    IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2001
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS uncertain THEN
+    risk IS low
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2002
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS none AND speaker_unknown IS unknown THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2010
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS known THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2011
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2012
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS alarming AND speaker_unknown IS unknown THEN
+    risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2020
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS known THEN
+    risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2021
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2022
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS dangerous AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2030
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS known THEN
+    risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2031
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2032
+  rule: IF intensity IS high AND sound_type_danger IS safe AND keyword_danger IS critical AND speaker_unknown IS unknown THEN
+    risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2100
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS known THEN
+    risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2101
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2102
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS none AND speaker_unknown IS unknown
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2110
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS known
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2111
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS medium
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2112
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS alarming AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2120
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS known
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2121
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2122
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS dangerous AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2130
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS known
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2131
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2132
+  rule: IF intensity IS high AND sound_type_danger IS suspicious AND keyword_danger IS critical AND speaker_unknown IS unknown
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2200
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS known THEN
+    risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2201
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2202
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS none AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2210
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS known
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2211
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2212
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS alarming AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2220
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS known
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2221
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS uncertain
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2222
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS dangerous AND speaker_unknown IS unknown
+    THEN risk IS high
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2230
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS known
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2231
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS uncertain
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'
+- id: A2232
+  rule: IF intensity IS high AND sound_type_danger IS dangerous AND keyword_danger IS critical AND speaker_unknown IS unknown
+    THEN risk IS critical
+  meta:
+    source: A4 (TOD-44), modules/hfs/policy.py audio()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'max(speech, sound): speech = danger word grade (none / alarming / dangerous / critical → low … critical),
+      +1 for an unknown voice at least medium loud with at most alarming words; sound = sound type danger + loud − 1 (dangerous:
+      high when loud, medium otherwise; loud suspicious: medium).'

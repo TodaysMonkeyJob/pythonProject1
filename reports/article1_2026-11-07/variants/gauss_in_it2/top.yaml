@@ -1,0 +1,649 @@
+version: 1
+output: risk
+update_sec: 2
+defuzzification: centroid
+operators:
+  and: prod
+  or: probor
+  implication: prod
+  aggregation: sum
+default_output: 0.0
+variables:
+  risk_gas:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: a subsystem's risk 0..1
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      low:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      medium:
+      - gauss
+      - 0.35
+      - 0.10616522503600238
+      high:
+      - gauss
+      - 0.65
+      - 0.10616522503600238
+      critical:
+      - gauss
+      - 1.0
+      - 0.21233045007200477
+  risk_camera:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: a subsystem's risk 0..1
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      low:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      medium:
+      - gauss
+      - 0.35
+      - 0.10616522503600238
+      high:
+      - gauss
+      - 0.65
+      - 0.10616522503600238
+      critical:
+      - gauss
+      - 1.0
+      - 0.21233045007200477
+  risk_audio:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: a subsystem's risk 0..1
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      low:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      medium:
+      - gauss
+      - 0.35
+      - 0.10616522503600238
+      high:
+      - gauss
+      - 0.65
+      - 0.10616522503600238
+      critical:
+      - gauss
+      - 1.0
+      - 0.21233045007200477
+  risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: risk 0..1
+      terms:
+        kind: design
+        text: equal areas, see gas.risk
+    terms:
+      low:
+      - trap
+      - 0
+      - 0
+      - 0.125
+      - 0.375
+      medium:
+      - tri
+      - 0.1
+      - 0.35
+      - 0.6
+      high:
+      - tri
+      - 0.4
+      - 0.65
+      - 0.9
+      critical:
+      - trap
+      - 0.625
+      - 0.875
+      - 1
+      - 1
+rules:
+- id: T000
+  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS low THEN risk IS low
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: &id001 2026-11-06
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T001
+  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS medium THEN risk IS medium
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T002
+  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS high THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T003
+  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T010
+  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS low THEN risk IS medium
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T011
+  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS medium THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T012
+  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS high THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T013
+  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T020
+  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS low THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T021
+  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS medium THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T022
+  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T023
+  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T030
+  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T031
+  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T032
+  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T033
+  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T100
+  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS low THEN risk IS medium
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T101
+  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS medium THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T102
+  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS high THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T103
+  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T110
+  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS low THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T111
+  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS medium THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T112
+  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS high THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T113
+  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T120
+  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS low THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T121
+  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS medium THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T122
+  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T123
+  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T130
+  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T131
+  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T132
+  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T133
+  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T200
+  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS low THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T201
+  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS medium THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T202
+  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T203
+  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T210
+  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS low THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T211
+  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS medium THEN risk IS high
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T212
+  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T213
+  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T220
+  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T221
+  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T222
+  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T223
+  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T230
+  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T231
+  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T232
+  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T233
+  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T300
+  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T301
+  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T302
+  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T303
+  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T310
+  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T311
+  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T312
+  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T313
+  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T320
+  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T321
+  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T322
+  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T323
+  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T330
+  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T331
+  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T332
+  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
+- id: T333
+  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
+  meta:
+    source: supervisor requirements (TOD-41)
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
+      high → high, two medium → high, one medium → medium, all low → low.'
