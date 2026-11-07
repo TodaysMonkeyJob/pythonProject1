@@ -99,13 +99,14 @@ def write_report(out: str, manifest: Dict[str, Any], scenarios: List[Dict[str, A
     if mono:
         lines += ["", "Surfaces: `surfaces/<level>_<triangular|gaussian_inputs|gaussian_all>_<x>__<y>.png` (the "
                   "other inputs at the middle of their universe)."]
-    lines += ["", "## With vs without the mixture index", "",
-              f"Macro-F1 {summary['tri_it2']['macro_f1']:.3f} with, {summary['tri_it2_no_mixture']['macro_f1']:.3f} "
-              "without. Scenarios that change: " +
+    lines += ["", "## With vs without multi-gas escalation (TOD-50)", "",
+              "Without it the highest gas alone sets the gas risk (no second / third gas, no group index). "
+              f"Macro-F1 {summary['tri_it2']['macro_f1']:.3f} with, "
+              f"{summary['tri_it2_no_escalation']['macro_f1']:.3f} without. Scenarios that change: " +
               (", ".join(f"{s['id']} ({results['tri_it2'][s['id']]['level']} → "
-                         f"{results['tri_it2_no_mixture'][s['id']]['level']}, label {s['label']})"
+                         f"{results['tri_it2_no_escalation'][s['id']]['level']}, label {s['label']})"
                          for s in scenarios
-                         if results['tri_it2'][s['id']]['level'] != results['tri_it2_no_mixture'][s['id']]['level'])
+                         if results['tri_it2'][s['id']]['level'] != results['tri_it2_no_escalation'][s['id']]['level'])
                or "none") + ".", "",
               "## Latency (this machine — not the Raspberry Pi)", "",
               "| Level | Type-1 mean / p95, ms | IT2 mean / p95, ms |", "| -- | -- | -- |"]

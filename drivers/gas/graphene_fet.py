@@ -62,8 +62,9 @@ class GrapheneFET(Driver):
         return Descriptor(cls.name, "graphene FET board", getattr(port, "name", "?"), serial=hello.get("serial"),
                           needs_model=True, quantities=[
                               Quantity(gas, gas, "vol_pct", range=list(RANGE_VOL_PCT), accuracy=accuracy.get(gas),
-                                       sample_period=1.0, source="dataset range data/gas/data.xls; accuracy = "
-                                                                 "regressor MAE (reports/gas_metrics.json)")
+                                       sample_period=1.0, selectivity="cross_sensitive",
+                                       source="dataset range data/gas/data.xls; accuracy = regressor MAE "
+                                              "(reports/gas_metrics.json)")
                               for gas in GASES],
                           details={"gates": hello.get("gates", 16), "vg": hello.get("vg", [0.0, 1.5]),
                                    "model_unit": "vol_pct"})

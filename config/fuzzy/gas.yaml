@@ -1,18 +1,22 @@
-# A2 (TOD-42) level-1 subsystem "gas and PM2.5" of the autonomous hierarchical fuzzy system (modules/hfs) → risk 1.
-# Explain a case: python -m modules.hfs gas max_norm=0.6 mixture_index=1.2 dynamics=0
+# A2 (TOD-42) + A8 (TOD-50) level-1 subsystem "gas and PM2.5" of the autonomous hierarchical fuzzy system → risk 1.
+# Explain a case: python -m modules.hfs gas max_norm=0.42 second_norm=0.15 group_index=0.42 third_norm=0 dynamics=0
 #
 # Every substance as a share of its critical concentration, c_norm = c / c_crit (config/gases.yaml: NIOSH IDLH for
 # gases, EPA AQI 2024 "Hazardous" for PM2.5), so one rule base serves every gas and smoke. Terms (UA in comments):
-#   max_norm       safe (безпечно) · moderate (помірно) · dangerous (небезпечно) · critical (критично, = 1 at ≥ 1.0)
-#   mixture_index  low (низький) · noticeable (помітний) · high (високий, Σ c/c_crit ≥ 1)
-#   dynamics       falling (спад) · stable (стабільно) · rising (зростання) · sharp_rise (різке зростання)
+#   max_norm     safe (низький) · moderate (середній) · dangerous (високий) · critical (критичний, = 1 at ≥ 1.0)
+#   second_norm  none (спокійно / немає) · low · medium · high — the second-highest ACTIVE gas (lower bound above
+#                the calm band, modules/hfs/gas_escalation.py)
+#   group_index  below · reached (Σ c / c_crit ≥ 1 inside one effect group — the additive mixture rule)
+#   third_norm   below · high (a third active gas at high)
+#   dynamics     falling (спад) · stable (стабільно) · rising (зростання) · sharp_rise (різке зростання)
 #
-# Complete rule table (4 × 4 × 3 = 48 rules, G<max_norm><dynamics><mixture> = term indices) of modules/hfs/policy.py
-# gas(): max_norm safe / moderate / dangerous / critical → low / medium / high / critical; sharp rise → one level up;
-# mixture high → one level up. The issue's examples hold: critical → critical; dangerous + rising → high; moderate +
-# sharp rise → high; safe + low mixture → low; a high mixture raises the risk although every gas is below critical.
-# Ruspini terms + product / sum inference → exactly monotonic (policy.py, reports/surfaces/).
-version: 2
+# Complete rule table (4 × 4 × 2 × 2 × 4 = 256 rules, G<max><second><group><third><dynamics> = term indices) of
+# modules/hfs/policy.py gas(): the highest gas sets the level; a second active gas → one level above it; critical only
+# with evidence (a gas at critical, group index reached, three gases at high), otherwise capped at high; a sharp rise
+# → one level up. The issue's examples hold: NH3 low + CO medium → high; two gases below critical with a group index
+# < 1 → never critical; group index ≥ 1 → critical. Ruspini terms + product / sum inference → exactly monotonic
+# (policy.py, reports/surfaces/).
+version: 3
 output: risk
 update_sec: 2                      # inference period (sampling: docs/sensors.md; dynamics window: hfs.gas.window_sec)
 defuzzification: centroid
@@ -30,6 +34,35 @@ variables:
       moderate: [tri, 0.1, 0.3, 0.6]
       dangerous: [tri, 0.3, 0.6, 1.0]
       critical: [trap, 0.6, 1.0, 1.2, 1.2]
+  second_norm:                     # TOD-50: second-highest c / c_crit among the active gases that count (0: none)
+    universe: [0, 1.2, 0.005]
+    source:
+      universe: {kind: requirement, text: "c / C_crit of the second active gas, same scale as max_norm (TOD-50)"}
+      terms: {kind: requirement, text: "rows of the TOD-50 matrix (спокійно / низький / середній / високий): none → low over the calm band 0 … 0.05 C_crit (config/gases.yaml activity.calm_norm, design), then the max_norm fractions 0.1 / 0.3 / 0.6 of C_crit; Ruspini partition"}
+    default: 0
+    terms:
+      none: [trap, 0, 0, 0, 0.05]
+      low: [trap, 0, 0.05, 0.1, 0.3]
+      medium: [tri, 0.1, 0.3, 0.6]
+      high: [trap, 0.3, 0.6, 1.2, 1.2]
+  group_index:                     # TOD-50: max over effect groups of Σ c_i / c_crit,i of the counted gases
+    universe: [0, 3.6, 0.01]       # three substances at 1.2
+    source:
+      universe: {kind: design, text: "Σ c / C_crit of up to three substances at the 1.2 clip"}
+      terms: {kind: normative, text: "reached = Σ C_i / L_i ≥ 1 within one effect group: the additive mixture rule, OSHA 29 CFR 1910.1000(d)(2)(i) (E_m must not exceed unity); a 0.01 transition so that < 1 never reaches critical (TOD-50)"}
+    default: 0
+    terms:
+      below: [trap, 0, 0, 0.99, 1.0]
+      reached: [trap, 0.99, 1.0, 3.6, 3.6]
+  third_norm:                      # TOD-50: third-highest c / c_crit among the counted active gases (0: none)
+    universe: [0, 1.2, 0.005]
+    source:
+      universe: {kind: requirement, text: "c / C_crit of the third active gas (TOD-50: three gases at high → critical)"}
+      terms: {kind: requirement, text: "high = the max_norm 'dangerous' (високий) peak 0.6 C_crit, from 0.3 (its left foot); Ruspini partition"}
+    default: 0
+    terms:
+      below: [trap, 0, 0, 0.3, 0.6]
+      high: [trap, 0.3, 0.6, 1.2, 1.2]
   dynamics:                        # least-squares slope of max_norm per minute over hfs.gas.window_sec (60 s)
     universe: [-0.5, 0.5, 0.005]   # ±0.5 / min = from 0 to the critical level in 2 minutes
     source:
@@ -42,16 +75,6 @@ variables:
       stable: [tri, -0.1, 0, 0.1]
       rising: [tri, 0, 0.1, 0.25]          # 0.1 / min: critical within ~10 min
       sharp_rise: [trap, 0.1, 0.25, 0.5, 0.5]   # ≥ 0.25 / min: critical within ~4 min
-  mixture_index:                   # Σ c_i / c_crit,i (additive mixture rule of occupational exposure limits)
-    universe: [0, 3.6, 0.01]       # three substances at 1.2
-    source:
-      universe: {kind: design, text: "Σ c / C_crit of up to three substances at the 1.2 clip"}
-      terms: {kind: normative, text: "high = Σ C_i / L_i ≥ 1: the additive mixture rule, OSHA 29 CFR 1910.1000(d)(2)(i) (E_m must not exceed unity); low / noticeable split at 0.3 / 0.7 = the max_norm fractions (expert)"}
-    default: 0
-    terms:
-      low: [trap, 0, 0, 0.3, 0.7]
-      noticeable: [tri, 0.3, 0.7, 1.0]
-      high: [trap, 0.7, 1.0, 3.6, 3.6]
   risk:                            # same as the top level's output: equal areas (0.25), centroids ≈ 0.13 / 0.35 /
     universe: [0, 1, 0.005]        # 0.65 / 0.87 = the peaks of the top level's input terms
     source:
@@ -64,148 +87,772 @@ variables:
       critical: [trap, 0.625, 0.875, 1, 1]
 
 rules:
-  - id: G000
-    rule: "IF max_norm IS safe AND dynamics IS falling AND mixture_index IS low THEN risk IS low"
-    meta: &policy {source: "A2 (TOD-42), modules/hfs/policy.py gas()", author: TodaysMonkeyJob,
-                   added: 2026-11-06, rationale: "All substances as shares of their critical concentration (NIOSH IDLH / EPA Hazardous): max_norm safe / moderate / dangerous / critical → low / medium / high / critical (a single substance at c_crit is critical); a sharp rise → one level up; mixture index high (Σ c/c_crit ≥ 1) → one level up; falling never lowers a level."}
-  - id: G001
-    rule: "IF max_norm IS safe AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS low"
+  - id: G00000
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS low"
+    meta: &policy {source: "A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()", author: TodaysMonkeyJob,
+                   added: 2026-11-07, rationale: "The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high — otherwise capped at high; a sharp rise → one level up; falling never lowers a level."}
+  - id: G00001
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS low"
     meta: *policy
-  - id: G002
-    rule: "IF max_norm IS safe AND dynamics IS falling AND mixture_index IS high THEN risk IS medium"
+  - id: G00002
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS low"
     meta: *policy
-  - id: G010
-    rule: "IF max_norm IS safe AND dynamics IS stable AND mixture_index IS low THEN risk IS low"
+  - id: G00003
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS medium"
     meta: *policy
-  - id: G011
-    rule: "IF max_norm IS safe AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS low"
+  - id: G00010
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS low"
     meta: *policy
-  - id: G012
-    rule: "IF max_norm IS safe AND dynamics IS stable AND mixture_index IS high THEN risk IS medium"
+  - id: G00011
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS low"
     meta: *policy
-  - id: G020
-    rule: "IF max_norm IS safe AND dynamics IS rising AND mixture_index IS low THEN risk IS low"
+  - id: G00012
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS low"
     meta: *policy
-  - id: G021
-    rule: "IF max_norm IS safe AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS low"
+  - id: G00013
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS medium"
     meta: *policy
-  - id: G022
-    rule: "IF max_norm IS safe AND dynamics IS rising AND mixture_index IS high THEN risk IS medium"
+  - id: G00100
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS low"
     meta: *policy
-  - id: G030
-    rule: "IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS medium"
+  - id: G00101
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS low"
     meta: *policy
-  - id: G031
-    rule: "IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS medium"
+  - id: G00102
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS low"
     meta: *policy
-  - id: G032
-    rule: "IF max_norm IS safe AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS high"
+  - id: G00103
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS medium"
     meta: *policy
-  - id: G100
-    rule: "IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS low THEN risk IS medium"
+  - id: G00110
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS low"
     meta: *policy
-  - id: G101
-    rule: "IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS medium"
+  - id: G00111
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS low"
     meta: *policy
-  - id: G102
-    rule: "IF max_norm IS moderate AND dynamics IS falling AND mixture_index IS high THEN risk IS high"
+  - id: G00112
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS low"
     meta: *policy
-  - id: G110
-    rule: "IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS low THEN risk IS medium"
+  - id: G00113
+    rule: "IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS medium"
     meta: *policy
-  - id: G111
-    rule: "IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS medium"
+  - id: G01000
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G112
-    rule: "IF max_norm IS moderate AND dynamics IS stable AND mixture_index IS high THEN risk IS high"
+  - id: G01001
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G120
-    rule: "IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS low THEN risk IS medium"
+  - id: G01002
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G121
-    rule: "IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS medium"
+  - id: G01003
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
     meta: *policy
-  - id: G122
-    rule: "IF max_norm IS moderate AND dynamics IS rising AND mixture_index IS high THEN risk IS high"
+  - id: G01010
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G130
-    rule: "IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS high"
+  - id: G01011
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G131
-    rule: "IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS high"
+  - id: G01012
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G132
-    rule: "IF max_norm IS moderate AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical"
+  - id: G01013
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
     meta: *policy
-  - id: G200
-    rule: "IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS low THEN risk IS high"
+  - id: G01100
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G201
-    rule: "IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS high"
+  - id: G01101
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G202
-    rule: "IF max_norm IS dangerous AND dynamics IS falling AND mixture_index IS high THEN risk IS critical"
+  - id: G01102
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G210
-    rule: "IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS low THEN risk IS high"
+  - id: G01103
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
     meta: *policy
-  - id: G211
-    rule: "IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS high"
+  - id: G01110
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G212
-    rule: "IF max_norm IS dangerous AND dynamics IS stable AND mixture_index IS high THEN risk IS critical"
+  - id: G01111
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G220
-    rule: "IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS low THEN risk IS high"
+  - id: G01112
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G221
-    rule: "IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS high"
+  - id: G01113
+    rule: "IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
     meta: *policy
-  - id: G222
-    rule: "IF max_norm IS dangerous AND dynamics IS rising AND mixture_index IS high THEN risk IS critical"
+  - id: G02000
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G230
-    rule: "IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS critical"
+  - id: G02001
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G231
-    rule: "IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS critical"
+  - id: G02002
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G232
-    rule: "IF max_norm IS dangerous AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical"
+  - id: G02003
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
     meta: *policy
-  - id: G300
-    rule: "IF max_norm IS critical AND dynamics IS falling AND mixture_index IS low THEN risk IS critical"
+  - id: G02010
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G301
-    rule: "IF max_norm IS critical AND dynamics IS falling AND mixture_index IS noticeable THEN risk IS critical"
+  - id: G02011
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G302
-    rule: "IF max_norm IS critical AND dynamics IS falling AND mixture_index IS high THEN risk IS critical"
+  - id: G02012
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G310
-    rule: "IF max_norm IS critical AND dynamics IS stable AND mixture_index IS low THEN risk IS critical"
+  - id: G02013
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
     meta: *policy
-  - id: G311
-    rule: "IF max_norm IS critical AND dynamics IS stable AND mixture_index IS noticeable THEN risk IS critical"
+  - id: G02100
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G312
-    rule: "IF max_norm IS critical AND dynamics IS stable AND mixture_index IS high THEN risk IS critical"
+  - id: G02101
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G320
-    rule: "IF max_norm IS critical AND dynamics IS rising AND mixture_index IS low THEN risk IS critical"
+  - id: G02102
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G321
-    rule: "IF max_norm IS critical AND dynamics IS rising AND mixture_index IS noticeable THEN risk IS critical"
+  - id: G02103
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
     meta: *policy
-  - id: G322
-    rule: "IF max_norm IS critical AND dynamics IS rising AND mixture_index IS high THEN risk IS critical"
+  - id: G02110
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
     meta: *policy
-  - id: G330
-    rule: "IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS low THEN risk IS critical"
+  - id: G02111
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
     meta: *policy
-  - id: G331
-    rule: "IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS noticeable THEN risk IS critical"
+  - id: G02112
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
     meta: *policy
-  - id: G332
-    rule: "IF max_norm IS critical AND dynamics IS sharp_rise AND mixture_index IS high THEN risk IS critical"
+  - id: G02113
+    rule: "IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G03000
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G03001
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G03002
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G03003
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G03010
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G03011
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G03012
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G03013
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G03100
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G03101
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G03102
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G03103
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G03110
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G03111
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G03112
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G03113
+    rule: "IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G10000
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G10001
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G10002
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G10003
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G10010
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G10011
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G10012
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G10013
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G10100
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G10101
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G10102
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G10103
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G10110
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS medium"
+    meta: *policy
+  - id: G10111
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS medium"
+    meta: *policy
+  - id: G10112
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS medium"
+    meta: *policy
+  - id: G10113
+    rule: "IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS high"
+    meta: *policy
+  - id: G11000
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G11001
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G11002
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G11003
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G11010
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G11011
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G11012
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G11013
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G11100
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G11101
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G11102
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G11103
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G11110
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G11111
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G11112
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G11113
+    rule: "IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G12000
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G12001
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G12002
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G12003
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G12010
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G12011
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G12012
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G12013
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G12100
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G12101
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G12102
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G12103
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G12110
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G12111
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G12112
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G12113
+    rule: "IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G13000
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G13001
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G13002
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G13003
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G13010
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G13011
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G13012
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G13013
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G13100
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G13101
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G13102
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G13103
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G13110
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G13111
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G13112
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G13113
+    rule: "IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G20000
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G20001
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G20002
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G20003
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G20010
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G20011
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G20012
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G20013
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G20100
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G20101
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G20102
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G20103
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G20110
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G20111
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G20112
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G20113
+    rule: "IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G21000
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G21001
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G21002
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G21003
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G21010
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G21011
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G21012
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G21013
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G21100
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G21101
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G21102
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G21103
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G21110
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G21111
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G21112
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G21113
+    rule: "IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G22000
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G22001
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G22002
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G22003
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G22010
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G22011
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G22012
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G22013
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G22100
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G22101
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G22102
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G22103
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G22110
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G22111
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G22112
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G22113
+    rule: "IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G23000
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS high"
+    meta: *policy
+  - id: G23001
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS high"
+    meta: *policy
+  - id: G23002
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS high"
+    meta: *policy
+  - id: G23003
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G23010
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G23011
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G23012
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G23013
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G23100
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G23101
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G23102
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G23103
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G23110
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G23111
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G23112
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G23113
+    rule: "IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G30000
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G30001
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G30002
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G30003
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G30010
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G30011
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G30012
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G30013
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G30100
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G30101
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G30102
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G30103
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G30110
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G30111
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G30112
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G30113
+    rule: "IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G31000
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G31001
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G31002
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G31003
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G31010
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G31011
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G31012
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G31013
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G31100
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G31101
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G31102
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G31103
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G31110
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G31111
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G31112
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G31113
+    rule: "IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G32000
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G32001
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G32002
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G32003
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G32010
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G32011
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G32012
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G32013
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G32100
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G32101
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G32102
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G32103
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G32110
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G32111
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G32112
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G32113
+    rule: "IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G33000
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G33001
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G33002
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G33003
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G33010
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G33011
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G33012
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G33013
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G33100
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G33101
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G33102
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G33103
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise THEN risk IS critical"
+    meta: *policy
+  - id: G33110
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS falling THEN risk IS critical"
+    meta: *policy
+  - id: G33111
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS stable THEN risk IS critical"
+    meta: *policy
+  - id: G33112
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS rising THEN risk IS critical"
+    meta: *policy
+  - id: G33113
+    rule: "IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise THEN risk IS critical"
     meta: *policy

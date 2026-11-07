@@ -137,7 +137,7 @@ def test_rule_table_is_complete_smooth_and_follows_the_policy(name):
 def test_surface_is_exactly_monotonic(name):
     """A riskier input never lowers the risk (complete smooth table, Ruspini, product / sum inference)."""
     engine = FuzzyEngine.from_dict(load_yaml(os.path.join(REPO, "config", "fuzzy", f"{name}.yaml")))
-    report = monotonicity(engine, 7 if name == "audio" else 11)
+    report = monotonicity(engine, 7 if name == "audio" else 11, nodes=name == "gas")      # gas: 5 inputs
     assert all(stats["falls"] == 0 for stats in report.values()), report
 
 
@@ -179,20 +179,22 @@ def test_any_single_substance_at_its_critical_level_is_critical():
         assert result["inputs"]["max_norm"] >= 0.999 and result["level"] == "critical", (gas_name, result)
 
 
-def test_mixture_of_two_gases_is_worse_than_one():
+def test_two_gases_of_one_effect_group_add_up_others_only_raise_one_step():
+    """TOD-50 (replaces the TOD-42 Σ over every gas): the additive index only inside an effect group."""
     one, two = GasSubsystem(CONFIG), GasSubsystem(CONFIG)
     one.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), 1000.0)
     two.observe(ev("gas_reading", {"readings": [{"gas": "ammonia", "concentration": 180, "unit": "ppm"},
                                                 {"gas": "CO", "concentration": 720, "unit": "ppm"}]}), 1000.0)
     single, mixed = one.evaluate("lab", 1000.0, True), two.evaluate("lab", 1000.0, True)
-    assert mixed["inputs"]["mixture_index"] == pytest.approx(1.2) and single["inputs"]["mixture_index"] == 0.6
-    assert mixed["risk"] > single["risk"] and (single["level"], mixed["level"]) == ("high", "critical")
-    # … also from two separate sensors in the same location
-    two_sensors = GasSubsystem(CONFIG)
-    two_sensors.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), 1000.0)
-    two_sensors.observe(ev("gas_reading", {"gas": "pm2_5", "concentration": 135.3, "unit": "ug_m3"},
-                           device="pm-1"), 1000.0)
-    assert two_sensors.evaluate("lab", 1000.0, True)["level"] == "critical"
+    assert mixed["inputs"]["second_norm"] == pytest.approx(0.6) and mixed["inputs"]["group_index"] == 0.6
+    assert (single["level"], mixed["level"]) == ("high", "high")      # irritant + asphyxiant: capped at high
+    same_group = GasSubsystem(CONFIG)                                  # NH₃ + Cl₂: both irritants, Σ = 1.2
+    same_group.observe(ev("gas_reading", {"gas": "ammonia", "concentration": 180, "unit": "ppm"}), 1000.0)
+    same_group.observe(ev("gas_reading", {"gas": "chlorine", "concentration": 6, "unit": "ppm"}, device="cl-1"),
+                       1000.0)
+    result = same_group.evaluate("lab", 1000.0, True)
+    assert result["inputs"]["group_index"] == pytest.approx(1.2) and result["level"] == "critical"
+    assert result["escalation"]["groups"] == {"irritant": 1.2}
 
 
 def test_dynamics_is_the_slope_of_max_norm_over_the_window():
@@ -216,10 +218,10 @@ def test_gas_rules_from_the_issue():
     gas = GasSubsystem(CONFIG)
     level = lambda **inputs: gas.infer(inputs)["level"]  # noqa: E731
     assert level(max_norm=1.0) == "critical"
-    assert level(max_norm=0.3, mixture_index=1.2) == "high"       # mixture raises the risk below c_crit
-    assert level(max_norm=0.6, mixture_index=0.6, dynamics=0.1) == "high"
-    assert level(max_norm=0.3, mixture_index=0.3, dynamics=0.3) == "high"
-    assert level(max_norm=0.05, mixture_index=0.05) == "low"
+    assert level(max_norm=0.3, second_norm=0.15) == "high"        # a second gas raises one step below c_crit
+    assert level(max_norm=0.6, group_index=0.6, dynamics=0.1) == "high"
+    assert level(max_norm=0.3, dynamics=0.3) == "high"            # moderate + sharp rise
+    assert level(max_norm=0.05) == "low"
 
 
 def test_camera_subsystem_strangers_at_night_vs_known_by_day():
@@ -346,7 +348,7 @@ def test_hfs_publishes_per_location_on_change_and_marks_partial():
     clock.t += 3
     [second] = system.tick()
     assert second["level"] == "critical" and second["missing"] == [] and second["partial"] is False
-    assert second["fired_rules_by_level"]["gas"][0]["id"] == "G312"
+    assert second["fired_rules_by_level"]["gas"][0]["id"] == "G30101"       # critical, alone, steady
     assert second["fired_rules_by_level"]["top"][0]["id"] == "T300"
     clock.t += 31
     [third] = system.tick()                       # gas reading stale → partial again

@@ -47,8 +47,8 @@ class PMS5003(Driver):
         except (OSError, DriverError):
             return None
         return Descriptor(cls.name, "Plantower PMS5003", getattr(port, "name", "?"), quantities=[
-            Quantity("pm2_5", "pm2_5", "ug_m3", source="Plantower PMS5003: range / accuracy not checked "
-                                                        "(docs/sensors.md) — unknown")])
+            Quantity("pm2_5", "pm2_5", "ug_m3", selectivity="selective",
+                     source="Plantower PMS5003: range / accuracy not checked (docs/sensors.md) — unknown")])
 
     def read(self) -> Dict[str, Any]:
         self.bus.reset()
@@ -83,7 +83,8 @@ class SDS011(Driver):
         except (OSError, DriverError):
             return None
         return Descriptor(cls.name, "Nova Fitness SDS011", getattr(port, "name", "?"), serial=frame["id"],
-                          quantities=[Quantity("pm2_5", "pm2_5", "ug_m3", range=[0.0, 999.9], resolution=0.3,
+                          quantities=[Quantity("pm2_5", "pm2_5", "ug_m3", selectivity="selective", range=[0.0, 999.9],
+                                               resolution=0.3,
                                                accuracy={"relative": 0.15, "absolute": 10.0},
                                                source="Nova SDS011 datasheet copy (docs/sensors.md)")])
 
@@ -145,7 +146,7 @@ class SPS30(Driver):
         except (OSError, DriverError, UnicodeDecodeError):
             return None
         return Descriptor(cls.name, "Sensirion SPS30", getattr(bus, "name", "?"), address, serial=serial or None,
-                          quantities=[Quantity("pm2_5", "pm2_5", "ug_m3", range=[0.0, 1000.0],
+                          quantities=[Quantity("pm2_5", "pm2_5", "ug_m3", selectivity="selective", range=[0.0, 1000.0],
                                                accuracy={"relative": 0.10, "absolute": 10.0},
                                                source="Sensirion SPS30 datasheet copy / secondary table "
                                                       "(docs/sensors.md)")])

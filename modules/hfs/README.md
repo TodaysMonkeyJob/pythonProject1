@@ -3,7 +3,7 @@
 Article 1: every decision is made locally by a two-level fuzzy system — no LLM, no network.
 
 ```
-gas_reading ─▶ gas    (max_norm, dynamics, mixture_index: c / c_crit)          ─▶ risk 1 ┐
+gas_reading ─▶ gas    (max_norm, second_norm, group_index, third_norm, dynamics) ─▶ risk 1 ┐
 motion(_level), object_detected, person_identified ─▶ camera (unknown_share,       ─▶ risk 2 ├─▶ top ─▶ overall risk
                                               motion_intensity, activity_time)           │        per location
 audio_level, sound_type, speech ─▶ audio (intensity, sound_type_danger,             ─▶ risk 3 ┘   (hfs_risk event)
@@ -49,8 +49,12 @@ python -m tools.plot_surfaces                                  # reports/surface
 ```
 
 Gas (A2 / TOD-42): every substance as c / c_crit from `config/gases.yaml` (NIOSH IDLH; EPA AQI Hazardous for PM2.5;
-`gas_normalize.py`: vol % / ppm / mg/m³ / µg/m³). `max_norm` = max, `mixture_index` = Σ (two gases at 0.6 → critical,
-one → high), `dynamics` = least-squares slope of max_norm per minute over 60 s. Sensor survey, periods and the
+`gas_normalize.py`: vol % / ppm / mg/m³ / µg/m³). `max_norm` = max, `dynamics` = least-squares slope of max_norm per
+minute over 60 s. A8 (TOD-50, `gas_escalation.py`): a second active gas (lower bound above `activity.calm_norm`)
+raises the level one step above the highest gas; critical only with evidence — a gas at critical, `group_index` =
+Σ c / c_crit ≥ 1 inside one effect group of `config/gases.yaml`, or three gases at high; cross-sensitive readings
+without a selective sensor and benign co-occurrences (`benign`, location rule `gas_benign`) do not escalate. Every
+decision with an active gas has a Ukrainian `explanation` in `hfs_risk.subsystems.gas`. Sensor survey, periods and the
 graphene range problem (its whole dataset is above C_crit): `docs/sensors.md`.
 
 Camera (A3 / TOD-43): `unknown_share` = N_unknown / (N_unknown + N_known) in view, with an interval from the

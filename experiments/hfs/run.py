@@ -7,14 +7,14 @@ Every scenario of ``experiments/hfs/scenarios.yaml`` (60 s of events: gas readin
 motion level, microphone level, a sound type, a transcript — seeded measurement noise) is replayed through the real
 ``HierarchicalFuzzySystem`` in every configuration:
 
-| configuration | membership functions | inference | mixture index |
+| configuration | membership functions | inference | multi-gas escalation (TOD-50) |
 | -- | -- | -- | -- |
 | tri_type1 | triangular / trapezoidal | type-1 (δ = 0) | yes |
 | tri_it2 (the deployed system) | triangular / trapezoidal | interval type-2, δ from config/uncertainty.yaml | yes |
 | gauss_in_type1 | Gaussian inputs (same centres / widths), triangular risk terms | type-1 | yes |
 | gauss_in_it2 | Gaussian inputs | interval type-2 | yes |
 | gauss_all_type1 | Gaussian inputs and risk terms | type-1 | yes |
-| tri_it2_no_mixture | triangular | interval type-2 | no |
+| tri_it2_no_escalation | triangular | interval type-2 | no (the highest gas alone) |
 
 Metrics against the expert labels: macro-F1 and accuracy of the overall level, Brier / ECE of the level
 probabilities (output-term memberships at the risk), corridor width and coverage (the corridor reaches the expected
@@ -38,20 +38,20 @@ import yaml
 from core.events import make_event
 from core.fuzzy import FuzzyEngine, load_yaml
 from experiments.hfs import metrics as M
-from experiments.hfs.variants import gaussian, without_mixture
+from experiments.hfs.variants import gaussian, without_escalation
 from modules.hfs.worker import HierarchicalFuzzySystem
 
 LEVELS = ("gas", "camera", "audio", "top")
 CONFIGS = {
-    "tri_type1": {"shape": "tri", "it2": False, "mixture": True},
-    "tri_it2": {"shape": "tri", "it2": True, "mixture": True},
-    "gauss_in_type1": {"shape": "gauss_in", "it2": False, "mixture": True},
-    "gauss_in_it2": {"shape": "gauss_in", "it2": True, "mixture": True},
-    "gauss_all_type1": {"shape": "gauss", "it2": False, "mixture": True},
-    "tri_it2_no_mixture": {"shape": "tri", "it2": True, "mixture": False},
+    "tri_type1": {"shape": "tri", "it2": False, "escalation": True},
+    "tri_it2": {"shape": "tri", "it2": True, "escalation": True},
+    "gauss_in_type1": {"shape": "gauss_in", "it2": False, "escalation": True},
+    "gauss_in_it2": {"shape": "gauss_in", "it2": True, "escalation": True},
+    "gauss_all_type1": {"shape": "gauss", "it2": False, "escalation": True},
+    "tri_it2_no_escalation": {"shape": "tri", "it2": True, "escalation": False},
 }
 MAIN = "tri_it2"
-SURFACE_PAIRS = {"gas": [("max_norm", "dynamics"), ("max_norm", "mixture_index")],
+SURFACE_PAIRS = {"gas": [("max_norm", "dynamics"), ("max_norm", "second_norm")],
                  "camera": [("unknown_share", "motion_intensity"), ("unknown_share", "activity_time")],
                  "audio": [("intensity", "sound_type_danger"), ("keyword_danger", "speaker_unknown")],
                  "top": [("risk_gas", "risk_camera")]}
@@ -67,8 +67,8 @@ def write_variants(out_dir: str, name: str, spec: Dict[str, Any]) -> Dict[str, s
         data = load_yaml(os.path.join("config", "fuzzy", f"{level}.yaml"))
         if spec["shape"] in ("gauss", "gauss_in"):
             data = gaussian(data, outputs=spec["shape"] == "gauss")
-        if level == "gas" and not spec["mixture"]:
-            data = without_mixture(data)
+        if level == "gas" and not spec["escalation"]:
+            data = without_escalation(data)
         path = os.path.join(folder, f"{level}.yaml")
         with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, width=120)
@@ -197,7 +197,8 @@ def surfaces(out_dir: str, variant_paths: Dict[str, Dict[str, str]]) -> Dict[str
                           ("gaussian_all", "gauss_all_type1")):
         for level in LEVELS:
             engine = FuzzyEngine.from_dict(load_yaml(variant_paths[config][level]))
-            stats = monotonicity(engine, 7 if level == "audio" else 11)
+            stats = monotonicity(engine, {"audio": 7, "gas": 6}.get(level, 11))   # gas: 5 inputs, same grid for
+                                                                                    # every shape
             steps = sum(s["steps"] for s in stats.values())
             falls = sum(s["falls"] for s in stats.values())
             table.setdefault(level, {})[shape] = {
@@ -205,7 +206,8 @@ def surfaces(out_dir: str, variant_paths: Dict[str, Dict[str, str]]) -> Dict[str
                 "max_fall": max(s["max_fall"] for s in stats.values()),
                 "level_drops": sum(s["level_drops"] for s in stats.values())}
             for x, y in SURFACE_PAIRS[level]:
-                rest = {n: middle(engine, n) for n in engine.variables if n not in (x, y, engine.output)}
+                rest = {n: 0.0 if level == "gas" else middle(engine, n)        # gas: no other gas, steady
+                        for n in engine.variables if n not in (x, y, engine.output)}
                 name = os.path.join(folder, f"{level}_{shape}_{x}__{y}.png")
                 plot(engine, f"{level} ({shape})", x, y, rest, 31, name)
     return table
