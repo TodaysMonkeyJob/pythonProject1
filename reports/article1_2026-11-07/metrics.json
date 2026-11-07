@@ -1,28 +1,28 @@
 {
  "manifest": {
   "seed": 42,
-  "git": "eece577",
-  "date": "2026-11-07T10:07:59+00:00",
-  "scenarios": 46,
+  "git": "ef9919a",
+  "date": "2026-11-07T18:02:04+00:00",
+  "scenarios": 48,
   "labels": "draft — author's expert labels, to be confirmed by the supervisor",
   "files": {
-   "experiments/hfs/scenarios.yaml": "75a2ce5fe337",
+   "experiments/hfs/scenarios.yaml": "6af30353f4c1",
    "config/uncertainty.yaml": "c29c1ea5ebe8",
-   "config/gases.yaml": "80f40a5ce458",
-   "config/fuzzy/gas.yaml": "0a13c9cfe1b6",
+   "config/gases.yaml": "65660c3d8ac0",
+   "config/fuzzy/gas.yaml": "25891a96f83d",
    "config/fuzzy/camera.yaml": "e22fe96ab194",
    "config/fuzzy/audio.yaml": "a27d4a3d1b4c",
-   "config/fuzzy/top.yaml": "4c055470cdcf"
+   "config/fuzzy/top.yaml": "2b5479cddbb9"
   }
  },
  "summary": {
   "tri_type1": {
    "macro_f1": 0.9781,
-   "accuracy": 0.9783,
-   "brier": 0.0635,
-   "ece": 0.12,
+   "accuracy": 0.9792,
+   "brier": 0.0624,
+   "ece": 0.1151,
    "corridor_width_mean": 0.0,
-   "corridor_coverage": 0.9783,
+   "corridor_coverage": 0.9792,
    "macro_f1_by_group": {
     "audio": 1.0,
     "camera": 0.9365,
@@ -52,7 +52,7 @@
     "high": {
      "low": 0,
      "medium": 0,
-     "high": 12,
+     "high": 14,
      "critical": 0
     },
     "critical": {
@@ -64,22 +64,27 @@
    }
   },
   "tri_it2": {
-   "macro_f1": 0.9781,
-   "accuracy": 0.9783,
-   "brier": 0.0635,
-   "ece": 0.12,
-   "corridor_width_mean": 0.1825,
-   "corridor_coverage": 0.9783,
+   "macro_f1": 0.9596,
+   "accuracy": 0.9583,
+   "brier": 0.1001,
+   "ece": 0.0944,
+   "corridor_width_mean": 0.1136,
+   "corridor_coverage": 0.9583,
    "macro_f1_by_group": {
     "audio": 1.0,
     "camera": 0.9365,
-    "combined": 1.0,
+    "combined": 0.8667,
     "gas": 1.0
    },
    "misses": [
     {
      "id": "c03",
      "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "x02",
+     "label": "high",
      "got": "medium"
     }
    ],
@@ -98,8 +103,8 @@
     },
     "high": {
      "low": 0,
-     "medium": 0,
-     "high": 12,
+     "medium": 1,
+     "high": 13,
      "critical": 0
     },
     "critical": {
@@ -111,28 +116,53 @@
    }
   },
   "gauss_in_type1": {
-   "macro_f1": 0.4865,
-   "accuracy": 0.5652,
-   "brier": 0.6981,
-   "ece": 0.3849,
+   "macro_f1": 0.1663,
+   "accuracy": 0.25,
+   "brier": 1.1902,
+   "ece": 0.5707,
    "corridor_width_mean": 0.0,
-   "corridor_coverage": 0.5652,
+   "corridor_coverage": 0.25,
    "macro_f1_by_group": {
-    "audio": 0.4722,
-    "camera": 0.4792,
-    "combined": 0.4643,
-    "gas": 0.5
+    "audio": 0.1,
+    "camera": 0.0833,
+    "combined": 0.2833,
+    "gas": 0.1667
    },
    "misses": [
     {
      "id": "g01",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "g02",
      "label": "medium",
      "got": "high"
+    },
+    {
+     "id": "g03",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g07",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g08",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g09",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g10",
+     "label": "high",
+     "got": "critical"
     },
     {
      "id": "g11",
@@ -145,14 +175,19 @@
      "got": "high"
     },
     {
+     "id": "g14",
+     "label": "high",
+     "got": "critical"
+    },
+    {
      "id": "c01",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "c02",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "c03",
@@ -162,12 +197,32 @@
     {
      "id": "c04",
      "label": "medium",
+     "got": "critical"
+    },
+    {
+     "id": "c05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c07",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c08",
+     "label": "medium",
      "got": "high"
     },
     {
      "id": "c09",
      "label": "low",
-     "got": "medium"
+     "got": "high"
+    },
+    {
+     "id": "c10",
+     "label": "high",
+     "got": "critical"
     },
     {
      "id": "c11",
@@ -177,22 +232,37 @@
     {
      "id": "c12",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "a01",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "a02",
      "label": "low",
-     "got": "medium"
+     "got": "high"
+    },
+    {
+     "id": "a03",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a05",
+     "label": "high",
+     "got": "critical"
     },
     {
      "id": "a06",
      "label": "medium",
      "got": "high"
+    },
+    {
+     "id": "a07",
+     "label": "high",
+     "got": "critical"
     },
     {
      "id": "a08",
@@ -202,7 +272,7 @@
     {
      "id": "a09",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "a10",
@@ -210,39 +280,54 @@
      "got": "high"
     },
     {
+     "id": "a11",
+     "label": "high",
+     "got": "critical"
+    },
+    {
      "id": "a12",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "x04",
      "label": "low",
-     "got": "medium"
+     "got": "high"
+    },
+    {
+     "id": "x05",
+     "label": "high",
+     "got": "critical"
     },
     {
      "id": "x07",
      "label": "medium",
      "got": "high"
+    },
+    {
+     "id": "x08",
+     "label": "high",
+     "got": "critical"
     }
    ],
    "confusion": {
     "low": {
      "low": 0,
-     "medium": 10,
-     "high": 1,
+     "medium": 0,
+     "high": 11,
      "critical": 0
     },
     "medium": {
      "low": 0,
-     "medium": 3,
-     "high": 9,
-     "critical": 0
+     "medium": 0,
+     "high": 11,
+     "critical": 1
     },
     "high": {
      "low": 0,
      "medium": 0,
-     "high": 12,
-     "critical": 0
+     "high": 1,
+     "critical": 13
     },
     "critical": {
      "low": 0,
@@ -253,17 +338,17 @@
    }
   },
   "gauss_in_it2": {
-   "macro_f1": 0.4865,
-   "accuracy": 0.5652,
-   "brier": 0.6981,
-   "ece": 0.3849,
-   "corridor_width_mean": 0.2152,
-   "corridor_coverage": 0.7174,
+   "macro_f1": 0.4691,
+   "accuracy": 0.5625,
+   "brier": 0.7669,
+   "ece": 0.2948,
+   "corridor_width_mean": 0.1408,
+   "corridor_coverage": 0.6875,
    "macro_f1_by_group": {
-    "audio": 0.4722,
-    "camera": 0.4792,
-    "combined": 0.4643,
-    "gas": 0.5
+    "audio": 0.5375,
+    "camera": 0.3654,
+    "combined": 0.4375,
+    "gas": 0.4773
    },
    "misses": [
     {
@@ -275,6 +360,11 @@
      "id": "g02",
      "label": "medium",
      "got": "high"
+    },
+    {
+     "id": "g08",
+     "label": "high",
+     "got": "critical"
     },
     {
      "id": "g11",
@@ -294,7 +384,7 @@
     {
      "id": "c02",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "c03",
@@ -304,158 +394,6 @@
     {
      "id": "c04",
      "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "c09",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "c11",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "c12",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "a01",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "a02",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "a06",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "a08",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "a09",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "a10",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "a12",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "x04",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "x07",
-     "label": "medium",
-     "got": "high"
-    }
-   ],
-   "confusion": {
-    "low": {
-     "low": 0,
-     "medium": 10,
-     "high": 1,
-     "critical": 0
-    },
-    "medium": {
-     "low": 0,
-     "medium": 3,
-     "high": 9,
-     "critical": 0
-    },
-    "high": {
-     "low": 0,
-     "medium": 0,
-     "high": 12,
-     "critical": 0
-    },
-    "critical": {
-     "low": 0,
-     "medium": 0,
-     "high": 0,
-     "critical": 11
-    }
-   }
-  },
-  "gauss_all_type1": {
-   "macro_f1": 0.3605,
-   "accuracy": 0.4348,
-   "brier": 0.7411,
-   "ece": 0.2462,
-   "corridor_width_mean": 0.0,
-   "corridor_coverage": 0.4565,
-   "macro_f1_by_group": {
-    "audio": 0.1364,
-    "camera": 0.1364,
-    "combined": 0.4018,
-    "gas": 0.4
-   },
-   "misses": [
-    {
-     "id": "g01",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "g02",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "g07",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "g11",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "g12",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "c01",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "c02",
-     "label": "low",
-     "got": "medium"
-    },
-    {
-     "id": "c03",
-     "label": "low",
-     "got": "high"
-    },
-    {
-     "id": "c04",
-     "label": "medium",
-     "got": "high"
-    },
-    {
-     "id": "c06",
-     "label": "critical",
      "got": "high"
     },
     {
@@ -466,7 +404,7 @@
     {
      "id": "c09",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "c11",
@@ -476,7 +414,7 @@
     {
      "id": "c12",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "a01",
@@ -494,16 +432,6 @@
      "got": "high"
     },
     {
-     "id": "a04",
-     "label": "critical",
-     "got": "high"
-    },
-    {
-     "id": "a06",
-     "label": "medium",
-     "got": "high"
-    },
-    {
      "id": "a08",
      "label": "medium",
      "got": "high"
@@ -514,24 +442,14 @@
      "got": "medium"
     },
     {
-     "id": "a10",
-     "label": "medium",
-     "got": "high"
-    },
-    {
      "id": "a12",
      "label": "low",
      "got": "medium"
     },
     {
-     "id": "x03",
-     "label": "critical",
-     "got": "high"
-    },
-    {
      "id": "x04",
      "label": "low",
-     "got": "medium"
+     "got": "high"
     },
     {
      "id": "x07",
@@ -542,8 +460,230 @@
    "confusion": {
     "low": {
      "low": 0,
-     "medium": 10,
-     "high": 1,
+     "medium": 6,
+     "high": 5,
+     "critical": 0
+    },
+    "medium": {
+     "low": 0,
+     "medium": 3,
+     "high": 9,
+     "critical": 0
+    },
+    "high": {
+     "low": 0,
+     "medium": 0,
+     "high": 13,
+     "critical": 1
+    },
+    "critical": {
+     "low": 0,
+     "medium": 0,
+     "high": 0,
+     "critical": 11
+    }
+   }
+  },
+  "gauss_all_type1": {
+   "macro_f1": 0.1765,
+   "accuracy": 0.25,
+   "brier": 1.0533,
+   "ece": 0.4774,
+   "corridor_width_mean": 0.0,
+   "corridor_coverage": 0.2292,
+   "macro_f1_by_group": {
+    "audio": 0.1,
+    "camera": 0.1,
+    "combined": 0.3125,
+    "gas": 0.1667
+   },
+   "misses": [
+    {
+     "id": "g01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "g02",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g03",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g07",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g08",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g09",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g10",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g12",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g14",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c02",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c04",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c07",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c09",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c10",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c12",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a02",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a03",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a06",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a07",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a09",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a10",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a11",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a12",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "x04",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "x05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "x07",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "x09",
+     "label": "critical",
+     "got": "high"
+    }
+   ],
+   "confusion": {
+    "low": {
+     "low": 0,
+     "medium": 0,
+     "high": 11,
      "critical": 0
     },
     "medium": {
@@ -555,44 +695,54 @@
     "high": {
      "low": 0,
      "medium": 0,
-     "high": 12,
-     "critical": 0
+     "high": 2,
+     "critical": 12
     },
     "critical": {
      "low": 0,
      "medium": 0,
-     "high": 3,
-     "critical": 8
+     "high": 1,
+     "critical": 10
     }
    }
   },
-  "tri_it2_no_mixture": {
-   "macro_f1": 0.9361,
-   "accuracy": 0.9348,
-   "brier": 0.1363,
-   "ece": 0.0729,
-   "corridor_width_mean": 0.1767,
-   "corridor_coverage": 0.9348,
+  "tri_it2_no_escalation": {
+   "macro_f1": 0.902,
+   "accuracy": 0.8958,
+   "brier": 0.1977,
+   "ece": 0.0323,
+   "corridor_width_mean": 0.1115,
+   "corridor_coverage": 0.8958,
    "macro_f1_by_group": {
     "audio": 1.0,
     "camera": 0.9365,
-    "combined": 1.0,
-    "gas": 0.8611
+    "combined": 0.8667,
+    "gas": 0.8389
    },
    "misses": [
-    {
-     "id": "g08",
-     "label": "critical",
-     "got": "high"
-    },
     {
      "id": "g09",
      "label": "high",
      "got": "medium"
     },
     {
+     "id": "g14",
+     "label": "high",
+     "got": "medium"
+    },
+    {
+     "id": "g15",
+     "label": "critical",
+     "got": "high"
+    },
+    {
      "id": "c03",
      "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "x02",
+     "label": "high",
      "got": "medium"
     }
    ],
@@ -611,7 +761,7 @@
     },
     "high": {
      "low": 0,
-     "medium": 1,
+     "medium": 3,
      "high": 11,
      "critical": 0
     },
@@ -627,64 +777,64 @@
  "delta_sweep": {
   "0.0": {
    "corridor_width_mean": 0.0,
-   "corridor_coverage": 0.9783,
+   "corridor_coverage": 0.9792,
    "macro_f1": 0.9781
   },
   "0.5": {
-   "corridor_width_mean": 0.067,
-   "corridor_coverage": 0.9783,
+   "corridor_width_mean": 0.0616,
+   "corridor_coverage": 0.9792,
    "macro_f1": 0.9781
   },
   "1.0": {
-   "corridor_width_mean": 0.1825,
-   "corridor_coverage": 0.9783,
-   "macro_f1": 0.9781
+   "corridor_width_mean": 0.1136,
+   "corridor_coverage": 0.9583,
+   "macro_f1": 0.9596
   },
   "2.0": {
-   "corridor_width_mean": 0.2679,
-   "corridor_coverage": 1.0,
-   "macro_f1": 0.9781
+   "corridor_width_mean": 0.184,
+   "corridor_coverage": 0.9583,
+   "macro_f1": 0.9596
   }
  },
  "latency_ms": {
   "gas": {
    "tri_type1": {
-    "mean": 0.221,
-    "p95": 0.258
+    "mean": 0.663,
+    "p95": 0.742
    },
    "tri_it2": {
-    "mean": 0.385,
-    "p95": 0.724
+    "mean": 1.546,
+    "p95": 3.008
    }
   },
   "camera": {
    "tri_type1": {
-    "mean": 0.255,
-    "p95": 0.305
+    "mean": 0.266,
+    "p95": 0.301
    },
    "tri_it2": {
-    "mean": 0.424,
-    "p95": 0.463
+    "mean": 0.443,
+    "p95": 0.528
    }
   },
   "audio": {
    "tri_type1": {
-    "mean": 0.261,
-    "p95": 0.282
+    "mean": 0.262,
+    "p95": 0.283
    },
    "tri_it2": {
-    "mean": 0.722,
-    "p95": 1.168
+    "mean": 0.737,
+    "p95": 1.17
    }
   },
   "top": {
    "tri_type1": {
-    "mean": 0.197,
-    "p95": 0.209
+    "mean": 0.223,
+    "p95": 0.262
    },
    "tri_it2": {
-    "mean": 0.382,
-    "p95": 0.499
+    "mean": 0.326,
+    "p95": 0.445
    }
   }
  },
@@ -692,24 +842,24 @@
   "gas": {
    "triangular": {
     "falls": 0,
-    "steps": 3630,
+    "steps": 32400,
     "share": 0.0,
     "max_fall": 0.0,
     "level_drops": 0
    },
    "gaussian_inputs": {
-    "falls": 492,
-    "steps": 3630,
-    "share": 0.1355,
-    "max_fall": 0.0364,
-    "level_drops": 12
+    "falls": 4414,
+    "steps": 32400,
+    "share": 0.1362,
+    "max_fall": 0.0458,
+    "level_drops": 48
    },
    "gaussian_all": {
-    "falls": 510,
-    "steps": 3630,
-    "share": 0.1405,
-    "max_fall": 0.0453,
-    "level_drops": 11
+    "falls": 4764,
+    "steps": 32400,
+    "share": 0.147,
+    "max_fall": 0.0437,
+    "level_drops": 117
    }
   },
   "camera": {
@@ -767,18 +917,18 @@
     "level_drops": 0
    },
    "gaussian_inputs": {
-    "falls": 711,
+    "falls": 365,
     "steps": 3630,
-    "share": 0.1959,
-    "max_fall": 0.0102,
+    "share": 0.1006,
+    "max_fall": 0.018,
     "level_drops": 0
    },
    "gaussian_all": {
-    "falls": 759,
+    "falls": 369,
     "steps": 3630,
-    "share": 0.2091,
-    "max_fall": 0.0142,
-    "level_drops": 0
+    "share": 0.1017,
+    "max_fall": 0.018,
+    "level_drops": 1
    }
   }
  },

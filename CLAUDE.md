@@ -361,6 +361,15 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `escalation` + `explanation` (logged on change, also in `hfs_risk.subsystems.gas`). Readings carry the driver's
   `selectivity` (selective: electrochemical / particle; cross_sensitive: MOS / graphene). Monotonicity of 5-input
   tables: `tools.plot_surfaces.monotonicity(nodes=True)` (breakpoint grid, exact for piecewise-linear terms).
+- A9 (TOD-51) cross-subsystem escalation: top rule base v2 = complete table of `policy.top(max, second, third)` (32
+  rules, T<m><s><t>; regenerate from the policy) over `max_risk` / `second_risk` / `third_risk`;
+  `modules/hfs/top_escalation.py` `TopEscalation` (active = subsystem interval lower bound > `hfs.top.calm_risk`
+  0.15; held signals within `co_window_sec` 60 s per location; benign `hfs.top.benign` {object_type | default: [{subsystems,
+  max_level}]} inside activity hours (camera `activity_time` < 0) counts once; `hfs.top.correlated` [{node} | {devices}]
+  → one device's channels count once; `explain` → Ukrainian). `TopLevel.combine(results, analysis=None)` (None =
+  stateless); `HierarchicalFuzzySystem.combine(location, results, now)` builds the context (names, object_type,
+  `FuzzySubsystem.devices_of`); result `escalation` + `explanation`; `policy_level` takes `calm` for inactive
+  subsystems. A strong but uncertain signal (e.g. a danger word, δ 0.465) is not "active" and does not escalate.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

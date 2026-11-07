@@ -54,7 +54,7 @@ MAIN = "tri_it2"
 SURFACE_PAIRS = {"gas": [("max_norm", "dynamics"), ("max_norm", "second_norm")],
                  "camera": [("unknown_share", "motion_intensity"), ("unknown_share", "activity_time")],
                  "audio": [("intensity", "sound_type_danger"), ("keyword_danger", "speaker_unknown")],
-                 "top": [("risk_gas", "risk_camera")]}
+                 "top": [("max_risk", "second_risk")]}
 WEDNESDAY = dt.date(2026, 11, 4)
 LOCATION = "lab"
 
@@ -157,7 +157,7 @@ def run_scenario(scenario: Dict[str, Any], config: Dict[str, Any], seed: int) ->
         results[name] = subsystem.evaluate(LOCATION, now[0], system.available(subsystem.device_kind, LOCATION))
         timings[name] = (time.perf_counter() - began) * 1000
     began = time.perf_counter()
-    payload = system.top.combine({name: results.get(name) for name in ("gas", "camera", "audio")})
+    payload = system.combine(LOCATION, {name: results.get(name) for name in ("gas", "camera", "audio")}, now[0])
     timings["top"] = (time.perf_counter() - began) * 1000
     memberships = system.top.engine.fuzzify(system.top.engine.output, payload["overall"])
     return {"level": payload["level"], "risk": payload["overall"], "interval": payload["interval"],

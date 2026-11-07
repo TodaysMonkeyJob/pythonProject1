@@ -1,4 +1,4 @@
-version: 1
+version: 2
 output: risk
 update_sec: 2
 defuzzification: centroid
@@ -9,7 +9,7 @@ operators:
   aggregation: sum
 default_output: 0.0
 variables:
-  risk_gas:
+  max_risk:
     universe:
     - 0
     - 1
@@ -46,78 +46,69 @@ variables:
       - 0.85
       - 1
       - 1
-  risk_camera:
+  second_risk:
     universe:
     - 0
     - 1
     - 0.005
     source:
       universe:
-        kind: design
-        text: a subsystem's risk 0..1
+        kind: requirement
+        text: risk of the second active subsystem (TOD-51)
       terms:
-        kind: design
-        text: peaks 0.13 / 0.35 / 0.65 / 0.87 = the centroids of the subsystems' output terms, so a subsystem's level maps
-          onto the same term; Ruspini partition (monotonicity)
+        kind: requirement
+        text: 'rows of the TOD-51 matrix (спокійно / низький / середній / високий): none → low over the calm band 0 … 0.15
+          (hfs.top.calm_risk: just above the quiet floor 0.13 = the centroid of ''low''), then the medium / high peaks 0.35
+          / 0.65 of max_risk; high = two subsystems at high; Ruspini partition'
     default: 0
     terms:
+      none:
+      - trap
+      - 0
+      - 0
+      - 0
+      - 0.15
       low:
       - trap
       - 0
-      - 0
       - 0.15
+      - 0.2
       - 0.35
       medium:
       - tri
-      - 0.15
+      - 0.2
       - 0.35
       - 0.65
       high:
-      - tri
+      - trap
       - 0.35
       - 0.65
-      - 0.85
-      critical:
-      - trap
-      - 0.65
-      - 0.85
       - 1
       - 1
-  risk_audio:
+  third_risk:
     universe:
     - 0
     - 1
     - 0.005
     source:
       universe:
-        kind: design
-        text: a subsystem's risk 0..1
+        kind: requirement
+        text: 'risk of the third active subsystem (TOD-51: all three active + one high → critical)'
       terms:
-        kind: design
-        text: peaks 0.13 / 0.35 / 0.65 / 0.87 = the centroids of the subsystems' output terms, so a subsystem's level maps
-          onto the same term; Ruspini partition (monotonicity)
+        kind: requirement
+        text: active from the calm band 0.15 (hfs.top.calm_risk); Ruspini partition
     default: 0
     terms:
-      low:
+      none:
       - trap
       - 0
       - 0
+      - 0
       - 0.15
-      - 0.35
-      medium:
-      - tri
-      - 0.15
-      - 0.35
-      - 0.65
-      high:
-      - tri
-      - 0.35
-      - 0.65
-      - 0.85
-      critical:
+      active:
       - trap
-      - 0.65
-      - 0.85
+      - 0
+      - 0.15
       - 1
       - 1
   risk:
@@ -157,514 +148,290 @@ variables:
       - 1
 rules:
 - id: T000
-  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS low THEN risk IS low
+  rule: IF max_risk IS low AND second_risk IS none AND third_risk IS none THEN risk IS low
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
-    added: &id001 2026-11-06
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    added: &id001 2026-11-07
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T001
-  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS medium THEN risk IS medium
+  rule: IF max_risk IS low AND second_risk IS none AND third_risk IS active THEN risk IS low
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T002
-  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS high THEN risk IS high
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T003
-  rule: IF risk_gas IS low AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T010
-  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS low THEN risk IS medium
+  rule: IF max_risk IS low AND second_risk IS low AND third_risk IS none THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T011
-  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS medium THEN risk IS high
+  rule: IF max_risk IS low AND second_risk IS low AND third_risk IS active THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T012
-  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS high THEN risk IS high
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T013
-  rule: IF risk_gas IS low AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T020
-  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS low THEN risk IS high
+  rule: IF max_risk IS low AND second_risk IS medium AND third_risk IS none THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T021
-  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS medium THEN risk IS high
+  rule: IF max_risk IS low AND second_risk IS medium AND third_risk IS active THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T022
-  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T023
-  rule: IF risk_gas IS low AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T030
-  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS low AND second_risk IS high AND third_risk IS none THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T031
-  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS low AND second_risk IS high AND third_risk IS active THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T032
-  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T033
-  rule: IF risk_gas IS low AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T100
-  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS low THEN risk IS medium
+  rule: IF max_risk IS medium AND second_risk IS none AND third_risk IS none THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T101
-  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS medium THEN risk IS high
+  rule: IF max_risk IS medium AND second_risk IS none AND third_risk IS active THEN risk IS medium
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T102
-  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS high THEN risk IS high
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T103
-  rule: IF risk_gas IS medium AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T110
-  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS low THEN risk IS high
+  rule: IF max_risk IS medium AND second_risk IS low AND third_risk IS none THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T111
-  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS medium THEN risk IS high
+  rule: IF max_risk IS medium AND second_risk IS low AND third_risk IS active THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T112
-  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS high THEN risk IS high
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T113
-  rule: IF risk_gas IS medium AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T120
-  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS low THEN risk IS high
+  rule: IF max_risk IS medium AND second_risk IS medium AND third_risk IS none THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T121
-  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS medium THEN risk IS high
+  rule: IF max_risk IS medium AND second_risk IS medium AND third_risk IS active THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T122
-  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T123
-  rule: IF risk_gas IS medium AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T130
-  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS medium AND second_risk IS high AND third_risk IS none THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T131
-  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS medium AND second_risk IS high AND third_risk IS active THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T132
-  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T133
-  rule: IF risk_gas IS medium AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T200
-  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS low THEN risk IS high
+  rule: IF max_risk IS high AND second_risk IS none AND third_risk IS none THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T201
-  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS medium THEN risk IS high
+  rule: IF max_risk IS high AND second_risk IS none AND third_risk IS active THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T202
-  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T203
-  rule: IF risk_gas IS high AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T210
-  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS low THEN risk IS high
+  rule: IF max_risk IS high AND second_risk IS low AND third_risk IS none THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T211
-  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS medium THEN risk IS high
+  rule: IF max_risk IS high AND second_risk IS low AND third_risk IS active THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T212
-  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T213
-  rule: IF risk_gas IS high AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T220
-  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS high AND second_risk IS medium AND third_risk IS none THEN risk IS high
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T221
-  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS high AND second_risk IS medium AND third_risk IS active THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T222
-  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T223
-  rule: IF risk_gas IS high AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T230
-  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS high AND second_risk IS high AND third_risk IS none THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T231
-  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS high AND second_risk IS high AND third_risk IS active THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T232
-  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T233
-  rule: IF risk_gas IS high AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T300
-  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS none AND third_risk IS none THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T301
-  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS none AND third_risk IS active THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T302
-  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T303
-  rule: IF risk_gas IS critical AND risk_camera IS low AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T310
-  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS low AND third_risk IS none THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T311
-  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS low AND third_risk IS active THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T312
-  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T313
-  rule: IF risk_gas IS critical AND risk_camera IS medium AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T320
-  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS medium AND third_risk IS none THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T321
-  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS medium AND third_risk IS active THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T322
-  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T323
-  rule: IF risk_gas IS critical AND risk_camera IS high AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T330
-  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS low THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS high AND third_risk IS none THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
 - id: T331
-  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS medium THEN risk IS critical
+  rule: IF max_risk IS critical AND second_risk IS high AND third_risk IS active THEN risk IS critical
   meta:
-    source: supervisor requirements (TOD-41)
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
     author: TodaysMonkeyJob
     added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T332
-  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS high THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
-- id: T333
-  rule: IF risk_gas IS critical AND risk_camera IS critical AND risk_audio IS critical THEN risk IS critical
-  meta:
-    source: supervisor requirements (TOD-41)
-    author: TodaysMonkeyJob
-    added: *id001
-    rationale: 'One cell of the complete policy table (see the header): any critical → critical, two high → critical, one
-      high → high, two medium → high, one medium → medium, all low → low.'
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.

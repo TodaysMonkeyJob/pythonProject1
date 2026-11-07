@@ -86,7 +86,8 @@ def test_top_level_rules(top, risks, level):
 def test_top_level_explains_with_rule_ids(top):
     result = top.combine({"gas": sub(0.9), "camera": sub(0.1), "audio": sub(0.1)})
     fired = result["fired_rules_by_level"]["top"][0]
-    assert fired["id"] == "T300" and "risk_gas" in fired["explanation"] and "critical" in fired["explanation"]
+    assert fired["id"] == "T300" and "max_risk" in fired["explanation"] and "critical" in fired["explanation"]
+    assert result["explanation"].startswith("Газ: критичний")
 
 
 def test_missing_subsystem_is_partial_and_uses_the_rest(top):
@@ -142,12 +143,17 @@ def test_surface_is_exactly_monotonic(name):
 
 
 def test_top_policy_matches_the_requirements():
-    assert policy_level(["critical", "low", "low"]) == "critical"
-    assert policy_level(["high", "high", "low"]) == "critical"
-    assert policy_level(["high", "low", "medium"]) == "high"
-    assert policy_level(["medium", "medium", "low"]) == "high"
-    assert policy_level(["low", "medium", "low"]) == "medium"
-    assert policy_level(["low", "low", "low"]) == "low"
+    """TOD-41 rules with quiet (calm) other subsystems, plus TOD-51: active subsystems escalate one step."""
+    assert policy_level(["critical", "calm", "calm"]) == "critical"
+    assert policy_level(["high", "high", "calm"]) == "critical"          # two high
+    assert policy_level(["high", "calm", "calm"]) == "high"
+    assert policy_level(["medium", "medium", "calm"]) == "high"          # two medium
+    assert policy_level(["calm", "medium", "calm"]) == "medium"
+    assert policy_level(["calm", "calm", "calm"]) == "low"
+    assert policy_level(["low", "low", "calm"]) == "medium"              # TOD-51: two active lows
+    assert policy_level(["medium", "low", "calm"]) == "high"
+    assert policy_level(["high", "low", "calm"]) == "high"               # capped without evidence
+    assert policy_level(["high", "low", "medium"]) == "critical"         # all three active, one high
 
 
 # --- subsystems -------------------------------------------------------------------------------------------------------

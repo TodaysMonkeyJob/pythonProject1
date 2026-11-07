@@ -123,23 +123,23 @@
    "implication": "prod",
    "aggregation": "sum"
   },
-  "rules": 64,
+  "rules": 32,
   "inputs": {
-   "risk_gas": {
+   "max_risk": {
     "steps": 1210,
     "falls": 0,
     "share": 0.0,
     "max_fall": 0.0,
     "level_drops": 0
    },
-   "risk_camera": {
+   "second_risk": {
     "steps": 1210,
     "falls": 0,
     "share": 0.0,
     "max_fall": 0.0,
     "level_drops": 0
    },
-   "risk_audio": {
+   "third_risk": {
     "steps": 1210,
     "falls": 0,
     "share": 0.0,

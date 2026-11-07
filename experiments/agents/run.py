@@ -75,7 +75,7 @@ def article1_payload(scenario: Dict[str, Any], config: Dict[str, Any], events, d
         now[0] = START + t
         system.observe(event)
     now[0] = START + 60.0
-    return system.evaluate(LOCATION, now[0])
+    return system.evaluate(LOCATION, now[0])          # incl. the cross-subsystem escalation context (TOD-51)
 
 
 class Recorder:

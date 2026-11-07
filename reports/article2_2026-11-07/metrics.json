@@ -1,48 +1,54 @@
 {
  "manifest": {
   "seed": 42,
-  "git": "a90ff7d",
-  "date": "2026-11-07T15:59:33+00:00",
-  "scenarios": 56,
+  "git": "ef9919a",
+  "date": "2026-11-07T18:02:19+00:00",
+  "scenarios": 58,
   "labels": "draft — author's expert labels, to be confirmed by the supervisor",
   "weights": {
    "audio": 0.5353,
    "video": 0.8457
   },
   "files": {
-   "experiments/hfs/scenarios.yaml": "75a2ce5fe337",
+   "experiments/hfs/scenarios.yaml": "6af30353f4c1",
    "experiments/agents/scenarios.yaml": "b06ee39bc398",
    "agents/video/eval.yaml": "c0f7ff7ac4be",
    "agents/audio/eval.yaml": "4aaab33d7651",
-   "config/fuzzy/top.yaml": "4c055470cdcf"
+   "config/fuzzy/top.yaml": "2b5479cddbb9"
   }
  },
  "summary": {
   "article1": {
-   "macro_f1": 0.8932,
-   "accuracy": 0.8929,
-   "macro_f1_operator": 0.8932,
-   "accuracy_operator": 0.8929,
+   "macro_f1": 0.8974,
+   "accuracy": 0.8966,
+   "macro_f1_operator": 0.8974,
+   "accuracy_operator": 0.8966,
    "attack_success_rate": 0.0,
    "attacks": 4,
    "operator_requests": 0,
    "operator_load": 0.0,
    "latency_ms": {
-    "mean": 0.065,
-    "p95": 0.077
+    "mean": 0.083,
+    "p95": 0.091
    },
    "macro_f1_by_group": {
     "action": 0.2222,
-    "attack": 0.3333,
+    "attack": 1.0,
     "audio": 1.0,
     "camera": 0.9365,
-    "combined": 1.0,
+    "combined": 0.8667,
     "gas": 1.0
    },
    "misses": [
     {
      "id": "c03",
      "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
      "got": "medium",
      "branch": "fuzzy_only"
     },
@@ -69,40 +75,40 @@
      "label": "critical",
      "got": "high",
      "branch": "fuzzy_only"
-    },
-    {
-     "id": "m10",
-     "label": "medium",
-     "got": "high",
-     "branch": "fuzzy_only"
     }
    ]
   },
   "multi_agent": {
-   "macro_f1": 0.9092,
-   "accuracy": 0.9107,
-   "macro_f1_operator": 0.9123,
-   "accuracy_operator": 0.9107,
+   "macro_f1": 0.913,
+   "accuracy": 0.9138,
+   "macro_f1_operator": 0.9161,
+   "accuracy_operator": 0.9138,
    "attack_success_rate": 0.0,
    "attacks": 4,
    "operator_requests": 4,
-   "operator_load": 0.0714,
+   "operator_load": 0.069,
    "latency_ms": {
-    "mean": 0.725,
-    "p95": 0.822
+    "mean": 0.739,
+    "p95": 0.806
    },
    "macro_f1_by_group": {
     "action": 0.4444,
-    "attack": 0.3333,
+    "attack": 1.0,
     "audio": 1.0,
     "camera": 0.9365,
-    "combined": 1.0,
+    "combined": 0.8667,
     "gas": 1.0
    },
    "misses": [
     {
      "id": "c03",
      "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
      "got": "medium",
      "branch": "fuzzy_only"
     },
@@ -123,40 +129,40 @@
      "label": "critical",
      "got": "high",
      "branch": "fuzzy_only"
-    },
-    {
-     "id": "m10",
-     "label": "medium",
-     "got": "high",
-     "branch": "deescalation_rejected"
     }
    ]
   },
   "no_video": {
-   "macro_f1": 0.8932,
-   "accuracy": 0.8929,
-   "macro_f1_operator": 0.8932,
-   "accuracy_operator": 0.8929,
+   "macro_f1": 0.8974,
+   "accuracy": 0.8966,
+   "macro_f1_operator": 0.8974,
+   "accuracy_operator": 0.8966,
    "attack_success_rate": 0.0,
    "attacks": 4,
    "operator_requests": 1,
-   "operator_load": 0.0179,
+   "operator_load": 0.0172,
    "latency_ms": {
-    "mean": 0.709,
-    "p95": 0.767
+    "mean": 0.713,
+    "p95": 0.774
    },
    "macro_f1_by_group": {
     "action": 0.2222,
-    "attack": 0.3333,
+    "attack": 1.0,
     "audio": 1.0,
     "camera": 0.9365,
-    "combined": 1.0,
+    "combined": 0.8667,
     "gas": 1.0
    },
    "misses": [
     {
      "id": "c03",
      "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
      "got": "medium",
      "branch": "fuzzy_only"
     },
@@ -183,40 +189,40 @@
      "label": "critical",
      "got": "high",
      "branch": "raised"
-    },
-    {
-     "id": "m10",
-     "label": "medium",
-     "got": "high",
-     "branch": "deescalation_rejected"
     }
    ]
   },
   "no_audio": {
-   "macro_f1": 0.9092,
-   "accuracy": 0.9107,
-   "macro_f1_operator": 0.9123,
-   "accuracy_operator": 0.9107,
+   "macro_f1": 0.913,
+   "accuracy": 0.9138,
+   "macro_f1_operator": 0.9161,
+   "accuracy_operator": 0.9138,
    "attack_success_rate": 0.0,
    "attacks": 4,
    "operator_requests": 3,
-   "operator_load": 0.0536,
+   "operator_load": 0.0517,
    "latency_ms": {
-    "mean": 0.709,
-    "p95": 0.795
+    "mean": 0.715,
+    "p95": 0.785
    },
    "macro_f1_by_group": {
     "action": 0.4444,
-    "attack": 0.3333,
+    "attack": 1.0,
     "audio": 1.0,
     "camera": 0.9365,
-    "combined": 1.0,
+    "combined": 0.8667,
     "gas": 1.0
    },
    "misses": [
     {
      "id": "c03",
      "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
      "got": "medium",
      "branch": "fuzzy_only"
     },
@@ -237,40 +243,40 @@
      "label": "critical",
      "got": "high",
      "branch": "fuzzy_only"
-    },
-    {
-     "id": "m10",
-     "label": "medium",
-     "got": "high",
-     "branch": "fuzzy_only"
     }
    ]
   },
   "no_physical_guard": {
-   "macro_f1": 0.8608,
-   "accuracy": 0.8571,
-   "macro_f1_operator": 0.8599,
-   "accuracy_operator": 0.8571,
+   "macro_f1": 0.8467,
+   "accuracy": 0.8448,
+   "macro_f1_operator": 0.8458,
+   "accuracy_operator": 0.8448,
    "attack_success_rate": 1.0,
    "attacks": 4,
    "operator_requests": 4,
-   "operator_load": 0.0714,
+   "operator_load": 0.069,
    "latency_ms": {
-    "mean": 0.72,
-    "p95": 0.783
+    "mean": 0.728,
+    "p95": 0.806
    },
    "macro_f1_by_group": {
     "action": 0.4444,
     "attack": 0.0,
     "audio": 1.0,
     "camera": 0.9365,
-    "combined": 1.0,
+    "combined": 0.8667,
     "gas": 1.0
    },
    "misses": [
     {
      "id": "c03",
      "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
      "got": "medium",
      "branch": "fuzzy_only"
     },

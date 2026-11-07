@@ -15,7 +15,7 @@ audio_level, sound_type, speech ─▶ audio (intensity, sound_type_danger,     
 | 1 gas | `config/fuzzy/gas.yaml` | 48 | 2 s |
 | 1 camera | `config/fuzzy/camera.yaml` | 27 | 1 s |
 | 1 audio | `config/fuzzy/audio.yaml` | 81 | 1 s |
-| 2 top | `config/fuzzy/top.yaml` | 64 | 2 s |
+| 2 top | `config/fuzzy/top.yaml` | 32 | 2 s |
 
 **Mode.** `config.yaml` → `mode: autonomous` (`core/mode.py`): the LLM worker, GPT gating, the risk envelope and GPT
 rule suggestions are not started or imported, the aggregator queues nothing for GPT, Whisper runs locally. The
@@ -24,7 +24,19 @@ GPT pipeline; the HFS then runs as a shadow (logged, shown on the dashboard, no 
 
 **Contract.** `FuzzySubsystem` (`base.py`): `observe(event)`, `features(location) → inputs | None` (None = no data),
 `infer(inputs) → {risk, level, interval, fired_rules, inputs, partial}`, own `update_sec`. `TopLevel.combine()`
-(`top.py`) → `{risk1, risk2, risk3, overall, level, interval, partial, missing, subsystems, fired_rules_by_level}`.
+(`top.py`) → `{risk1, risk2, risk3, overall, level, interval, partial, missing, subsystems, escalation, explanation,
+fired_rules_by_level}`.
+
+**Cross-subsystem escalation (A9 / TOD-51, `top_escalation.py`).** The top level works on `max_risk` /
+`second_risk` / `third_risk`:
+- **Active subsystem:** the lower bound of its risk interval is above `hfs.top.calm_risk` (0.15).
+- **Co-occurrence:** a subsystem active within the last `co_window_sec` (60 s) still counts while another one is
+  active now, in the same location.
+- **Escalation:** the highest subsystem sets the level, and a second active one raises it one step. Critical needs a
+  subsystem at critical, two at high, or all three active with one at high; otherwise the level stops at high.
+- **Exceptions:** benign combinations inside the location's activity hours (`hfs.top.benign`, e.g. camera low +
+  audio low) count once, and so do channels of one device (`hfs.top.correlated`). Every decision has a Ukrainian
+  `explanation`.
 
 **Monotonic by construction.** Every rule base is the complete table of a policy in `policy.py` (each input term
 step changes the level by at most one: smooth), on Ruspini partitions of triangles / trapezoids, with product AND /
@@ -33,9 +45,9 @@ the table: a riskier input never lowers the risk. `python -m tools.plot_surfaces
 monotonicity table: 0 falls at every level). The first sparse expert version with min / max fell on up to 10 % of the
 grid steps. Tests check every table cell against its policy.
 
-**Missing subsystem.** No device online / stale data → that risk is `null`, its top input takes the default 0 (low).
-Because the top level is monotonic, a missing input neither escalates nor blocks anything, so the result rests on the
-remaining subsystems. It is marked `partial` and lists `missing`.
+**Missing subsystem.** No device online / stale data → that risk is `null` and the subsystem is not among the top
+inputs. The escalation works on the remaining subsystems; the result is marked `partial`, lists `missing`, and the
+explanation names them.
 
 **Corridor (A5 / TOD-45).** Every input carries its measured error δ (`config/uncertainty.yaml`,
 `python -m tools.fit_uncertainty`); the interval type-2 inference (`core/fuzzy/engine2.py`, Karnik–Mendel,
@@ -44,7 +56,7 @@ interval inputs. Offline / failing devices are excluded (no Beta counters in aut
 
 ```bash
 python -m modules.hfs --check                                  # validate + metadata of the four rule bases
-python -m modules.hfs top risk_gas=0.87 risk_camera=0.1        # explain one inference
+python -m modules.hfs top max_risk=0.35 second_risk=0.2         # explain one inference
 python -m tools.plot_surfaces                                  # reports/surfaces/
 ```
 

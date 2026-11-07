@@ -29,7 +29,10 @@ parameters:
   hfs.audio.level_stale_sec: {kind: design, text: "audio_level arrives every 2 s while it changes"}
   hfs.audio.danger_words: {kind: design, text: "path of the graded dictionary (config/danger_words.yaml)"}
   hfs.audio.stale_sec: {kind: expert, text: "audio evidence older than 30 s does not make a microphone 'available'"}
-  hfs.top: {kind: design, text: "no overrides: config/fuzzy/top.yaml"}
+  hfs.top.calm_risk: {kind: design, text: "0.15 = just above the quiet floor 0.13 (the centroid of a subsystem's 'low' term, what a quiet subsystem outputs), so a subsystem counts as active only when even the lower end of its corridor is above quiet (TOD-51)"}
+  hfs.top.co_window_sec: {kind: requirement, text: "TOD-51: signals combine only within one location and a co-occurrence window, 'e.g. 60 s'"}
+  hfs.top.benign: {kind: requirement, text: "TOD-51: people talking loudly (audio low) and visitors (camera low) inside the working hours are a benign co-occurrence; outside the hours the same combination escalates"}
+  hfs.top.correlated: {kind: design, text: "none declared: a phone node streaming camera + microphone of the same person would be listed here (TOD-51)"}
   # --- thresholds of the inputs (outside the hfs section) -------------------------------------------------------------
   identity.face_threshold: {kind: measured, text: "SFace cosine 0.45: 100 % of known faces accepted and 0 of 500 strangers on LFW (reports/identity_eval_lfw.json)"}
   identity.voice_threshold: {kind: measured, text: "0.30 from the voice calibration (tools/calibrate_voice); the held-out EER point is 0.34 (config/calibration/speaker.yaml) — at 0.30 strangers are accepted too often (43 of 75), move toward 0.34"}

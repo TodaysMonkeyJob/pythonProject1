@@ -87,22 +87,46 @@ def audio(intensity: int, sound_type: int, keywords: int, speaker: int) -> int:
     return clamp(max(speech, sound))
 
 
-def top(gas_risk: int, camera_risk: int, audio_risk: int) -> int:
+def top(max_risk: int, second: int, third: int) -> int:
     """
-    Supervisor's combination: any subsystem critical → critical; two high → critical; one high (others low / medium)
-    → high; two medium → high; one medium (others low) → medium; all low → low.
+    A9 (TOD-51) cross-subsystem escalation over the subsystem risks (gas, camera, audio) of one location:
+
+    * ``max_risk`` low / medium / high / critical — the highest subsystem sets the level (one active subsystem → its
+      level);
+    * ``second_risk`` none / low / medium / high — the second *active* subsystem (lower bound of its risk interval
+      above the calm band, ``modules/hfs/top_escalation.py``): independent subsystems agreeing → one level above the
+      highest;
+    * critical only with evidence — a subsystem at critical, two subsystems at high (``second`` high), or all three
+      active (``third_risk`` active) with one at high; otherwise capped at high.
+
+    Matrix (second × max, third none)::
+
+                 low   medium  high  critical
+        none      0      1      2       3
+        low       1      2      2       3      ← +1; high + low → high (critical only with a third active subsystem)
+        medium    1      2      2       3
+        high      1      2      3       3      ← two at high → critical
+
+    The supervisor's earlier rules hold: any critical → critical; two high → critical; one high → high; two medium →
+    high. New: one medium + an active low → high, two active lows → medium. Every input changes the level by at most
+    one step: smooth and monotone.
     """
-    ranks = [gas_risk, camera_risk, audio_risk]
-    if 3 in ranks or ranks.count(2) >= 2:
-        return 3
-    if 2 in ranks or ranks.count(1) >= 2:
-        return 2
-    return 1 if 1 in ranks else 0
+    escalated = max_risk + (second >= 1)
+    cap = 3 if (max_risk == 3 or second == 3 or (third == 1 and max_risk >= 2)) else 2
+    return clamp(min(escalated, cap))
 
 
 POLICIES = {"gas": gas, "camera": camera, "audio": audio, "top": top}
 
 
 def policy_level(levels: Sequence[str]) -> str:
-    """:return: the top-level policy over subsystem level names (low / medium / high / critical)"""
-    return LEVELS[top(*(LEVELS.index(level) for level in levels))]
+    """
+    :param levels: subsystem levels (low / medium / high / critical; ``calm`` = not active — a subsystem whose lower
+                   bound is in the calm band)
+    :return: the top-level policy over them
+    """
+    active = sorted((LEVELS.index(level) for level in levels if level != "calm"), reverse=True)
+    if not active:
+        return LEVELS[0]
+    second = 0 if len(active) < 2 else {0: 1, 1: 2, 2: 3, 3: 3}[active[1]]
+    return LEVELS[top(active[0], second, int(len(active) >= 3))]

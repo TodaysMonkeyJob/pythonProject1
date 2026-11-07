@@ -40,10 +40,12 @@ class HierarchicalFuzzySystem:
 
     def __init__(self, config: Dict[str, Any], rules: Callable[[str], Dict[str, Any]] = lambda location_id: {},
                  devices: Callable[[], List[Dict[str, Any]]] = lambda: [], clock: Callable[[], float] = time.time,
-                 ignore=("hub", "unknown"), **camera_kwargs):
+                 ignore=("hub", "unknown"), names: Callable[[str], str] = lambda location_id: location_id,
+                 **camera_kwargs):
         """
-        :param rules: location_id → location rules (``activity_hours``)
-        :param devices: → device records (kind, location_id, status, enabled) of ``core.devices``
+        :param rules: location_id → location rules (``activity_hours``, ``object_type``, ``gas_benign``)
+        :param devices: → device records (kind, location_id, status, enabled, node_id) of ``core.devices``
+        :param names: location_id → display name (explanations)
         """
         cfg = config.get("hfs") or {}
         self.subsystems: Dict[str, FuzzySubsystem] = {
@@ -51,6 +53,7 @@ class HierarchicalFuzzySystem:
             "camera": CameraSubsystem(config, rules=rules, clock=clock, **camera_kwargs),
             "audio": AudioSubsystem(config, clock=clock)}
         self.top = TopLevel(config=config)
+        self.rules, self.names = rules, names
         self.devices, self.clock, self.ignore = devices, clock, ignore
         self.min_delta = float(cfg.get("min_delta", 0.05))
         self.keepalive = float(cfg.get("keepalive_sec", 30))
@@ -120,10 +123,26 @@ class HierarchicalFuzzySystem:
                 excluded = self.excluded_in(location_id, name)
                 if excluded and results[name] is not None:          # the rest of its devices still report
                     results[name] = {**results[name], "partial": True, "excluded": excluded}
-        payload = self.top.combine({name: results.get(name) for name in SUBSYSTEMS})
+        payload = self.combine(location_id, results, now)
         if payload is not None:
             payload["excluded"] = self.excluded_in(location_id)
         return payload
+
+    def combine(self, location_id: str, results: Dict[str, Optional[Dict[str, Any]]],
+                now: float) -> Optional[Dict[str, Any]]:
+        """The top level with the cross-subsystem escalation context of the location (A9 / TOD-51)."""
+        camera = self.subsystems["camera"]
+        try:
+            inside = camera.activity_time(location_id) < 0          # negative = inside the activity hours
+        except Exception:                                           # no schedule → no benign exception
+            inside = None
+        nodes = {d.get("device_id"): d.get("node_id") for d in self.devices() if d.get("node_id")}
+        analysis = self.top.escalation.analyse(
+            {name: results.get(name) for name in SUBSYSTEMS}, location_id, now, inside_hours=inside,
+            object_type=(self.rules(location_id) or {}).get("object_type"),
+            devices={name: s.devices_of(location_id, now) for name, s in self.subsystems.items()}, nodes=nodes,
+            location_name=self.names(location_id))
+        return self.top.combine({name: results.get(name) for name in SUBSYSTEMS}, analysis)
 
     def tick(self) -> List[Dict[str, Any]]:
         """:return: payloads (with ``location_id``) to publish now"""
@@ -177,7 +196,7 @@ class HFSModule(BaseModule):
             self.locations = LocationRegistry(network.get("devices_path", "data/devices.db"))
             ignore = (network.get("hub_location") or "hub", "unknown")
             self.system = HierarchicalFuzzySystem(self.config, self.locations.rules, self.devices, self.clock,
-                                                  ignore=ignore)
+                                                  ignore=ignore, names=self.locations.name)
         logger.info(f"HFS ready ({'autonomous' if self.autonomous else 'hybrid: shadow'} mode)")
 
     def teardown(self) -> None:
