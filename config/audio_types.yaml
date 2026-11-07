@@ -1,0 +1,15 @@
+# A4 (TOD-44) sound types of the noise stage and their danger degree 0..1 (HFS audio input sound_type_danger).
+# The classifier (models/sound_types.joblib, python -m tools.train_sound_types) predicts these names; a prediction
+# below min_confidence is "unknown". Without a model nothing is classified (danger null, not evidence).
+# Danger degrees are expert values (supervisor's examples: keyboard 0, walking 0.1, fan 0, scream 0.8, unknown 0.3).
+min_confidence: 0.5
+types:
+  keyboard: {danger: 0.0, label: "клавіатура"}
+  walking: {danger: 0.1, label: "кроки"}
+  fan: {danger: 0.0, label: "вентилятор / механізми"}
+  scream: {danger: 0.8, label: "крик"}
+  unknown: {danger: 0.3, label: "невідомий звук"}
+  # optional, once training data exists
+  impact: {danger: 0.6, label: "удар"}
+  glass_breaking: {danger: 0.9, label: "розбите скло"}
+  alarm: {danger: 0.9, label: "сирена / сигналізація"}

@@ -50,14 +50,24 @@ def camera(unknown: int, motion: int, activity: int) -> int:
     return clamp(base + (motion == 3 and (unknown >= 1 or activity == 2)))
 
 
-def audio(sound_level: int, sound_type: int, keywords: int, speaker: int) -> int:
+def audio(intensity: int, sound_type: int, keywords: int, speaker: int) -> int:
     """
-    max(danger_keywords none / mild / severe, sound_type benign / suspicious / dangerous) + (sound_level loud) +
-    speaker_unknown known / uncertain / unknown → 0 / 0 / 1: a shouted call for help or a loud dangerous sound is
-    critical, a quiet one high; distressed words are medium from a known voice, high from an unknown one; an unknown
-    voice talking normally or a loud sound alone is medium.
+    A4 (TOD-44). intensity low / medium / high (dB above the microphone's background), sound_type_danger safe /
+    suspicious / dangerous, keyword_danger none / alarming / dangerous / critical, speaker_unknown known / uncertain /
+    unknown. level = max(speech, sound):
+
+    * speech = keyword grade (none 0 … critical 3), +1 for an unknown voice that is at least medium loud and says
+      nothing worse than alarming words (an unknown voice → medium, alarming words from it → high);
+    * sound = sound danger (0 / 1 / 2) + loud − 1: a dangerous sound is high when loud and medium otherwise, a loud
+      suspicious one medium.
+
+    Each is a sum of one-level steps, max keeps that: smooth and monotone. The issue's examples hold: critical words →
+    critical; dangerous sound + loud → high; dangerous words + unknown voice → high; loud + suspicious → medium; quiet
+    and no words → low (unless the quiet sound itself is dangerous: medium).
     """
-    return clamp(max(keywords, sound_type) + (sound_level == 2) + (speaker == 2))
+    speech = keywords + (speaker == 2 and keywords <= 1 and intensity >= 1)
+    sound = max(0, sound_type + (intensity == 2) - 1)
+    return clamp(max(speech, sound))
 
 
 def top(gas_risk: int, camera_risk: int, audio_risk: int) -> int:

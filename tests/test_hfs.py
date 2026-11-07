@@ -13,7 +13,7 @@ from core.events import make_event
 from core.fuzzy import FuzzyEngine, load_yaml
 from core.mode import LLM_PACKAGES, apply_mode, is_autonomous, mode_of
 from modules.hfs.__main__ import check
-from modules.hfs.audio import AudioSubsystem, keyword_grade, keyword_grades
+from modules.hfs.audio import AudioSubsystem
 from modules.hfs.camera import CameraSubsystem
 from modules.hfs.gas import GasSubsystem
 from modules.hfs.policy import LEVELS, POLICIES, policy_level
@@ -296,20 +296,34 @@ def test_camera_activity_time_uses_the_location_schedule():
     assert camera.activity_time("lab") == -4                                 # default 08–19: 4 h before closing
 
 
-def test_audio_keywords_and_unknown_voice():
-    grades = keyword_grades({1.0: ["допоможіть", "fire"], 0.4: ["стоп"]})
-    assert keyword_grade("Допоможіть, будь ласка!", grades) == (1.0, "допоможіть")
-    assert keyword_grade("campfire stories", grades) == (0.0, None)          # whole-word start only
+def test_audio_critical_word_unknown_voice_and_window():
     clock = Clock()
     audio = AudioSubsystem({}, clock=clock)
-    audio.observe(ev("sound", {"rms_db": -6}), clock())
-    audio.observe(ev("speech", {"text": "Допоможіть!", "speaker_status": "unknown"}), clock())
+    audio.observe(ev("speech", {"text": "Пожежа на складі!", "speaker_status": "known"}), clock())
     result = audio.evaluate("lab", clock(), available=True)
-    assert result["inputs"]["danger_keywords"] == 1 and result["level"] == "critical"
+    assert result["inputs"]["keyword_danger"] == 1 and result["level"] == "critical"
+    assert result["danger_words"][0]["entry"] == "пожежа"
     assert audio.evaluate("lab", clock() + 31, available=True)["level"] == "low"   # window passed
+    voice = AudioSubsystem({}, clock=clock)
+    voice.observe(ev("audio_level", {"intensity_db": 12}), clock())
+    voice.observe(ev("speech", {"text": "Допоможіть!", "speaker_status": "unknown"}), clock())
+    assert voice.evaluate("lab", clock(), available=True)["level"] == "high"        # dangerous words, unknown voice
     quiet = AudioSubsystem({}, clock=clock)
     quiet.observe(ev("speech", {"text": "добрий день", "speaker_status": "known"}), clock())
     assert quiet.evaluate("lab", clock(), available=True)["level"] == "low"
+
+
+def test_audio_sound_type_and_intensity():
+    clock = Clock()
+    audio = AudioSubsystem({}, clock=clock)
+    audio.observe(ev("sound_type", {"type": "unknown", "confidence": 0, "danger": None}), clock())   # no model
+    assert audio.evaluate("lab", clock(), available=True)["inputs"]["sound_type_danger"] == 0
+    audio.observe(ev("sound_type", {"type": "scream", "confidence": 0.9, "danger": 0.8}), clock())
+    audio.observe(ev("sound", {"rms_db": -8, "relative_db": 26}), clock())
+    result = audio.evaluate("lab", clock(), available=True)
+    assert result["inputs"]["intensity"] == 26 and result["sound_type"] == "scream" and result["level"] == "high"
+    audio.observe(ev("audio_level", {"intensity_db": 4}), clock())                   # the level wins over sounds
+    assert audio.evaluate("lab", clock(), available=True)["level"] == "medium"       # a quiet scream: medium
 
 
 # --- the whole system -------------------------------------------------------------------------------------------------

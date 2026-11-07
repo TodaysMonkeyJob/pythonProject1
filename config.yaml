@@ -270,6 +270,22 @@ audio:
     speaker_enrich_min_snr_db: 10    # … and this clean improve the person's voice profile
     transcript_log: true    # logs/<date>/transcripts.jsonl + transcripts.txt ("[time] [location · device] Name: text")
     device_id: null         # null = mic-<hostname>
+    # A4 (TOD-44): intensity above this microphone's background, noise stage, sound types, danger words
+    background_db: null     # dBFS of this room's background, calibrated once; null = rolling estimate …
+    background_window_sec: 300   # … the 20th percentile of per-second levels over 5 min
+    background_percentile: 20
+    intensity_smooth_sec: 2
+    level_event_sec: 2      # audio_level events (not logged) at most this often while the level changes
+    noise_keep_sec: 3       # non-speech audio kept as the noise profile (classified with every speech segment)
+    burst_min_db: 10        # a non-speech sound this far above the background, 0.3–3 s long → classified too
+    burst_min_sec: 0.3
+    burst_max_sec: 3
+    sound_types: config/audio_types.yaml        # types and their danger
+    sound_type_model: models/sound_types.joblib # python -m tools.train_sound_types --data <dir>/<type>/*.wav;
+                            # absent → every sound is "unknown" with danger null (not evidence)
+    danger_words: config/danger_words.yaml
+    denoise: false          # soft Wiener mask from the noise profile before Whisper
+    denoise_min_gain: 0.1
   recorder:                 # legacy speech_to_text_whisper.AudioToTextRecorder (modules/audio:run)
     language: en
     api_connection: true
@@ -342,8 +358,10 @@ hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule ba
     identification_report: reports/identity_eval_lfw.json   # p for the unknown_share interval (Wilson lower bound)
     interval_quantile: 0.95
     stale_sec: 30
-  audio:
-    window_sec: 30          # sounds / speech this recent count
+  audio:                    # A4 (TOD-44): intensity, sound_type_danger, keyword_danger, speaker_unknown
+    window_sec: 30          # sound types / speech this recent count
+    level_stale_sec: 10     # audio_level older than this → the loudest sound event's relative_db
+    danger_words: config/danger_words.yaml
     stale_sec: 30
   top: {}                   # update_sec / rules override the defaults of config/fuzzy/top.yaml
 
