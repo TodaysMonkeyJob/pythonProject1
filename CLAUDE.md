@@ -325,6 +325,17 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `agents:run` (subscribe "*"; `agent_status` unlogged), dashboard `#/agents` «Агенти» (`/api/agents`, POST switch →
   `agent_control`); `agents.decides: true` → location state follows `agent_decision`. All agents but fuzzy off =
   Article 1 decisions (test on the 46 scenarios).
+  TOD-47 Article 2 agents (`docs/article2_architecture.md`): `video` (action / person_identified / object_detected →
+  `action` claims with confidence, `persons`, `risk_opinion` at_least from `maps.action_risk` of config/fuzzy.yaml;
+  actions never reach the HFS), `audio` (speech / sound_type → `speech` claims with intent from
+  `modules/trust/claims.py` loaded by file — never the `modules.trust` package — danger words, `sound`; danger /
+  escalation → at_least, "все гаразд" / instructions → estimate the validator rejects; `interpreter: llm` =
+  `agents/audio/interpret.py` + `prompts/speech_interpreter.md`, hybrid only). Validation 1.1: `value.kind`
+  at_least (only raises: `raised` / review) | estimate; `require_physical: false` = ablation only. Weights:
+  `python -m tools.agent_eval [--check]` → `agents/<name>/eval.yaml` (Wilson LB). Comparison:
+  `python -m experiments.agents.run --seed 42` → `reports/article2_<date>/` (56 scenarios = Article 1 +
+  `experiments/agents/scenarios.yaml`; article1 / multi_agent / no_video / no_audio / no_physical_guard; macro-F1,
+  attack success, operator load, latency; `trace_m01.jsonl` end to end).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

@@ -1,10 +1,10 @@
 name: validation
 role: validation
-version: 1.0.0
+version: 1.1.0
 description: >-
   Final decision of every round: the fuzzy corridor [y_l, y_r] combined with the risk opinions of the other agents,
   weighted by their measured accuracy. Lowering below the corridor needs physical confirmation (video / gas);
-  raising above it asks the operator.
+  raising above it asks the operator. at_least opinions (a fall, a call for help) only raise.
 entry: agent:CorridorValidationAgent
 subscribes: []
 publishes: []
@@ -17,3 +17,4 @@ timeout_s: 0.5
 enabled_default: true
 config:
   risk_terms: config/fuzzy/top.yaml    # levels of a combined risk = the HFS risk output terms
+  require_physical: true               # lowering below the corridor needs video / gas (false: ablation only)

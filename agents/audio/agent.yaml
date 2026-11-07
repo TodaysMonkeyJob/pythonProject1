@@ -1,0 +1,26 @@
+name: audio
+role: audio
+version: 1.0.0
+description: >-
+  Meaning of speech: transcripts with the speaker, danger words, sound types, and the speaker's intent
+  (escalation / de-escalation / instruction to the system) — local patterns, or a language model in hybrid mode.
+  A call for help raises (at_least); "everything is fine" is an estimate the validation agent never lets lower
+  the risk without physical confirmation.
+entry: agent:AudioAgent
+subscribes: [speech, sound_type]
+publishes: [speech, sound, risk_opinion]
+backend: {kind: rules}                # interpreter: llm (hybrid mode only) sends the transcript text to GPT
+resources: {ram_mb: 5, gpu: false}
+data_scope:
+  events: [speech, sound_type]        # no faces, no gas readings
+  claims: [fuzzy]
+timeout_s: 0.5
+enabled_default: true
+eval_file: eval.yaml                  # python -m tools.agent_eval (danger-word recognition, TOD-45)
+config:
+  interpreter: rules                  # rules | llm (hybrid only; falls back to rules in autonomous mode)
+  danger_words: config/danger_words.yaml
+  window_sec: 30                      # speech this recent counts in a decision round
+  escalation_risk: 0.7                # an escalation phrase without a dictionary word (= grade dangerous)
+  calm_claim_risk: 0.1                # what a "everything is fine" claim asserts (an estimate; never lowers alone)
+  max_text: 200

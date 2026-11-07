@@ -28,6 +28,8 @@ evidence events ──► hfs module ──hfs_risk──► fuzzy agent ──c
 | `agents/framework/orchestrator.py` | `AgentHost`: routing, decision rounds, deadlines, decision record |
 | `agents/module.py` | the `agents` module process (one thread per agent) |
 | `agents/fuzzy`, `agents/validation` | fuzzy agent (`hfs_risk` → corridor claim), validation agent (final decision) |
+| `agents/video`, `agents/audio` | TOD-47: actions / persons, meaning of speech — see `docs/article2_architecture.md` |
+| `tools/agent_eval.py` | writes `agents/<name>/eval.yaml` (measured weights) from the evaluation reports |
 | `agents/echo` | the template agent |
 
 ## Writing an agent
@@ -99,7 +101,8 @@ The agent shows up on the dashboard page **Агенти** after a restart. No ot
 ```
 
 `claim` is the claim type and `value` its content. The validation agent counts `risk_opinion` claims with
-`value.risk` in [0, 1]. Every claim goes on the bus as an `agent_claim` event, so it is logged in
+`value.risk` in [0, 1]. Their `value.kind` is either `at_least` ("what I saw is at least this risky", which only
+raises) or `estimate` (the default: an overall risk, which may lower only when it comes from video / gas). Every claim goes on the bus as an `agent_claim` event, so it is logged in
 `logs/<date>/events.jsonl` together with the agent's version.
 
 ## Rules the framework enforces
@@ -138,6 +141,8 @@ The agent shows up on the dashboard page **Агенти** after a restart. No ot
    `agents/validation/agent.py`):
    - no weighted opinion → `fuzzy_only` (Article 1);
    - the agents' weighted risk inside the corridor → `agree`;
+   - an `at_least` floor above the fuzzy risk raises the risk to it (`raised`), or goes to the operator when the
+     floor is above the corridor;
    - below the corridor → `deescalation_confirmed` only if video / gas opinions support it; otherwise
      `deescalation_rejected` and the fuzzy risk stays (a spoken "everything is fine" never lowers it);
    - above the corridor → `escalation_review`: risk = `y_r` plus an `agent_operator_request` event.
