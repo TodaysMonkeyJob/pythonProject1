@@ -33,6 +33,18 @@ def crasher(event_queue, control_queue, config):
     type("Crasher", (_Dummy,), {"name": "crasher"})(event_queue, control_queue, config).run()
 
 
+def light_restarter(event_queue, control_queue, config):
+    """Asks for a planned restart on the first start (like the actions module unloading its models)."""
+    from core.module import PLANNED_RESTART_EXIT
+
+    marker = config["test"]["marker"]
+    if not os.path.exists(marker):
+        open(marker, "w").close()
+        time.sleep(0.3)
+        raise SystemExit(PLANNED_RESTART_EXIT)
+    type("Restarter", (_Dummy,), {"name": "restarter"})(event_queue, control_queue, config).run()
+
+
 def hanger(event_queue, control_queue, config):
     """One heartbeat, then hangs (ignores "stop") on the first start; normal after the restart."""
     marker = config["test"]["marker"]

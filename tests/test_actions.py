@@ -337,7 +337,8 @@ def _drain(q):
 def test_recognizer_runs_pose_only_with_persons_and_forwards_gas():
     pose = standing()
     estimator = FakePoseEstimator([pose])
-    module = ActionRecognizer(queue.Queue(), queue.Queue(), {"actions": {}, "vision": {}}, pose_estimator=estimator)
+    module = ActionRecognizer(queue.Queue(), queue.Queue(), {"actions": {"mode": "on"}, "vision": {}},
+                             pose_estimator=estimator)
     frame = np.zeros((480, 640, 3), np.uint8)
 
     module.process(1, 0.0, frame, {"persons": []})
@@ -360,7 +361,8 @@ def test_recognizer_reads_shared_buffer_once_per_frame():
     try:
         pose = standing()
         estimator = FakePoseEstimator([pose])
-        config = {"actions": {"action_fps": 1000}, "vision": {"shared_buffer": name, "resolution": [640, 480]}}
+        config = {"actions": {"action_fps": 1000, "mode": "on"},
+                  "vision": {"shared_buffer": name, "resolution": [640, 480]}}
         module = ActionRecognizer(queue.Queue(), queue.Queue(), config, pose_estimator=estimator)
         module.step()                                                  # attaches; nothing written yet
         frame = np.zeros((480, 640, 3), np.uint8)
@@ -398,3 +400,71 @@ def test_ankle_alternation_sign():
     assert standing(step=8).keypoints[L_ANKLE][0] > standing().keypoints[L_ANKLE][0]
     assert standing(step=8).keypoints[R_ANKLE][0] < standing().keypoints[R_ANKLE][0]
     assert standing(hand_at_mouth=True).keypoints[L_WRIST][1] < standing().keypoints[L_WRIST][1]
+
+
+# --- A3 (TOD-43) light / actions mode --------------------------------------------------------------------------------
+
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_light_mode_by_default_and_toggle_loads_and_unloads_models():
+    rules = {"lab": {}}
+    loads = []
+
+    def loader():
+        loads.append(1)
+        return FakePoseEstimator([standing()]), None, None
+
+    clock = Clock()
+    module = ActionRecognizer(queue.Queue(), queue.Queue(), {"actions": {"unload_after_sec": 30}, "vision": {}},
+                              location_rules=lambda loc: rules.get(loc, {}), model_loader=loader, clock=clock)
+    module.location_id = "lab"
+    module.scheduler.slots.clear()                 # single camera of location "lab"
+    module.sync_models(force=True)
+    assert not module.models_loaded and not loads                                  # light mode: nothing loaded
+    frame = np.zeros((480, 640, 3), np.uint8)
+    module.process(1, 0.0, frame, {"persons": [person(1, standing())]})
+    assert _drain(module.event_queue) == []
+    assert module.heartbeat_payload() == {"actions_mode": "per_location", "models_loaded": False,
+                                          "actions_locations": []}
+    rules["lab"] = {"actions_enabled": True}                                       # dashboard toggle on
+    module.sync_models(force=True)
+    assert module.models_loaded and len(loads) == 1
+    for i in range(20):
+        module.process(i + 2, i * DT, frame, {"persons": [person(1, standing())]})
+    assert [e.payload["action"] for e in _drain(module.event_queue)] == ["standing"]
+    rules["lab"] = {"actions_enabled": False}                                      # toggle off …
+    clock.t = 10
+    module.sync_models(force=True)
+    assert module.models_loaded                                                    # … kept for unload_after_sec
+    clock.t = 41
+    module.sync_models(force=True)
+    assert not module.models_loaded and module.exit_code is None                   # unloaded in place (no _module)
+
+
+def test_actions_off_in_orchestrator_means_planned_restart():
+    from core.module import PLANNED_RESTART_EXIT
+
+    clock = Clock()
+    module = ActionRecognizer(queue.Queue(), queue.Queue(),
+                              {"actions": {"unload_after_sec": 0}, "vision": {}, "_module": "actions"},
+                              location_rules=lambda loc: {}, model_loader=lambda: (FakePoseEstimator([]), None, None),
+                              clock=clock)
+    module.scheduler.slots.clear()
+    module.load_models(["lab"])
+    module.running = True
+    module.sync_models(force=True)
+    assert module.exit_code == PLANNED_RESTART_EXIT and module.running is False
+
+
+def test_actions_mode_off_never_loads():
+    module = ActionRecognizer(queue.Queue(), queue.Queue(), {"actions": {"mode": "off"}, "vision": {}},
+                              pose_estimator=FakePoseEstimator([standing()]))
+    assert not module.models_loaded and not module.enabled_for("lab")
+    with pytest.raises(ValueError):
+        ActionRecognizer(queue.Queue(), queue.Queue(), {"actions": {"mode": "maybe"}, "vision": {}})

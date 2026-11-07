@@ -14,7 +14,7 @@ from core.fuzzy import FuzzyEngine, load_yaml
 from core.mode import LLM_PACKAGES, apply_mode, is_autonomous, mode_of
 from modules.hfs.__main__ import check
 from modules.hfs.audio import AudioSubsystem, keyword_grade, keyword_grades
-from modules.hfs.camera import CameraSubsystem, hours_outside
+from modules.hfs.camera import CameraSubsystem
 from modules.hfs.gas import GasSubsystem
 from modules.hfs.policy import LEVELS, POLICIES, policy_level
 from modules.hfs.top import TopLevel
@@ -222,16 +222,6 @@ def test_gas_rules_from_the_issue():
     assert level(max_norm=0.05, mixture_index=0.05) == "low"
 
 
-def test_hours_outside_activity_window():
-    at = lambda hh, mm=0: datetime(2026, 11, 6, hh, mm)  # noqa: E731
-    assert hours_outside(at(12), "08:00", "19:00") == 0
-    assert hours_outside(at(20), "08:00", "19:00") == 1
-    assert hours_outside(at(2), "08:00", "19:00") == 6
-    assert hours_outside(at(7, 30), "08:00", "19:00") == 0.5
-    assert hours_outside(at(23), "22:00", "06:00") == 0                      # night shift wraps midnight
-    assert hours_outside(at(12), "22:00", "06:00") == 6
-
-
 def test_camera_subsystem_strangers_at_night_vs_known_by_day():
     clock = Clock()
     night = CameraSubsystem({}, clock=clock, local_now=lambda: datetime(2026, 11, 6, 2, 0))
@@ -239,26 +229,71 @@ def test_camera_subsystem_strangers_at_night_vs_known_by_day():
     night.observe(ev("object_detected", {"class": "person", "track_id": 1, "state": "appeared"}), clock())
     night.observe(ev("person_identified", {"track_id": 1, "identity": "unknown_3", "person_id": "p3"}), clock())
     result = night.evaluate("lab", clock(), available=True)
-    assert result["inputs"]["unknown_share"] == 1 and result["level"] == "high"      # a stranger standing still
-    night.observe(ev("motion", {"state": "start"}), clock() - 30)
+    assert result["inputs"]["unknown_share"] == 1 and result["inputs"]["activity_time"] == 6
+    assert result["level"] == "high"                                         # only a stranger, after hours
+    night.observe(ev("motion_level", {"intensity": 0.2}), clock())
     assert night.evaluate("lab", clock(), available=True)["level"] == "critical"   # … moving a lot
     day = CameraSubsystem({}, clock=clock, local_now=lambda: datetime(2026, 11, 6, 12, 0),
-                          rules=lambda loc: {"activity_hours": ["08:00", "19:00"]})
+                          rules=lambda loc: {"activity_hours": [["08:00", "19:00"]]})
     day.observe(ev("object_detected", {"class": "person", "track_id": 1, "state": "appeared"}), clock())
     day.observe(ev("person_identified", {"track_id": 1, "identity": "Oleh", "person_id": "p1"}), clock())
-    assert day.evaluate("lab", clock(), available=True)["level"] == "low"
-    day.observe(ev("object_detected", {"class": "person", "track_id": 2, "state": "appeared"}), clock())
-    assert day.unknown_share("lab", clock()) == 0                            # not decided yet …
-    assert day.unknown_share("lab", clock() + 11) == 0.5                     # … unidentified after 10 s
+    assert day.evaluate("lab", clock(), available=True)["level"] == "low"   # nobody unknown, working hours
 
 
-def test_camera_motion_intensity_is_share_of_window():
+def test_unknown_share_counts_known_and_unknown_only():
     clock = Clock()
     camera = CameraSubsystem({}, clock=clock)
-    camera.observe(ev("motion", {"state": "start"}), 1000.0)
-    camera.observe(ev("motion", {"state": "end"}), 1015.0)
-    assert camera.motion_share("lab", 1030.0) == pytest.approx(0.5)
-    assert camera.motion_share("lab", 1060.0) == 0
+    assert camera.unknown_share("lab", clock()) == 0                         # nobody
+    camera.observe(ev("person_identified", {"track_id": 1, "identity": "Oleh", "person_id": "p1"}), clock())
+    camera.observe(ev("person_identified", {"track_id": 2, "identity": "unknown_4", "person_id": "p4"}), clock())
+    assert camera.unknown_share("lab", clock()) == 0.5                       # 1 known + 1 unknown
+    camera.observe(ev("object_detected", {"class": "person", "track_id": 3, "state": "appeared"}), clock())
+    assert camera.unknown_share("lab", clock()) == 0.5                       # not decided yet: not counted …
+    assert camera.unknown_share("lab", clock() + 11) == pytest.approx(2 / 3, abs=1e-3)   # … hidden face → unknown
+    camera.observe(ev("object_detected", {"class": "person", "track_id": 2, "state": "disappeared"}), clock())
+    camera.observe(ev("object_detected", {"class": "person", "track_id": 3, "state": "disappeared"}), clock())
+    assert camera.unknown_share("lab", clock()) == 0
+
+
+def test_unknown_share_interval_from_identification_accuracy():
+    from modules.hfs.camera import binomial_quantile, identification_accuracy, share_interval
+
+    p, source = identification_accuracy(os.path.join(REPO, "reports", "identity_eval_lfw.json"), 0.45)
+    assert 0.99 < p < 1.0 and "650" in source                                # Wilson bound of 650 / 650 correct
+    assert binomial_quantile(2, 0.006, 0.95) == 0 and binomial_quantile(20, 0.1, 0.95) == 4
+    assert share_interval(1, 2, 0.006) == (0.5, 0.5)                          # two people, 99.4 %: no doubt
+    assert share_interval(5, 20, 0.1) == (0.05, 0.45)                        # a crowd at 90 %: ±4 identities
+    assert share_interval(0, 0, 0.1) == (0.0, 0.0)
+    camera = CameraSubsystem({"hfs": {"camera": {"identification_accuracy": 0.9}}})
+    for track in range(20):
+        identity = "unknown_1" if track < 5 else "Oleh"
+        camera.observe(ev("person_identified", {"track_id": track, "identity": identity, "person_id": f"p{track}"}),
+                       1000.0)
+    result = camera.evaluate("lab", 1000.0, True)
+    assert result["input_intervals"] == {"unknown_share": [0.05, 0.45]} and result["persons"]["total"] == 20
+
+
+def test_camera_motion_intensity_from_motion_level():
+    camera = CameraSubsystem({})
+    camera.observe(ev("motion", {"state": "start", "area_ratio": 0.03}), 1000.0)
+    assert camera.motion_intensity("lab", 1000.0) == 0.03                    # no motion_level yet: the motion now
+    camera.observe(ev("motion_level", {"intensity": 0.12}), 1001.0)
+    camera.observe(ev("motion_level", {"intensity": 0.02}, device="cam-2"), 1001.0)
+    assert camera.motion_intensity("lab", 1002.0) == 0.12                    # the busiest camera
+    camera.observe(ev("motion", {"state": "end"}), 1003.0)
+    assert camera.motion_intensity("lab", 1020.0) == 0                       # motion_level stale, motion ended
+
+
+def test_camera_activity_time_uses_the_location_schedule():
+    rules = {"office": {"object_type": "office"}, "plant": {"object_type": "factory"}}
+    presets = {"office": {"hours": [["08:00", "19:00"]], "days": [0, 1, 2, 3, 4]},
+               "factory": {"hours": [["06:00", "14:00"], ["14:00", "22:00"], ["22:00", "06:00"]]}}
+    saturday_noon = datetime(2026, 11, 7, 12, 0)
+    camera = CameraSubsystem({"hfs": {"camera": {"schedules": presets}}}, rules=lambda loc: rules.get(loc, {}),
+                             local_now=lambda: saturday_noon)
+    assert camera.activity_time("office") == 12                              # weekend: off hours
+    assert camera.activity_time("plant") == -12                              # three shifts: always working
+    assert camera.activity_time("lab") == -4                                 # default 08–19: 4 h before closing
 
 
 def test_audio_keywords_and_unknown_voice():

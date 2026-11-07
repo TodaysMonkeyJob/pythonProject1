@@ -281,6 +281,14 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   masses; `modules/hfs/gas_normalize.py` units vol_pct / ppm / mg_m3 / ug_m3) → `max_norm`, `mixture_index` (Σ),
   `dynamics` (slope / min over `hfs.gas.window_sec`). `gas_reading` = the sensor's current state (`concentration` +
   `unit`, `readings: [...]`, or legacy `concentration_pct`). Sensor survey + periods: `docs/sensors.md`.
+  A3 (TOD-43) camera: inputs `unknown_share` (+ `input_intervals` from the LFW accuracy), `motion_intensity`
+  (`motion_level` events, unlogged, from the adaptive `MotionDetector`: fps-tied learning rate, per-cell illumination
+  jump → re-learn + hold-off, per-cell noise levels for foliage, persistence, masks; `vision.motion_*`),
+  `activity_time` (`core/schedule.py`; location rules `activity_hours` / `activity_days` / `object_type` →
+  `hfs.camera.schedules`). Actions: `actions.mode` per_location (default; location rule `actions_enabled`, dashboard
+  Locations page) | on | off — light mode loads no pose / action models; turning off exits the process with
+  `core.module.PLANNED_RESTART_EXIT` (the orchestrator restarts it at once, no alert) because unloading in place keeps
+  the memory. `python -m tools.camera_bench` → `reports/camera_bench/` (light vs actions RAM, false motion, min fps).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

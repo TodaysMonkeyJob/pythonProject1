@@ -1,0 +1,11 @@
+{
+ "rss_light_mb": 50,
+ "rss_actions_mb": 392,
+ "rss_after_unload_mb": 571,
+ "load_sec": 1.64,
+ "pose_ms_mean": 16.1,
+ "pose_ms_p95": 18.0,
+ "persons": 3,
+ "imgsz": 320,
+ "threads": 2
+}

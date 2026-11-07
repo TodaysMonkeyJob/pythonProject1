@@ -26,7 +26,7 @@ from core.bus import CONTROL_STOP, publish
 from core.events import Event, make_event
 from core.logger import JsonlLogger
 from core.mode import LLM_PACKAGES, apply_mode, is_autonomous
-from core.module import HEARTBEAT_INTERVAL
+from core.module import HEARTBEAT_INTERVAL, PLANNED_RESTART_EXIT
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
@@ -46,13 +46,14 @@ DEFAULT_MODULES = {
         "gas_reading", "motion", "object_detected", "person_identified", "action", "alert", "speech", "scene_text",
         "notification_acked", "escalation_resolved"]),   # F26: operator outcomes → fired-rule statistics
     "hfs": ("modules.hfs:run", "hfs", [            # A1 (TOD-41): gas / camera / audio subsystems → overall risk
-        "gas_reading", "motion", "object_detected", "person_identified", "sound", "speech"]),
+        "gas_reading", "motion", "motion_level", "object_detected", "person_identified", "sound", "speech"]),
     "locations": ("modules.locations:run", "locations", ["*"]),   # F12 per-location state + notifications
     "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary"]),
 }
 SELF_LOGGING_SECTIONS = ("vision", "actions", "identity")
 PER_DEVICE_MODULES = ("vision", "audio")   # with network.discovery: one process per camera / microphone
-UNLOGGED_EVENTS = ("heartbeat", "location_summary")   # frequent status: explicit subscribers only, not logged
+# frequent status: explicit subscribers only, not logged
+UNLOGGED_EVENTS = ("heartbeat", "location_summary", "motion_level")
 # Files a module can't start without: (config section, key, how to get it)
 REQUIRED_FILES = {
     "gas": [("gas", "classifier_path", "python -m modules.gas.train"),
@@ -365,7 +366,11 @@ class Orchestrator:
                 if now >= module.next_start and not self._stopping:
                     self._start(module)
                 continue
-            if not module.process.is_alive():
+            if not module.process.is_alive() and module.process.exitcode == PLANNED_RESTART_EXIT:
+                logger.info(f"{module.spec.name} asked for a restart (light mode); restarting")
+                self._kill(module)
+                module.process, module.next_start = None, 0.0      # started on the next pass, no alert / backoff
+            elif not module.process.is_alive():
                 self._restart(module, f"exited with code {module.process.exitcode}")
             elif module.last_heartbeat is None:
                 if now - module.started_at > self.startup_grace:

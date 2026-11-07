@@ -6,6 +6,8 @@ Events (source "camera"), published only on changes:
   * ``motion``           {"state": "start" | "end", "area_ratio", "boxes"}
   * ``object_detected``  {"track_id", "class", "bbox", "state": "appeared" | "disappeared"}
   * ``scene_active``     {"active": bool} — motion or at least one object; false after ``scene_timeout_sec``
+  * ``motion_level``     {"intensity", "raw"} — A3 (TOD-43): moving share of the frame smoothed over
+    ``motion_smooth_sec``, every ``motion_level_sec`` while it changes (not logged; the HFS camera subsystem)
   * ``alert``            {"reason": "camera_lost" | "camera_restored"}
 
 Forwarded ``person_identified`` events put the person's current display name on the annotated frame (a rename on
@@ -28,6 +30,20 @@ from system_setup.logger_setup import init_logger
 
 logger = init_logger()
 
+
+
+MOTION_OPTIONS = {   # config key → MotionDetector argument (A3 / TOD-43 adaptive motion)
+    "motion_adaptive": "adaptive", "fps": "fps", "motion_background_sec": "background_sec",
+    "motion_illumination_k": "illumination_k", "motion_illumination_min": "illumination_min",
+    "motion_illumination_holdoff_sec": "illumination_holdoff_sec", "motion_grid": "grid",
+    "motion_noise_k": "noise_k", "motion_cell_min_share": "cell_min_share",
+    "motion_noise_adapt_sec": "noise_adapt_sec", "motion_persist_frames": "persist_frames",
+    "motion_persist_window": "persist_window", "motion_mask_rects": "mask_rects"}
+
+
+def motion_options(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """:return: the MotionDetector keyword arguments set in the vision config"""
+    return {arg: cfg[key] for key, arg in MOTION_OPTIONS.items() if cfg.get(key) is not None}
 
 class FpsCounter:
     """Counts events and reports the average rate over an interval."""
@@ -85,7 +101,14 @@ class VisionDetector(BaseModule):
         self.object_detector = object_detector
         self.frame_buffer = frame_buffer
         self.motion = MotionDetector(cfg.get("motion_min_area", 800), cfg.get("motion_history", 300),
-                                     cfg.get("motion_var_threshold", 25), cfg.get("motion_warmup_frames", 30))
+                                     cfg.get("motion_var_threshold", 25), cfg.get("motion_warmup_frames", 30),
+                                     **motion_options(cfg))
+        self.motion_level = 0.0                     # A3: smoothed moving share of the frame
+        self.motion_smooth_sec = float(cfg.get("motion_smooth_sec", 5.0))
+        self.motion_level_sec = float(cfg.get("motion_level_sec", 2.0))
+        self._last_level = 0.0                      # nothing is sent while the camera stays still
+        self._last_level_at = float("-inf")
+        self._last_frame_at: Optional[float] = None
         self.motion_state = MotionState(cfg.get("motion_end_sec", 2.0))
         self.registry = TrackRegistry(cfg.get("track_lost_sec", 10.0), cfg.get("reid_iou", 0.5))
         self.scene = SceneState(cfg.get("scene_timeout_sec", 10))
@@ -107,6 +130,20 @@ class VisionDetector(BaseModule):
         self.health = CameraHealth(health_cfg.get("camera") or {}) if health_cfg is not None else None
         self.health_publisher = HealthPublisher(self.emit, "camera", (health_cfg or {}).get("health", {}).get(
             "refresh_sec", 300)) if health_cfg is not None else None
+
+    def _update_motion_level(self, area_ratio: float, now: float) -> None:
+        """Exponential smoothing of the moving share (time constant ``motion_smooth_sec``, any frame rate)."""
+        dt = 0.0 if self._last_frame_at is None else max(0.0, now - self._last_frame_at)
+        self._last_frame_at = now
+        alpha = 1.0 if self.motion_smooth_sec <= 0 else 1.0 - float(np.exp(-dt / self.motion_smooth_sec))
+        self.motion_level += alpha * (area_ratio - self.motion_level)
+        level = round(self.motion_level, 4) if self.motion_level >= 1e-4 else 0.0
+        if now - self._last_level_at < self.motion_level_sec or level == self._last_level:
+            return
+        if self._last_level is not None and abs(level - self._last_level) < 0.002 and level > 0:
+            return
+        self._last_level, self._last_level_at = level, now
+        self.emit("motion_level", {"intensity": level, "raw": area_ratio})
 
     def heartbeat_payload(self) -> Dict[str, Any]:
         return dict(self.last_stats)
@@ -183,6 +220,7 @@ class VisionDetector(BaseModule):
         change = self.motion_state.update(motion.motion, now)
         if change:
             self.emit("motion", {"state": change, "area_ratio": motion.area_ratio, "boxes": motion.boxes})
+        self._update_motion_level(motion.area_ratio, now)
 
         if motion.motion or now - self._last_yolo >= self.yolo_interval_sec:
             self._last_yolo = now
