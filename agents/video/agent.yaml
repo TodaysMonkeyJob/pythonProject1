@@ -1,0 +1,23 @@
+name: video
+role: video
+version: 1.0.0
+description: >-
+  Persons and actions from the camera pipeline (F2 / F3: pose rules + the learned skeleton classifier, actions mode).
+  Claims every action with its confidence and, in a decision round, an at_least risk for risky actions (fall,
+  fight, distress, lying …). Actions never enter the fuzzy rules — only this agent reads them.
+entry: agent:VideoAgent
+subscribes: [action, object_detected, person_identified]
+publishes: [action, persons, risk_opinion]
+backend: {kind: local_model, models: [models/action_classifier.joblib]}   # runs in the actions process
+resources: {ram_mb: 2, gpu: false}     # the models live in the actions process; the agent keeps track state only
+data_scope:
+  events: [action, object_detected, person_identified]
+  claims: [fuzzy]
+timeout_s: 0.5
+enabled_default: true
+eval_file: eval.yaml                  # python -m tools.agent_eval (held-out action classifier accuracy)
+config:
+  action_risk_from: config/fuzzy.yaml # maps.action_risk (expert scale of the hybrid layer, F2)
+  min_risk: 0.3                       # actions below this are everyday activity: no opinion
+  stale_sec: 30                       # an action not re-confirmed for this long no longer counts
+  default_confidence: 0.7             # rule postures without a probability

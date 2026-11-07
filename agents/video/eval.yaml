@@ -1,0 +1,10 @@
+# Measured weight of the video agent — written by python -m tools.agent_eval; do not edit.
+# generated 2026-11-07
+accuracy: 0.8457
+n: 13732
+point_accuracy: 0.8517
+macro_f1: 0.7911
+metric: Wilson 95 % lower bound of the window accuracy
+source: 'reports/action_classifier/metrics.json (sha 8c8ca03cfa54): skeleton classifier on held-out hmdb51
+  + ntu60 test windows; domain gap to the deployed cameras unmeasured'
+date: '2026-10-22'

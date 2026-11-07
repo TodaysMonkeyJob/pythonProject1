@@ -1,5 +1,4 @@
 """B2 (TOD-49) agent plug-in framework: discovery, switches, data scope, timeouts, validation, Article 1 equality."""
-import datetime as dt
 import functools
 import gc
 import os
@@ -8,7 +7,6 @@ import textwrap
 import time
 import weakref
 
-import numpy as np
 import pytest
 import yaml
 
@@ -69,7 +67,8 @@ SLEEPY_CODE = """
 
 
 def registry(tmp_path=None, roots=None, enabled=None, settings=None, state_path=None, mode="hybrid"):
-    cfg = {"mode": mode, "agents": {"enabled_agents": enabled or {}, "settings": settings or {}}}
+    enabled = {"video": False, "audio": False, **(enabled or {})}      # TOD-47 agents: tests/test_agents_article2.py
+    cfg = {"mode": mode, "agents": {"enabled_agents": enabled, "settings": settings or {}}}
     return AgentRegistry(cfg, roots=roots or [AGENTS_DIR], entry_points=False, state_path=state_path)
 
 
@@ -95,7 +94,7 @@ def hfs_event(location="lab", overall=0.5, level="medium", interval=(0.4, 0.6)):
 
 def test_shipped_agents_are_valid():
     reg = registry()
-    assert {"fuzzy", "validation", "echo"} <= set(reg.manifests) and not reg.errors
+    assert {"fuzzy", "validation", "echo", "video", "audio"} <= set(reg.manifests) and not reg.errors
     assert reg.manifests["fuzzy"].required and not reg.manifests["fuzzy"].contributes
     assert reg.manifests["echo"].contributes and not reg.manifests["echo"].enabled_default
 
@@ -291,7 +290,8 @@ def test_operator_request_event(tmp_path):
     assert decision["branch"] == "escalation_review" and decision["decided_by"] == "validation"
     assert [s for t, _, s, _ in bus.events if t in ("agent_decision", "agent_operator_request")] == \
         ["warning", "warning"]                                       # risk = y_r 0.6 → high
-    assert decision["versions"] == {"dropin": "0.1.0", "fuzzy": "1.0.0", "validation": "1.0.0"}
+    assert decision["versions"] == {"dropin": "0.1.0", "fuzzy": "1.0.0",
+                                    "validation": reg.manifests["validation"].version}
     request = bus.of("agent_operator_request")[0]
     assert request["round_id"] == decision["round_id"] and request["agents"] == ["dropin"]
     host.stop()
@@ -301,25 +301,14 @@ def test_operator_request_event(tmp_path):
 
 @functools.lru_cache(maxsize=1)
 def article1_payloads():
-    from experiments.hfs.run import LOCATION, WEDNESDAY, events_of
-    from modules.hfs.worker import HierarchicalFuzzySystem
+    from experiments.agents.run import LOCATION, article1_payload, scenario_events
 
     base = yaml.safe_load(open(os.path.join(REPO, "config.yaml"), encoding="utf-8"))
     config = {"hfs": base["hfs"], "identity": base.get("identity", {}), "gas": base.get("gas", {})}
     spec = yaml.safe_load(open(os.path.join(REPO, "experiments", "hfs", "scenarios.yaml"), encoding="utf-8"))
     out = []
     for scenario in spec["scenarios"]:
-        events, devices = events_of(scenario, np.random.default_rng(42))
-        hh, mm = (int(x) for x in str((scenario.get("camera") or {}).get("time", "11:00")).split(":"))
-        moment = dt.datetime.combine(WEDNESDAY, dt.time(hh, mm))
-        now = [1_000_000.0]
-        system = HierarchicalFuzzySystem(config, devices=lambda d=devices: d, clock=lambda n=now: n[0],
-                                         local_now=lambda m=moment, n=now: m + dt.timedelta(seconds=n[0] - 1e6))
-        for t, event in events:
-            now[0] = 1_000_000.0 + t
-            system.observe(event)
-        now[0] = 1_000_060.0
-        payload = system.evaluate(LOCATION, now[0])
+        payload = article1_payload(scenario, config, *scenario_events(scenario, 42))
         out.append(make_event("system", "hfs_risk", payload, location_id=LOCATION, device_id="hub:hfs"))
     return tuple(out)
 

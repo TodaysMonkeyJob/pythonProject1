@@ -1,0 +1,10 @@
+# Measured weight of the audio agent — written by python -m tools.agent_eval; do not edit.
+# generated 2026-11-07
+accuracy: 0.5353
+n: 23
+point_accuracy: 0.7391
+metric: Wilson 95 % lower bound of danger-word recognition
+source: 'config/uncertainty.yaml audio.keyword_danger (sha c29c1ea5ebe8): data/calibration/asr_phrases.csv
+  (sha db92533b1ec4): danger-dictionary words said vs heard by faster-whisper-base on 320 synthetic TTS
+  phrases with noise (−5 … 30 dB SNR): 17 right, 6 missed / false'
+date: '2026-10-22'
