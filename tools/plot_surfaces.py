@@ -13,7 +13,7 @@ import argparse
 import itertools
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import matplotlib
 
@@ -63,16 +63,45 @@ def plot(engine: FuzzyEngine, level: str, x_name: str, y_name: str, fixed: Dict[
     plt.close(fig)
 
 
-def monotonicity(engine: FuzzyEngine, points: int) -> Dict[str, Dict[str, Any]]:
-    """:return: {input: {steps, falls, share, max_fall, level_drops}} along that input over a grid of the others"""
+def breakpoints(engine: FuzzyEngine, name: str) -> List[float]:
+    """:return: the term breakpoints of an input inside its universe (sorted, unique); none for Gaussian terms"""
+    var = engine.variables[name]
+    points = {var.low, var.high}
+    for parts in var.terms.values():
+        for shape, params in parts:
+            if shape in ("tri", "trap"):
+                points.update(p for p in params if var.low <= p <= var.high)
+    return sorted(points)
+
+
+def node_grids(engine: FuzzyEngine, names: List[str]) -> Tuple[Dict[str, List[float]], Dict[str, List[float]]]:
+    """
+    (fixed, moving) grids for a complete product / sum table on piecewise-linear Ruspini terms: the surface is a
+    multilinear interpolation of the table, linear between neighbouring breakpoints in every input, so a line along
+    one input with the others at their breakpoints — sampled at the breakpoints and between them — covers every case
+    (any other line is a convex combination of those).
+    """
+    fixed = {n: breakpoints(engine, n) for n in names}
+    moving = {n: sorted({*b, *((x + y) / 2 for x, y in zip(b[:-1], b[1:], strict=True))}) for n, b in fixed.items()}
+    return fixed, moving
+
+
+def monotonicity(engine: FuzzyEngine, points: int, nodes: bool = False) -> Dict[str, Dict[str, Any]]:
+    """
+    :param nodes: grids at the term breakpoints (``node_grids``: exact for piecewise-linear terms, and much smaller
+                  than a uniform grid with five inputs); otherwise ``points`` per input, uniform
+    :return: {input: {steps, falls, share, max_fall, level_drops}} along that input over a grid of the others
+    """
     names = inputs_of(engine)
-    grids = {n: np.linspace(engine.variables[n].low, engine.variables[n].high, points) for n in names}
+    uniform = {n: np.linspace(engine.variables[n].low, engine.variables[n].high, points) for n in names}
+    fixed_grids, moving_grids = node_grids(engine, names) if nodes else (uniform, uniform)
+    grids = moving_grids
     out = {}
     for moving in names:
         others = [n for n in names if n != moving]
         steps = falls = drops = 0
         worst = 0.0
-        for combo in itertools.product(*(grids[n] for n in others)):
+        for combo in itertools.product(*(fixed_grids[n] for n in others)):
             fixed = dict(zip(others, combo, strict=True))
             values = [engine.infer({**fixed, moving: v})["crisp"] for v in grids[moving]]
             for earlier, later in zip(values[:-1], values[1:], strict=True):
@@ -102,8 +131,8 @@ def main(argv=None) -> int:
         fixings = [{}]
         if len(names) > 2:
             fixings = [None]                                     # the others at the middle of their universe
-            if level == "top":
-                fixings.append("zero")                           # … and the third risk missing (0)
+            if level in ("top", "gas"):
+                fixings.append("zero")      # … and the others 0 (top: the third risk missing; gas: no other gas)
         for x_name, y_name in itertools.combinations(names, 2):
             for fixing in fixings:
                 rest = [n for n in names if n not in (x_name, y_name)]
@@ -113,7 +142,7 @@ def main(argv=None) -> int:
                 plot(engine, level, x_name, y_name, fixed, args.points, os.path.join(args.out, name))
                 figures.append(name)
         report[level] = {"operators": engine.operators, "rules": len(engine.rules),
-                         "inputs": monotonicity(engine, args.check_points)}
+                         "inputs": monotonicity(engine, args.check_points, nodes=len(names) > 4)}
         worst = max(v["max_fall"] for v in report[level]["inputs"].values())
         print(f"{level:<7} {len(figures):>3} figures so far; largest fall {worst:.4f}")
     with open(os.path.join(args.out, "monotonicity.json"), "w", encoding="utf-8") as f:

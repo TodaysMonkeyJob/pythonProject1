@@ -9,7 +9,7 @@ import yaml
 from core.fuzzy import FuzzyEngine, load_yaml
 from experiments.hfs import metrics as M
 from experiments.hfs.run import CONFIGS, run_scenario, system_config, write_variants
-from experiments.hfs.variants import gauss_of, gaussian, without_mixture
+from experiments.hfs.variants import gauss_of, gaussian, without_escalation
 from tools.plot_surfaces import monotonicity
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -88,10 +88,11 @@ def test_gaussian_variant_keeps_centres_and_half_widths():
     FuzzyEngine.from_dict(gaussian(data))                                            # still a valid rule base
 
 
-def test_without_mixture_keeps_the_low_mixture_cells():
-    data = without_mixture(load_yaml(os.path.join(REPO, "config", "fuzzy", "gas.yaml")))
+def test_without_escalation_keeps_the_single_gas_cells():
+    data = without_escalation(load_yaml(os.path.join(REPO, "config", "fuzzy", "gas.yaml")))
     engine = FuzzyEngine.from_dict(data)
-    assert "mixture_index" not in engine.variables and len(engine.rules) == 16
+    assert not {"second_norm", "group_index", "third_norm"} & set(engine.variables) and len(engine.rules) == 16
+    assert engine.infer({"max_norm": 0.42, "second_norm": 0.15})["crisp"] == engine.infer({"max_norm": 0.42})["crisp"]
     assert engine.infer({"max_norm": 1.0})["crisp"] == pytest.approx(0.8659, abs=1e-3)
 
 
@@ -114,7 +115,7 @@ def test_scenarios_run_through_the_real_system(tmp_path):
     t1_paths = write_variants(str(tmp_path), "tri_type1", CONFIGS["tri_type1"])
     it2, type1 = system_config(base, paths, True), system_config(base, t1_paths, False)
     for sid, level in (("g04", "critical"), ("c05", "high"), ("a04", "critical"), ("x07", "medium"),
-                       ("x09", "critical"), ("g08", "critical")):
+                       ("x09", "critical"), ("g08", "high"), ("g14", "high"), ("g15", "critical")):
         result = run_scenario(by_id[sid], it2, 42)
         assert result["level"] == level, (sid, result)
     assert run_scenario(by_id["x07"], it2, 42)["partial"] is True                  # microphone offline

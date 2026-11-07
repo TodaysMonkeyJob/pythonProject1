@@ -1,7 +1,7 @@
 """
 Explain one inference of an HFS rule base (A1 / TOD-41)::
 
-    python -m modules.hfs gas max_norm=0.6 mixture_index=1.2 dynamics=0.1
+    python -m modules.hfs gas max_norm=0.42 second_norm=0.15 group_index=0.42 dynamics=0.1
     python -m modules.hfs top risk_gas=0.88 risk_camera=0.1        # risk_audio missing → partial
     python -m modules.hfs --check                                   # validate + metadata of config/fuzzy/*.yaml
 """

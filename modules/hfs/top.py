@@ -60,7 +60,8 @@ class TopLevel:
                 "partial": bool(missing) or any(r.get("partial") for r in present.values()),
                 "missing": missing,
                 "subsystems": {name: {k: r[k] for k in ("risk", "level", "interval", "corridor_width", "inputs",
-                                                        "deltas", "widened_by", "excluded") if k in r}
+                                                        "deltas", "widened_by", "excluded", "escalation",
+                                                        "explanation", "saturated") if k in r}
                                for name, r in present.items()},
                 "fired_rules_by_level": {**{name: r["fired_rules"] for name, r in present.items()},
                                          "top": result["fired_rules"]}}

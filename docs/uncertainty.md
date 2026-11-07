@@ -28,7 +28,7 @@ checks it.
 
 | Input | δ | Source |
 | -- | -- | -- |
-| gas concentration → `max_norm`, `mixture_index` | δ_c = max(abs, rel · c) of the reading's sensor, ÷ C_crit; the mixture sums the δ (worst case) | graphene FET: regressor MAE per gas, `reports/gas_metrics.json` (0.0074–0.0176 vol %). DFRobot SEN0469 NH₃: ±10 % or ±5 ppm (datasheet / vendor). SDS011 / SPS30 PM2.5: datasheets (`docs/sensors.md`). DFRobot SEN0466 CO: **unmeasured** (accuracy not published) |
+| gas concentration → `max_norm`, `second_norm`, `third_norm`, `group_index` | δ_c = max(abs, rel · c) of the reading's sensor, ÷ C_crit; the group index sums the δ of its gases (worst case); a gas is active only when c − δ is above the calm band (TOD-50) | graphene FET: regressor MAE per gas, `reports/gas_metrics.json` (0.0074–0.0176 vol %). DFRobot SEN0469 NH₃: ±10 % or ±5 ppm (datasheet / vendor). SDS011 / SPS30 PM2.5: datasheets (`docs/sensors.md`). DFRobot SEN0466 CO: **unmeasured** (accuracy not published) |
 | `dynamics` | δ_c_norm · 60 / √Σ(t − t̄)² per minute | propagated from the concentration error and the sample times (least-squares slope error) |
 | `unknown_share` | binomial: the 95 % quantile f of wrong identities among n → f / n | identification accuracy p = 0.994: Wilson lower bound of 650/650 correct decisions at threshold 0.45, `reports/identity_eval_lfw.json` |
 | `motion_intensity` | 0.0066 of the frame | the largest moving share the adaptive detector reported on scenes without anyone (`reports/camera_bench/motion.json`, synthetic clips) |

@@ -6,16 +6,39 @@
 #   unit        ppm | vol_pct | mg_m3 | ug_m3
 #   molar_mass  g/mol, for ppm ↔ mg/m³ (mg/m³ = ppm · M / 24.45 at 25 °C, 1 atm); null for particles
 #   aliases     names other components use (the TOD-19 classifier says "toluol")
-#   source      where c_crit comes from (checked 2026-11-06)
+#   source      where c_crit comes from (checked 2026-11-06; CO2, Cl2, SO2, NO2, H2S checked 2026-11-07)
+#   group       effect group (TOD-50): the additive mixture index Σ c / c_crit is computed only inside a group
+#   name_uk     name in the Ukrainian explanations
+#
+# TOD-50 multi-gas escalation (modules/hfs/gas_escalation.py): a gas is *active* when the lower bound of its
+# c / c_crit interval (reading − sensor error) is above `activity.calm_norm`; two or more active gases raise the gas
+# risk one level above the highest gas, critical only with evidence (a gas at critical, a group index ≥ 1, or three
+# gases at high).
+activity:
+  calm_norm: 0.05           # "спокійно": lower bound ≤ 5 % of c_crit — design: half of the band where max_norm is
+                            # fully "safe" (0.1), so sensor noise around clean air never counts as an active gas
+groups:                     # effect groups — substances with similar effects add up (OSHA 29 CFR 1910.1000(d)(2)(i))
+  asphyxiant: {name_uk: "задушливі", source: "simple / chemical asphyxiants (CO, CO2, H2S): oxygen transport or supply"}
+  irritant: {name_uk: "подразники дихальних шляхів", source: "respiratory irritants (NH3, Cl2, SO2, NO2)"}
+  solvents: {name_uk: "органічні розчинники", source: "narcotic (CNS) effects of organic solvents — the classic additive mixture example"}
+  particles: {name_uk: "частинки / дим", source: "airborne particles (PM2.5)"}
+benign: []                  # known benign co-occurrence, not counted in the escalation, e.g.
+                            # - {gases: [carbon_dioxide], when: people_present}   (people breathe CO2)
+                            # when: people_present (a person in view in the location) | always; a location's rule
+                            # gas_benign (same format) replaces this list for that location
 gases:
   ammonia:
     formula: NH3
+    name_uk: аміак
+    group: irritant
     c_crit: 300
     unit: ppm
     molar_mass: 17.03
     source: "NIOSH IDLH (https://www.cdc.gov/niosh/idlh/)"
   carbon_monoxide:
     formula: CO
+    name_uk: CO
+    group: asphyxiant
     c_crit: 1200
     unit: ppm
     molar_mass: 28.01
@@ -23,6 +46,8 @@ gases:
     source: "NIOSH IDLH (https://www.cdc.gov/niosh/idlh/)"
   pm2_5:
     formula: PM2.5
+    name_uk: PM2.5
+    group: particles
     c_crit: 225.5
     unit: ug_m3
     molar_mass: null
@@ -32,20 +57,72 @@ gases:
   # Gases of our graphene FET dataset (TOD-19 classifier)
   ethanol:
     formula: C2H5OH
+    name_uk: етанол
+    group: solvents
     c_crit: 3300
     unit: ppm
     molar_mass: 46.07
     source: "NIOSH Pocket Guide IDLH 3300 ppm [10 % LEL] (https://www.cdc.gov/niosh/npg/npgd0262.html)"
   acetone:
     formula: (CH3)2CO
+    name_uk: ацетон
+    group: solvents
     c_crit: 2500
     unit: ppm
     molar_mass: 58.08
     source: "NIOSH Pocket Guide IDLH 2500 ppm [10 % LEL] (https://www.cdc.gov/niosh/npg/npgd0004.html)"
   toluene:
     formula: C6H5CH3
+    name_uk: толуол
+    group: solvents
     c_crit: 500
     unit: ppm
     molar_mass: 92.14
     aliases: [toluol]
     source: "NIOSH Pocket Guide IDLH 500 ppm (https://www.cdc.gov/niosh/npg/npgd0619.html)"
+  # TOD-50: the effect-group examples of the issue (DFRobot Gravity modules exist for each of them)
+  carbon_dioxide:
+    formula: CO2
+    name_uk: CO₂
+    group: asphyxiant
+    c_crit: 40000
+    unit: ppm
+    molar_mass: 44.01
+    aliases: [co2]
+    source: "NIOSH IDLH 40 000 ppm (https://www.cdc.gov/niosh/idlh/intridl4.html)"
+  chlorine:
+    formula: Cl2
+    name_uk: хлор
+    group: irritant
+    c_crit: 10
+    unit: ppm
+    molar_mass: 70.90
+    aliases: [cl2]
+    source: "NIOSH IDLH 10 ppm (https://www.cdc.gov/niosh/idlh/intridl4.html)"
+  sulfur_dioxide:
+    formula: SO2
+    name_uk: діоксид сірки
+    group: irritant
+    c_crit: 100
+    unit: ppm
+    molar_mass: 64.07
+    aliases: [so2]
+    source: "NIOSH IDLH 100 ppm (https://www.cdc.gov/niosh/idlh/intridl4.html)"
+  nitrogen_dioxide:
+    formula: NO2
+    name_uk: діоксид азоту
+    group: irritant
+    c_crit: 13
+    unit: ppm
+    molar_mass: 46.01
+    aliases: [no2]
+    source: "NIOSH IDLH 13 ppm (NIOSH Pub. No. 2017-202, current policy; 20 ppm in 1994) (https://www.cdc.gov/niosh/idlh/intridl4.html)"
+  hydrogen_sulfide:
+    formula: H2S
+    name_uk: сірководень
+    group: asphyxiant
+    c_crit: 100
+    unit: ppm
+    molar_mass: 34.08
+    aliases: [h2s]
+    source: "NIOSH IDLH 100 ppm (https://www.cdc.gov/niosh/idlh/intridl4.html)"

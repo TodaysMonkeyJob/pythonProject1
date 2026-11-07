@@ -30,7 +30,8 @@ scenarios:
   - {id: g07, group: gas, gas: [{gas: pm2_5, value: 60, unit: ug_m3}], label: medium,
      why: "PM2.5 at 0.27 of Hazardous (Unhealthy): attention"}
   - {id: g08, group: gas, gas: [{gas: ammonia, value: 180, unit: ppm}, {gas: carbon_monoxide, value: 720, unit: ppm}],
-     label: critical, why: "two gases at 0.6 C_crit each: Σ c/L = 1.2 exceeds the mixture limit"}
+     label: high, why: "two gases at 0.6 C_crit each, an irritant and an asphyxiant: one step above high is critical,
+       but different effect groups do not add up (TOD-50, 2026-11-07; was critical under the TOD-42 Σ rule)"}
   - {id: g09, group: gas, gas: [{gas: ammonia, value: 90, unit: ppm}, {gas: carbon_monoxide, value: 360, unit: ppm},
      {gas: pm2_5, value: 68, unit: ug_m3}], label: high,
      why: "three substances at 0.3 each: each moderate, Σ 0.9 near the mixture limit"}
@@ -42,6 +43,10 @@ scenarios:
      why: "NH3 falling from 0.4 to 0.3 C_crit: still present"}
   - {id: g13, group: gas, gas: [{gas: ammonia, value: 0.03, unit: vol_pct}], label: critical,
      why: "graphene sensor reading 0.03 vol % = 300 ppm = the IDLH"}
+  - {id: g14, group: gas, gas: [{gas: ammonia, value: 45, unit: ppm}, {gas: carbon_monoxide, value: 504, unit: ppm}],
+     label: high, why: "TOD-50 example: NH3 low (0.15) + CO medium (0.42) — two gases above normal → one step up"}
+  - {id: g15, group: gas, gas: [{gas: ammonia, value: 165, unit: ppm}, {gas: chlorine, value: 5, unit: ppm}],
+     label: critical, why: "two irritants at 0.55 + 0.5 C_crit: group index 1.05 ≥ 1 (additive mixture rule)"}
   # --- camera (subsystem 2) -------------------------------------------------------------------------------------
   - {id: c01, group: camera, label: low, why: "empty room in working hours"}
   - {id: c02, group: camera, camera: {known: 2, motion: 0.05}, label: low, why: "two known people working"}

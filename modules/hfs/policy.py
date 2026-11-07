@@ -21,14 +21,31 @@ def clamp(level: int) -> int:
     return max(0, min(3, level))
 
 
-def gas(level: int, dynamics: int, mixture: int) -> int:
+def gas(level: int, second: int, group: int, third: int, dynamics: int) -> int:
     """
-    A2 (TOD-42), all substances as shares of their critical concentration: max_norm safe / moderate / dangerous /
-    critical → low / medium / high / critical (any single substance at its critical level is critical on its own);
-    dynamics sharp_rise → one level up (the next level within minutes; falling never lowers a level — the gas is still
-    there); mixture_index high (Σ c/c_crit ≥ 1) → one level up: two gases at 0.6 are worse than one.
+    A2 (TOD-42) + A8 (TOD-50) multi-gas escalation, every substance as a share of its critical concentration:
+
+    * ``max_norm`` safe / moderate / dangerous / critical → low / medium / high / critical (any single substance at
+      its critical level is critical on its own);
+    * ``second_norm`` (the second-highest *active* gas: lower bound above the calm band) none / low / medium / high:
+      a second active gas → one level above the maximum;
+    * … but critical only with evidence — a gas at critical, ``group_index`` reached (Σ c / c_crit ≥ 1 inside one
+      effect group, the additive mixture rule) or ``third_norm`` high (three gases at high); otherwise capped at high;
+    * ``dynamics`` sharp_rise → one level up (as before; falling never lowers a level).
+
+    Matrix (second × max, group below, third below, dynamics stable)::
+
+                 low   medium  high  critical
+        none      0      1      2       3
+        low       1      2      2       3      ← +1, high + any → high (critical only with evidence)
+        medium    1      2      2       3
+        high      1      2      2       3      (second ≤ max in practice; the table is complete)
+
+    Every input changes the level by at most one step: smooth and monotone.
     """
-    return clamp(level + (dynamics == 3) + (mixture == 2))
+    escalated = level + (second >= 1)
+    cap = 3 if (level == 3 or group == 1 or third == 1) else 2
+    return clamp(min(escalated, cap) + (dynamics == 3))
 
 
 def camera(unknown: int, motion: int, activity: int) -> int:

@@ -65,7 +65,7 @@ class MQAds1115(Driver):
         return Descriptor(cls.name, f"{model} via ADS1115 AIN{channel}", getattr(bus, "name", "?"), address,
                           serial=f"{address:#04x}/ain{channel}", quantities=[Quantity(
                               "concentration", str(options["gas"]), "ppm", range=options.get("range"),
-                              accuracy=options.get("accuracy"), sample_period=1.0,
+                              accuracy=options.get("accuracy"), sample_period=1.0, selectivity="cross_sensitive",
                               source=f"{model} datasheet curve a={options['curve']['a']}, b={options['curve']['b']}, "
                                      f"R0={options['r0_ohm']} Ω (own calibration); accuracy "
                                      + ("declared" if options.get("accuracy") else "unknown"))],

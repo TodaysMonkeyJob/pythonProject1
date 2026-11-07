@@ -278,8 +278,8 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   autonomous mode (`hfs_decides`); dashboard territory view shows the risk strip (click → fired rules).
   `python -m modules.hfs --check`. Location rule `activity_hours`. `whisper_client` moved to `modules/audio/`.
   A2 (TOD-42) gas: substances as c / c_crit (`config/gases.yaml`: NIOSH IDLH, EPA AQI Hazardous for PM2.5, molar
-  masses; `modules/hfs/gas_normalize.py` units vol_pct / ppm / mg_m3 / ug_m3) → `max_norm`, `mixture_index` (Σ),
-  `dynamics` (slope / min over `hfs.gas.window_sec`). `gas_reading` = the sensor's current state (`concentration` +
+  masses; `modules/hfs/gas_normalize.py` units vol_pct / ppm / mg_m3 / ug_m3) → `max_norm`, `dynamics` (slope / min
+  over `hfs.gas.window_sec`); A8 (TOD-50) `second_norm` / `third_norm` / `group_index` (see below). `gas_reading` = the sensor's current state (`concentration` +
   `unit`, `readings: [...]`, or legacy `concentration_pct`). Sensor survey + periods: `docs/sensors.md`.
   A3 (TOD-43) camera: inputs `unknown_share` (+ `input_intervals` from the LFW accuracy), `motion_intensity`
   (`motion_level` events, unlogged, from the adaptive `MotionDetector`: fps-tied learning rate, per-cell illumination
@@ -307,7 +307,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   (→ `docs/parameters.md`, answers slides 25 / 26 / 8; `--check` fails on a missing source).
   `python -m experiments.hfs.run --seed 42` → `reports/article1_<date>/`: `experiments/hfs/scenarios.yaml` (46
   scenarios, draft expert labels) through `HierarchicalFuzzySystem` × configs tri_type1 / tri_it2 / gauss_in_type1 /
-  gauss_in_it2 / gauss_all_type1 / tri_it2_no_mixture (`variants.py`), macro-F1 / Brier / ECE / corridor coverage, δ
+  gauss_in_it2 / gauss_all_type1 / tri_it2_no_escalation (`variants.py`), macro-F1 / Brier / ECE / corridor coverage, δ
   sweep (`hfs.uncertainty_scale`), monotonicity + surfaces triangular vs Gaussian, latency (not the Pi).
 - `agents/` — B2 (TOD-49) agent plug-in framework (Article 2), see `docs/agents.md`. An agent = folder
   `agents/<name>/` with `agent.yaml` (`framework/manifest.py`: role, version, entry, subscribes, publishes, backend,
@@ -350,6 +350,17 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   flag); `GasSubsystem` uses a reading's own accuracy / range (full scale below C_crit → open upper bound,
   `saturated`). Dashboard Devices → «Газові сенсори» (`/api/gas_sensors`, POST `/api/gas_sensors/choice`). Not run on
   real hardware yet.
+- A8 (TOD-50) multi-gas escalation: `config/gases.yaml` `activity.calm_norm` (0.05), effect `groups` (asphyxiant /
+  irritant / solvents / particles), `group` + `name_uk` per gas, CO₂ / Cl₂ / SO₂ / NO₂ / H₂S (NIOSH IDLH), `benign`
+  (`{gases, when: people_present | always}`; location rule `gas_benign` replaces it). `modules/hfs/gas_escalation.py`
+  (`analyse`: active = lower bound of c / c_crit above the calm band; `second_norm` / `third_norm` of the counted
+  active gases; `group_index` = max Σ inside a group; all-cross-sensitive readings → not counted; `explain` →
+  Ukrainian text). Gas rule base v3 = complete table of `policy.gas(max, second, group, third, dynamics)` (256 rules,
+  G<m><s><g><t><d>; regenerate the YAML from the policy, never edit cells by hand): second active gas → +1, cap at
+  high without evidence (gas critical, group reached, third high), sharp rise +1. `GasSubsystem` result carries
+  `escalation` + `explanation` (logged on change, also in `hfs_risk.subsystems.gas`). Readings carry the driver's
+  `selectivity` (selective: electrochemical / particle; cross_sensitive: MOS / graphene). Monotonicity of 5-input
+  tables: `tools.plot_surfaces.monotonicity(nodes=True)` (breakpoint grid, exact for piecewise-linear terms).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

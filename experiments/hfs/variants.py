@@ -6,8 +6,9 @@ Rule-base variants of the A6 (TOD-46) evaluation, derived from ``config/fuzzy/*.
   that edge with μ = 0.5 where the shoulder had 0.5. ``outputs=False`` converts the input terms only (the question
   of slide 8 — the shape of the input membership functions — with the output terms unchanged); ``True`` converts
   the risk terms too (their equal areas are lost as well);
-* ``without_mixture(data)`` — the gas table without the mixture index (the cells of a low mixture kept, the
-  variable removed): the "with vs without mixture" configuration.
+* ``without_escalation(data)`` — the gas table without the TOD-50 multi-gas inputs (the cells with no second gas,
+  group index below 1 and no third gas at high kept, ``second_norm`` / ``group_index`` / ``third_norm`` removed):
+  the "with vs without multi-gas escalation" configuration — the highest gas alone.
 """
 import copy
 import math
@@ -42,13 +43,20 @@ def gaussian(data: Dict[str, Any], outputs: bool = True) -> Dict[str, Any]:
     return out
 
 
-def without_mixture(data: Dict[str, Any]) -> Dict[str, Any]:
+ESCALATION = {"second_norm": "none", "group_index": "below", "third_norm": "below"}
+
+
+def without_escalation(data: Dict[str, Any]) -> Dict[str, Any]:
     out = copy.deepcopy(data)
-    out["variables"].pop("mixture_index", None)
+    for name in ESCALATION:
+        out["variables"].pop(name, None)
     rules = []
     for entry in out["rules"]:
         text = entry["rule"]
-        if " AND mixture_index IS low" in text:
-            rules.append({**entry, "id": entry["id"][:-1], "rule": text.replace(" AND mixture_index IS low", "")})
+        clauses = [f" AND {name} IS {term}" for name, term in ESCALATION.items()]
+        if all(c in text for c in clauses):
+            for c in clauses:
+                text = text.replace(c, "")
+            rules.append({**entry, "id": entry["id"][:2] + entry["id"][-1], "rule": text})
     out["rules"] = rules
     return out

@@ -378,7 +378,7 @@ def test_drivers_mode_publishes_native_readings(tmp_path):
     assert t == "gas_reading" and p["readings"][0] == {"gas": "ammonia", "concentration": 42.0, "unit": "ppm",
                                                        "range": [0.0, 100.0], "resolution": 1.0,
                                                        "accuracy": {"relative": 0.1, "absolute": 5.0},
-                                                       "saturated": False}
+                                                       "saturated": False, "selectivity": "selective"}
     assert kw["device_id"] == p["sensor_id"]
     assert by_driver["sds011"][1]["readings"][0]["unit"] == "ug_m3"
     graphene = by_driver["graphene_fet"][1]

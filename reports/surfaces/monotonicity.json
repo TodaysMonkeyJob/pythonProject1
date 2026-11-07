@@ -6,24 +6,38 @@
    "implication": "prod",
    "aggregation": "sum"
   },
-  "rules": 48,
+  "rules": 256,
   "inputs": {
    "max_norm": {
-    "steps": 1210,
+    "steps": 5760,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "second_norm": {
+    "steps": 5760,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "group_index": {
+    "steps": 5184,
+    "falls": 0,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "third_norm": {
+    "steps": 5184,
     "falls": 0,
     "share": 0.0,
     "max_fall": 0.0,
     "level_drops": 0
    },
    "dynamics": {
-    "steps": 1210,
-    "falls": 0,
-    "share": 0.0,
-    "max_fall": 0.0,
-    "level_drops": 0
-   },
-   "mixture_index": {
-    "steps": 1210,
+    "steps": 5760,
     "falls": 0,
     "share": 0.0,
     "max_fall": 0.0,

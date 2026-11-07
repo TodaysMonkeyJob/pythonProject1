@@ -82,7 +82,8 @@ class DFRobotGravity(Driver):
         gas, model, rng, resolution, accuracy, source = known
         return Descriptor(cls.name, model, getattr(bus, "name", "?"), address, quantities=[
             Quantity("concentration", gas, "ppm", range=rng, resolution=resolution, accuracy=accuracy,
-                     sample_period=1.0, source=source)], details={"gas_type": reading["gas_type"]})
+                     sample_period=1.0, source=source, selectivity="selective")],
+            details={"gas_type": reading["gas_type"]})
 
     def read(self) -> Dict[str, Any]:
         reading = parse_concentration(self.exchange(self.bus, self.descriptor.address,

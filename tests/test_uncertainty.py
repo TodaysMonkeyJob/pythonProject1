@@ -138,7 +138,7 @@ def test_subsystem_corridor_contains_the_risk_and_vanishes_without_errors():
     a, b = noisy.evaluate("lab", 1000.0, True), exact.evaluate("lab", 1000.0, True)
     assert a["risk"] == b["risk"] and b["interval"] == [b["risk"], b["risk"]] and b["corridor_width"] == 0
     assert a["interval"][0] < a["risk"] < a["interval"][1] and a["deltas"]["max_norm"] == pytest.approx(0.05)
-    assert a["widened_by"][0]["variable"] in ("max_norm", "mixture_index")
+    assert a["widened_by"][0]["variable"] in ("max_norm", "group_index")
 
 
 # --- device health -----------------------------------------------------------------------------------------------

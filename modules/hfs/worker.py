@@ -47,7 +47,7 @@ class HierarchicalFuzzySystem:
         """
         cfg = config.get("hfs") or {}
         self.subsystems: Dict[str, FuzzySubsystem] = {
-            "gas": GasSubsystem(config, clock=clock),
+            "gas": GasSubsystem(config, rules=rules, clock=clock),
             "camera": CameraSubsystem(config, rules=rules, clock=clock, **camera_kwargs),
             "audio": AudioSubsystem(config, clock=clock)}
         self.top = TopLevel(config=config)

@@ -34,8 +34,12 @@ class Quantity:
     accuracy: Optional[Dict[str, float]] = None   # {relative: share of reading, absolute: in unit}; None = unknown
     sample_period: float = 1.0              # s
     source: str = ""                        # where range / accuracy come from
+    selectivity: Optional[str] = None       # TOD-50: selective (electrochemical, optical) | cross_sensitive (MOS,
+                                            # chemiresistor: one real gas can look like several) | None (unknown)
 
     def __post_init__(self):
+        if self.selectivity not in (None, "selective", "cross_sensitive"):
+            raise ValueError(f"{self.key}: selectivity {self.selectivity!r}")
         if self.unit not in UNITS:
             raise ValueError(f"{self.key}: unit {self.unit!r} not in {UNITS}")
         if self.kind == "concentration" and self.unit not in CONCENTRATION_UNITS:

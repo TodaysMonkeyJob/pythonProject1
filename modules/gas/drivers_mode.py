@@ -131,7 +131,8 @@ class DriverPoller:
         from modules.hfs.gas_model_builder import saturated
 
         return {"gas": gas, "concentration": value, "unit": q.unit, "range": q.range, "resolution": q.resolution,
-                "accuracy": q.accuracy, "saturated": saturated(value, q.range, q.resolution)}
+                "accuracy": q.accuracy, "saturated": saturated(value, q.range, q.resolution),
+                "selectivity": q.selectivity}
 
     def _model_reading(self, desc, values: Dict[str, Any]) -> bool:
         """Graphene board: the trained model's gas + vol % as it outputs them (no conversion of its input)."""

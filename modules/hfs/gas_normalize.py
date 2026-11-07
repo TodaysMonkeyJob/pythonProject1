@@ -4,8 +4,9 @@ Gas normalisation (A2 / TOD-42): every substance as a share of its critical conc
 * units: ``vol_pct`` (1 vol % = 10 000 ppm), ``ppm``, ``mg_m3`` (mg/m³ = ppm · M / 24.45 at 25 °C, 1 atm), ``ug_m3``;
 * ``c_norm = clip(c / c_crit, 0, 1.2)`` — 1.0 = the critical (IDLH / EPA Hazardous) level, a little above 1 is kept
   to show an exceedance;
-* ``max_norm`` = max over substances, ``mixture_index`` = Σ c_norm (the additive mixture rule of occupational
-  exposure limits for substances with similar effects);
+* ``max_norm`` = max over substances; ``mixture_index`` = Σ c_norm (the additive mixture rule of occupational
+  exposure limits for substances with similar effects — since TOD-50 summed only inside an effect group,
+  ``gas_escalation.py``);
 * ``dynamics`` = least-squares slope of max_norm per minute over the last window.
 
 The sensors and their models keep their native units (TOD-48); c_norm is only used to compare substances here.
@@ -66,6 +67,8 @@ class Substance:
     source: str = ""
     formula: str = ""
     aliases: List[str] = field(default_factory=list)
+    group: Optional[str] = None          # TOD-50 effect group (additive mixture inside a group only)
+    name_uk: str = ""
 
     def c_crit_in(self, unit: str) -> float:
         """:return: the critical concentration in another unit (e.g. NH₃ 300 ppm → 0.03 vol %)"""
@@ -79,8 +82,10 @@ class Substance:
 class GasTable:
     """The substances of ``config/gases.yaml`` by name and alias."""
 
-    def __init__(self, substances: Sequence[Substance]):
+    def __init__(self, substances: Sequence[Substance], calm_norm: float = 0.05,
+                 groups: Optional[Dict[str, Dict[str, Any]]] = None, benign: Optional[List[Dict[str, Any]]] = None):
         self.substances = {s.name: s for s in substances}
+        self.calm_norm, self.groups, self.benign = float(calm_norm), dict(groups or {}), list(benign or [])
         self._names = {alias.lower(): s.name for s in substances for alias in [s.name, s.formula, *s.aliases] if alias}
 
     @classmethod
@@ -91,10 +96,14 @@ class GasTable:
         for name, entry in (data.get("gases") or {}).items():
             if entry.get("unit") not in UNITS or not float(entry.get("c_crit") or 0) > 0:
                 raise UnitError(f"gases.yaml {name}: needs c_crit > 0 and unit in {UNITS}")
+            group = entry.get("group")
+            if group is not None and group not in (data.get("groups") or {}):
+                raise UnitError(f"gases.yaml {name}: group {group!r} not in groups")
             out.append(Substance(name, float(entry["c_crit"]), entry["unit"], entry.get("molar_mass"),
                                  str(entry.get("source", "")), str(entry.get("formula", "")),
-                                 [str(a) for a in entry.get("aliases") or []]))
-        return cls(out)
+                                 [str(a) for a in entry.get("aliases") or []], group,
+                                 str(entry.get("name_uk") or entry.get("formula") or name)))
+        return cls(out, (data.get("activity") or {}).get("calm_norm", 0.05), data.get("groups"), data.get("benign"))
 
     def get(self, name: Optional[str]) -> Optional[Substance]:
         return self.substances.get(self._names.get(str(name or "").lower(), ""))
