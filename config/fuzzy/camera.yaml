@@ -21,6 +21,9 @@ default_output: 0.0
 variables:
   unknown_share:                   # N_unknown / (N_unknown + N_known) in view (0 = nobody unknown / nobody there)
     universe: [0, 1, 0.005]
+    source:
+      universe: {kind: requirement, text: "N_unknown / (N_unknown + N_known) in view — a share, not a head count (supervisor, slides 9–11)"}
+      terms: {kind: expert, text: "none ≤ 0.05, part peak 0.3, most peak 0.6, all ≥ 0.95: thirds of the share with 1 known + 1 unknown (0.5) between part and most; the identification error widens them (config/uncertainty.yaml unknown_share)"}
     default: 0
     terms:                         # Ruspini partition: μ sums to 1 everywhere; 1 known + 1 unknown = 0.5
       none: [trap, 0, 0, 0.05, 0.3]
@@ -29,6 +32,9 @@ variables:
       all: [trap, 0.6, 0.95, 1, 1]
   motion_intensity:                # smoothed moving share of the frame (adaptive detector, busiest camera)
     universe: [0, 1, 0.001]        # a person walking at 3–5 m ≈ 0.02–0.08 of a 640 × 480 frame
+    source:
+      universe: {kind: design, text: "moving share of the frame 0..1 (adaptive detector, smoothed 5 s)"}
+      terms: {kind: measured, text: "none ≤ 0.003 → low from 0.01: above the detector's noise on empty scenes (max 0.0066, reports/camera_bench/motion.json); medium peak 0.05 = one walking person (40 × 100 px on a 320 × 240 frame = 0.052, tools/camera_bench.py); high from 0.15 ≈ three people or one close to the camera (expert)"}
     default: 0
     terms:
       none: [trap, 0, 0, 0.003, 0.01]
@@ -37,6 +43,9 @@ variables:
       high: [trap, 0.05, 0.15, 1, 1]
   activity_time:                   # signed hours to the nearest schedule change: < 0 inside, > 0 outside
     universe: [-12, 12, 0.05]
+    source:
+      universe: {kind: design, text: "signed hours to the nearest change of the location's schedule, ±12 h (core/schedule.py)"}
+      terms: {kind: requirement, text: "working / transition (±1 h of an edge) / off hours — the supervisor's unified time notion (TOD-43); schedules per object type in config.yaml hfs.camera.schedules"}
     unit: h
     default: -12
     terms:
@@ -45,6 +54,9 @@ variables:
       off_hours: [trap, 0, 1, 12, 12]
   risk:                            # same as the top level's output: equal areas (0.25), centroids ≈ 0.13 / 0.35 /
     universe: [0, 1, 0.005]        # 0.65 / 0.87 = the peaks of the top level's input terms
+    source:
+      universe: {kind: design, text: "risk 0..1"}
+      terms: {kind: design, text: "equal areas, see gas.risk"}
     terms:
       low: [trap, 0, 0, 0.125, 0.375]
       medium: [tri, 0.1, 0.35, 0.6]

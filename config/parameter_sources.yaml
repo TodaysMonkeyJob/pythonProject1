@@ -1,0 +1,47 @@
+# A6 (TOD-46) sources of the Article 1 thresholds that are not fuzzy terms (those carry their own `source:` in
+# config/fuzzy/*.yaml; config/gases.yaml and config/uncertainty.yaml carry theirs). python -m tools.params_doc →
+# docs/parameters.md; it fails when a key of the `hfs` section of config.yaml, or a key listed here, has no source.
+#
+# kind: normative | datasheet | measured | fitted | requirement | design | expert
+#   design = structural choices with no effect on the risk level (publication rates, grid steps) or chosen for a
+#            property (monotonicity); expert = a judgement with its rationale and no measurement yet.
+parameters:
+  # --- HFS module (config.yaml hfs) ---------------------------------------------------------------------------------
+  hfs.enabled: {kind: design, text: "the module runs in both modes (forced on in autonomous mode)"}
+  hfs.it2: {kind: design, text: "corridor on / off; off = the type-1 system (the A6 type-1 configuration)"}
+  hfs.uncertainty: {kind: design, text: "path of the measured input errors (config/uncertainty.yaml)"}
+  hfs.health.exclude: {kind: design, text: "device_health checks meaning the data is unusable (no frames, frozen, covered, stuck, wrong rate, sensor error, flat, out of range); softer checks do not exclude — docs/uncertainty.md"}
+  hfs.min_delta: {kind: design, text: "publication only: a risk / corridor change of ≥ 0.05 is sent without a level change; no effect on the decision"}
+  hfs.keepalive_sec: {kind: design, text: "publication only: one hfs_risk at least every 30 s per location"}
+  hfs.gas.gases: {kind: design, text: "path of the critical concentrations (config/gases.yaml, NIOSH IDLH / EPA)"}
+  hfs.gas.stale_sec: {kind: expert, text: "30 sensor periods (sensors report every ~1 s, docs/sensors.md): a silent sensor is missing, not clean"}
+  hfs.gas.window_sec: {kind: datasheet, text: "60 s ≥ the T90 response of the electrochemical modules (CO ≤ 30 s, NH3 ≤ 150 s, DFRobot wiki) and ≥ 30 samples at 1 Hz for the least-squares slope (docs/sensors.md)"}
+  hfs.gas.min_samples: {kind: design, text: "a least-squares slope needs at least 3 points"}
+  hfs.gas.min_span_sec: {kind: expert, text: "no trend from less than 10 s of data (the first readings after a start)"}
+  hfs.camera.activity_hours: {kind: expert, text: "default schedule 08:00–19:00 for a location without object_type / activity_hours (an office day)"}
+  hfs.camera.schedules: {kind: requirement, text: "the four object types of the supervisor (TOD-43): apartment 07–23 every day (the night is sensitive), office 08–19 Mon–Fri, warehouse two shifts 06–22 Mon–Sat, factory three shifts 24/7"}
+  hfs.camera.unidentified_after_sec: {kind: expert, text: "identification runs at 2 fps (identity.identity_fps) and needs 3 good faces (identity.min_good_faces_for_unknown): 10 s is enough for ≥ 3 tries; a face still undecided after that is treated as unknown (a hidden face is no reason to trust)"}
+  hfs.camera.motion_level_stale_sec: {kind: design, text: "motion_level arrives every 2 s while it changes; 10 s without one = the level stopped changing"}
+  hfs.camera.identification_report: {kind: design, text: "path of the face evaluation (reports/identity_eval_lfw.json) behind p"}
+  hfs.camera.interval_quantile: {kind: normative, text: "95 % — the conventional statistical coverage"}
+  hfs.camera.stale_sec: {kind: expert, text: "camera evidence older than 30 s does not make a camera 'available'"}
+  hfs.audio.window_sec: {kind: expert, text: "sound types and speech of the last 30 s count (a short incident is still visible for one decision cycle)"}
+  hfs.audio.level_stale_sec: {kind: design, text: "audio_level arrives every 2 s while it changes"}
+  hfs.audio.danger_words: {kind: design, text: "path of the graded dictionary (config/danger_words.yaml)"}
+  hfs.audio.stale_sec: {kind: expert, text: "audio evidence older than 30 s does not make a microphone 'available'"}
+  hfs.top: {kind: design, text: "no overrides: config/fuzzy/top.yaml"}
+  # --- thresholds of the inputs (outside the hfs section) -------------------------------------------------------------
+  identity.face_threshold: {kind: measured, text: "SFace cosine 0.45: 100 % of known faces accepted and 0 of 500 strangers on LFW (reports/identity_eval_lfw.json)"}
+  identity.voice_threshold: {kind: measured, text: "0.30 from the voice calibration (tools/calibrate_voice); the held-out EER point is 0.34 (config/calibration/speaker.yaml) — at 0.30 strangers are accepted too often (43 of 75), move toward 0.34"}
+  audio.mic.background_percentile: {kind: expert, text: "20th percentile of the per-second levels: the quiet part of the room, robust to speech and short events"}
+  audio.mic.background_window_sec: {kind: expert, text: "5 min: follows a fan switched on, ignores a conversation"}
+  audio.mic.intensity_smooth_sec: {kind: expert, text: "2 s smoothing: one word does not make a room loud"}
+  audio.mic.burst_min_db: {kind: expert, text: "+10 dB above the background = a sound clearly above the room (the medium intensity term)"}
+  vision.motion_background_sec: {kind: measured, text: "20 s background adaptation, tuned on the camera benchmark clips (tools/camera_bench.py, reports/camera_bench/)"}
+  vision.motion_illumination_k: {kind: measured, text: "6 × the frame-to-frame jitter: no light switch reported as motion on the benchmark (4.2 % → 0 %)"}
+  vision.motion_illumination_holdoff_sec: {kind: measured, text: "2 s: 1 s left residual motion after a light switch on the benchmark walk clip"}
+  vision.motion_noise_k: {kind: measured, text: "3 × a cell's noise level: foliage false motion 1.8 % → 0.4 % with all six crossings still detected"}
+  vision.motion_persist_frames: {kind: measured, text: "2 of 3 frames: single-frame flicker removed, one frame of latency"}
+  audio_types.min_confidence: {kind: expert, text: "a sound type below 0.5 probability is 'unknown' (more likely wrong than right)"}
+  audio_types.danger: {kind: requirement, text: "the supervisor's examples (TOD-44): keyboard 0, walking 0.1, fan 0, scream 0.8, unknown 0.3; impact 0.6, glass / alarm 0.9 by analogy (expert)"}
+  danger_words.grades: {kind: requirement, text: "the supervisor's graded dictionary (TOD-44): alarming 0.4, dangerous 0.7, critical 1.0"}

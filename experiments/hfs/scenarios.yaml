@@ -1,0 +1,115 @@
+# A6 (TOD-46) evaluation scenarios of the autonomous hierarchical fuzzy system with expected overall levels.
+#
+# Labels are DRAFT expert labels written from the requirements (supervisor's slides, TOD-41…TOD-45) before the
+# system was run on them — by the author, to be confirmed or corrected by the supervisor / a domain expert.
+# Each scenario is 60 s of events in one location ("lab"); everything not given is the quiet default: gas sensor
+# reading clean air, camera with nobody in view, Wednesday 11:00 (inside the default 08–19 schedule), microphone
+# quiet with no speech. Sound types are simulated classifier outputs (no model is trained yet, TOD-44).
+#
+#   gas:    [{gas, value, unit, to?}]  — a sensor reading every 2 s; "to" = linear ramp from value to "to"
+#   camera: {known, unknown, motion, time}   — persons in view, smoothed moving share of the frame, local time
+#   audio:  {intensity, sound: {type, danger, confidence}, speech: {text, speaker}}
+#   offline: [gas | camera | mic]      — that device is offline (its subsystem missing)
+#   label:  low | medium | high | critical
+version: 1
+status: draft — author's expert labels, to be confirmed by the supervisor
+scenarios:
+  # --- gas (subsystem 1) ----------------------------------------------------------------------------------------
+  - {id: g01, group: gas, gas: [{gas: ammonia, value: 10, unit: ppm}], label: low,
+     why: "NH3 at 3 % of its IDLH: background"}
+  - {id: g02, group: gas, gas: [{gas: ammonia, value: 90, unit: ppm}], label: medium,
+     why: "NH3 at 0.3 C_crit, stable: worth attention"}
+  - {id: g03, group: gas, gas: [{gas: ammonia, value: 180, unit: ppm}], label: high,
+     why: "NH3 at 0.6 C_crit: dangerous, act"}
+  - {id: g04, group: gas, gas: [{gas: ammonia, value: 300, unit: ppm}], label: critical,
+     why: "NH3 at its IDLH"}
+  - {id: g05, group: gas, gas: [{gas: carbon_monoxide, value: 1500, unit: ppm}], label: critical,
+     why: "CO above its IDLH"}
+  - {id: g06, group: gas, gas: [{gas: pm2_5, value: 250, unit: ug_m3}], label: critical,
+     why: "PM2.5 in the EPA Hazardous range (smoke)"}
+  - {id: g07, group: gas, gas: [{gas: pm2_5, value: 60, unit: ug_m3}], label: medium,
+     why: "PM2.5 at 0.27 of Hazardous (Unhealthy): attention"}
+  - {id: g08, group: gas, gas: [{gas: ammonia, value: 180, unit: ppm}, {gas: carbon_monoxide, value: 720, unit: ppm}],
+     label: critical, why: "two gases at 0.6 C_crit each: Σ c/L = 1.2 exceeds the mixture limit"}
+  - {id: g09, group: gas, gas: [{gas: ammonia, value: 90, unit: ppm}, {gas: carbon_monoxide, value: 360, unit: ppm},
+     {gas: pm2_5, value: 68, unit: ug_m3}], label: high,
+     why: "three substances at 0.3 each: each moderate, Σ 0.9 near the mixture limit"}
+  - {id: g10, group: gas, gas: [{gas: ammonia, value: 30, unit: ppm, to: 120}], label: high,
+     why: "NH3 rising 0.3 C_crit / min to 0.4: a leak that reaches the limit within 2 min"}
+  - {id: g11, group: gas, gas: [{gas: ammonia, value: 70, unit: ppm, to: 80}], label: medium,
+     why: "NH3 0.25 C_crit, rising slowly: attention"}
+  - {id: g12, group: gas, gas: [{gas: ammonia, value: 120, unit: ppm, to: 90}], label: medium,
+     why: "NH3 falling from 0.4 to 0.3 C_crit: still present"}
+  - {id: g13, group: gas, gas: [{gas: ammonia, value: 0.03, unit: vol_pct}], label: critical,
+     why: "graphene sensor reading 0.03 vol % = 300 ppm = the IDLH"}
+  # --- camera (subsystem 2) -------------------------------------------------------------------------------------
+  - {id: c01, group: camera, label: low, why: "empty room in working hours"}
+  - {id: c02, group: camera, camera: {known: 2, motion: 0.05}, label: low, why: "two known people working"}
+  - {id: c03, group: camera, camera: {known: 1, unknown: 1, motion: 0.05}, label: low,
+     why: "a visitor with a known person during working hours"}
+  - {id: c04, group: camera, camera: {unknown: 1, motion: 0.03}, label: medium,
+     why: "a stranger alone during working hours: nobody known is with them"}
+  - {id: c05, group: camera, camera: {unknown: 1, motion: 0.0, time: "23:00"}, label: high,
+     why: "a stranger alone, standing, long after hours"}
+  - {id: c06, group: camera, camera: {unknown: 1, motion: 0.2, time: "23:00"}, label: critical,
+     why: "a stranger alone moving a lot at night: intrusion in progress"}
+  - {id: c07, group: camera, camera: {known: 1, unknown: 2, motion: 0.2, time: "11:00"}, label: high,
+     why: "mostly strangers moving a lot (supervisor's example: most + high motion → high)"}
+  - {id: c08, group: camera, camera: {motion: 0.2, time: "02:00"}, label: medium,
+     why: "sustained motion at night with nobody identified: someone the camera cannot see well"}
+  - {id: c09, group: camera, camera: {known: 1, motion: 0.05, time: "22:00"}, label: low,
+     why: "an employee working late"}
+  - {id: c10, group: camera, camera: {unknown: 1, motion: 0.03, time: "19:30"}, label: high,
+     why: "a stranger alone just after closing"}
+  - {id: c11, group: camera, camera: {known: 1, unknown: 1, motion: 0.05, time: "23:00"}, label: medium,
+     why: "a stranger with a known person at night"}
+  - {id: c12, group: camera, camera: {motion: 0.004, time: "03:00"}, label: low,
+     why: "sensor-level noise of the adaptive detector at night (no one there)"}
+  # --- microphone (subsystem 3) ---------------------------------------------------------------------------------
+  - {id: a01, group: audio, label: low, why: "quiet room"}
+  - {id: a02, group: audio, audio: {intensity: 10, speech: {text: "добрий день, як справи", speaker: known}},
+     label: low, why: "a known voice talking normally"}
+  - {id: a03, group: audio, audio: {intensity: 10, speech: {text: "де тут склад", speaker: unknown}}, label: medium,
+     why: "an unknown voice talking normally"}
+  - {id: a04, group: audio, audio: {intensity: 10, speech: {text: "здається, пожежа", speaker: known}},
+     label: critical, why: "'fire' said in the room (critical word)"}
+  - {id: a05, group: audio, audio: {intensity: 14, speech: {text: "допоможіть", speaker: unknown}}, label: high,
+     why: "a call for help from an unknown voice (supervisor's example → high)"}
+  - {id: a06, group: audio, audio: {intensity: 10, speech: {text: "ой", speaker: known}}, label: medium,
+     why: "an alarming interjection from a known voice"}
+  - {id: a07, group: audio, audio: {intensity: 25, sound: {type: scream, danger: 0.8, confidence: 0.9}}, label: high,
+     why: "a loud scream (supervisor's example: dangerous + loud → high)"}
+  - {id: a08, group: audio, audio: {intensity: 4, sound: {type: scream, danger: 0.8, confidence: 0.9}},
+     label: medium, why: "a faint scream far away"}
+  - {id: a09, group: audio, audio: {intensity: 25, sound: {type: keyboard, danger: 0.0, confidence: 0.9}},
+     label: low, why: "loud typing"}
+  - {id: a10, group: audio, audio: {intensity: 25, sound: {type: unknown, danger: 0.3, confidence: 0.4}},
+     label: medium, why: "a loud unidentified sound (supervisor's example: high + suspicious → medium)"}
+  - {id: a11, group: audio, audio: {intensity: 25, sound: {type: glass_breaking, danger: 0.9, confidence: 0.9}},
+     label: high, why: "loud breaking glass"}
+  - {id: a12, group: audio, audio: {intensity: 2, speech: {text: "", speaker: known}}, label: low,
+     why: "quiet, no words (supervisor's example: low + no keywords → low)"}
+  # --- combinations / top level ---------------------------------------------------------------------------------
+  - {id: x01, group: combined, gas: [{gas: ammonia, value: 180, unit: ppm}],
+     camera: {unknown: 1, motion: 0.0, time: "23:00"}, label: critical,
+     why: "gas high and a stranger at night high: two independent highs → critical"}
+  - {id: x02, group: combined, gas: [{gas: ammonia, value: 90, unit: ppm}],
+     audio: {intensity: 10, speech: {text: "де тут склад", speaker: unknown}}, label: high,
+     why: "two medium channels at once"}
+  - {id: x03, group: combined, camera: {unknown: 1, motion: 0.2, time: "23:00"}, label: critical,
+     why: "camera critical alone"}
+  - {id: x04, group: combined, camera: {known: 1, motion: 0.05}, audio: {intensity: 10, speech: {text: "привіт",
+     speaker: known}}, label: low, why: "a normal working day"}
+  - {id: x05, group: combined, gas: [{gas: ammonia, value: 180, unit: ppm}],
+     audio: {intensity: 10, speech: {text: "де тут склад", speaker: unknown}}, label: high,
+     why: "gas high with an unknown voice: high, not confirmed by a second high"}
+  - {id: x06, group: combined, camera: {unknown: 1, motion: 0.03, time: "23:00"},
+     audio: {intensity: 14, speech: {text: "допоможіть", speaker: unknown}}, label: critical,
+     why: "a stranger at night and a call for help"}
+  - {id: x07, group: combined, gas: [{gas: ammonia, value: 90, unit: ppm}], offline: [mic], label: medium,
+     why: "gas medium, microphone offline: partial, still medium"}
+  - {id: x08, group: combined, gas: [{gas: ammonia, value: 90, unit: ppm}], camera: {unknown: 1, motion: 0.03},
+     audio: {intensity: 10, speech: {text: "ой", speaker: known}}, label: high,
+     why: "three medium channels"}
+  - {id: x09, group: combined, gas: [{gas: ammonia, value: 300, unit: ppm}], offline: [camera, mic],
+     label: critical, why: "gas at IDLH with camera and microphone offline: still critical"}

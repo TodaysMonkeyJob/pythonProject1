@@ -301,6 +301,14 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   → `interval` = [y_l, y_r], `corridor_width`, `widened_by`; the top level takes subsystem corridors as IT2 inputs.
   `device_health` excluding checks / offline → device excluded (`hfs_risk.excluded`, `hfs.health.exclude`). Autonomous
   mode creates no TrustScorer (no Beta registry import).
+  A6 (TOD-46) Article 1 evaluation: every fuzzy variable of `config/fuzzy/*.yaml` has `source: {universe, terms}`
+  ({kind: normative|datasheet|measured|fitted|requirement|design|expert, text}); other thresholds in
+  `config/parameter_sources.yaml` (every key of config.yaml `hfs` must be listed) → `python -m tools.params_doc`
+  (→ `docs/parameters.md`, answers slides 25 / 26 / 8; `--check` fails on a missing source).
+  `python -m experiments.hfs.run --seed 42` → `reports/article1_<date>/`: `experiments/hfs/scenarios.yaml` (46
+  scenarios, draft expert labels) through `HierarchicalFuzzySystem` × configs tri_type1 / tri_it2 / gauss_in_type1 /
+  gauss_in_it2 / gauss_all_type1 / tri_it2_no_mixture (`variants.py`), macro-F1 / Brier / ECE / corridor coverage, δ
+  sweep (`hfs.uncertainty_scale`), monotonicity + surfaces triangular vs Gaussian, latency (not the Pi).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

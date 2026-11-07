@@ -1,0 +1,560 @@
+version: 2
+output: risk
+update_sec: 1
+defuzzification: centroid
+operators:
+  and: prod
+  or: probor
+  implication: prod
+  aggregation: sum
+default_output: 0.0
+variables:
+  unknown_share:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: N_unknown / (N_unknown + N_known) in view — a share, not a head count (supervisor, slides 9–11)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      none:
+      - gauss
+      - 0.0
+      - 0.14863131505040333
+      part:
+      - gauss
+      - 0.3
+      - 0.1167817475396026
+      most:
+      - gauss
+      - 0.6
+      - 0.13801479254680307
+      all:
+      - gauss
+      - 1.0
+      - 0.19109740506480435
+  motion_intensity:
+    universe:
+    - 0
+    - 1
+    - 0.001
+    source:
+      universe:
+        kind: design
+        text: moving share of the frame 0..1 (adaptive detector, smoothed 5 s)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      none:
+      - gauss
+      - 0.0
+      - 0.005520591701872125
+      low:
+      - gauss
+      - 0.01
+      - 0.009979531153384224
+      medium:
+      - gauss
+      - 0.05
+      - 0.02972626301008067
+      high:
+      - gauss
+      - 1.0
+      - 0.7643896202592172
+  activity_time:
+    universe:
+    - -12
+    - 12
+    - 0.05
+    source:
+      universe:
+        kind: design
+        text: signed hours to the nearest change of the location's schedule, ±12 h (core/schedule.py)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    unit: h
+    default: -12
+    terms:
+      working:
+      - gauss
+      - -12.0
+      - 9.76720070331222
+      transition:
+      - gauss
+      - 0.0
+      - 0.42466090014400953
+      off_hours:
+      - gauss
+      - 12.0
+      - 9.76720070331222
+  risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: risk 0..1
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    terms:
+      low:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      medium:
+      - gauss
+      - 0.35
+      - 0.10616522503600238
+      high:
+      - gauss
+      - 0.65
+      - 0.10616522503600238
+      critical:
+      - gauss
+      - 1.0
+      - 0.21233045007200477
+rules:
+- id: C000
+  rule: IF unknown_share IS none AND motion_intensity IS none AND activity_time IS working THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: &id001 2026-11-07
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C001
+  rule: IF unknown_share IS none AND motion_intensity IS none AND activity_time IS transition THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C002
+  rule: IF unknown_share IS none AND motion_intensity IS none AND activity_time IS off_hours THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C010
+  rule: IF unknown_share IS none AND motion_intensity IS low AND activity_time IS working THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C011
+  rule: IF unknown_share IS none AND motion_intensity IS low AND activity_time IS transition THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C012
+  rule: IF unknown_share IS none AND motion_intensity IS low AND activity_time IS off_hours THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C020
+  rule: IF unknown_share IS none AND motion_intensity IS medium AND activity_time IS working THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C021
+  rule: IF unknown_share IS none AND motion_intensity IS medium AND activity_time IS transition THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C022
+  rule: IF unknown_share IS none AND motion_intensity IS medium AND activity_time IS off_hours THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C030
+  rule: IF unknown_share IS none AND motion_intensity IS high AND activity_time IS working THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C031
+  rule: IF unknown_share IS none AND motion_intensity IS high AND activity_time IS transition THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C032
+  rule: IF unknown_share IS none AND motion_intensity IS high AND activity_time IS off_hours THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C100
+  rule: IF unknown_share IS part AND motion_intensity IS none AND activity_time IS working THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C101
+  rule: IF unknown_share IS part AND motion_intensity IS none AND activity_time IS transition THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C102
+  rule: IF unknown_share IS part AND motion_intensity IS none AND activity_time IS off_hours THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C110
+  rule: IF unknown_share IS part AND motion_intensity IS low AND activity_time IS working THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C111
+  rule: IF unknown_share IS part AND motion_intensity IS low AND activity_time IS transition THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C112
+  rule: IF unknown_share IS part AND motion_intensity IS low AND activity_time IS off_hours THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C120
+  rule: IF unknown_share IS part AND motion_intensity IS medium AND activity_time IS working THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C121
+  rule: IF unknown_share IS part AND motion_intensity IS medium AND activity_time IS transition THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C122
+  rule: IF unknown_share IS part AND motion_intensity IS medium AND activity_time IS off_hours THEN risk IS low
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C130
+  rule: IF unknown_share IS part AND motion_intensity IS high AND activity_time IS working THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C131
+  rule: IF unknown_share IS part AND motion_intensity IS high AND activity_time IS transition THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C132
+  rule: IF unknown_share IS part AND motion_intensity IS high AND activity_time IS off_hours THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C200
+  rule: IF unknown_share IS most AND motion_intensity IS none AND activity_time IS working THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C201
+  rule: IF unknown_share IS most AND motion_intensity IS none AND activity_time IS transition THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C202
+  rule: IF unknown_share IS most AND motion_intensity IS none AND activity_time IS off_hours THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C210
+  rule: IF unknown_share IS most AND motion_intensity IS low AND activity_time IS working THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C211
+  rule: IF unknown_share IS most AND motion_intensity IS low AND activity_time IS transition THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C212
+  rule: IF unknown_share IS most AND motion_intensity IS low AND activity_time IS off_hours THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C220
+  rule: IF unknown_share IS most AND motion_intensity IS medium AND activity_time IS working THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C221
+  rule: IF unknown_share IS most AND motion_intensity IS medium AND activity_time IS transition THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C222
+  rule: IF unknown_share IS most AND motion_intensity IS medium AND activity_time IS off_hours THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C230
+  rule: IF unknown_share IS most AND motion_intensity IS high AND activity_time IS working THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C231
+  rule: IF unknown_share IS most AND motion_intensity IS high AND activity_time IS transition THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C232
+  rule: IF unknown_share IS most AND motion_intensity IS high AND activity_time IS off_hours THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C300
+  rule: IF unknown_share IS all AND motion_intensity IS none AND activity_time IS working THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C301
+  rule: IF unknown_share IS all AND motion_intensity IS none AND activity_time IS transition THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C302
+  rule: IF unknown_share IS all AND motion_intensity IS none AND activity_time IS off_hours THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C310
+  rule: IF unknown_share IS all AND motion_intensity IS low AND activity_time IS working THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C311
+  rule: IF unknown_share IS all AND motion_intensity IS low AND activity_time IS transition THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C312
+  rule: IF unknown_share IS all AND motion_intensity IS low AND activity_time IS off_hours THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C320
+  rule: IF unknown_share IS all AND motion_intensity IS medium AND activity_time IS working THEN risk IS medium
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C321
+  rule: IF unknown_share IS all AND motion_intensity IS medium AND activity_time IS transition THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C322
+  rule: IF unknown_share IS all AND motion_intensity IS medium AND activity_time IS off_hours THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C330
+  rule: IF unknown_share IS all AND motion_intensity IS high AND activity_time IS working THEN risk IS high
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C331
+  rule: IF unknown_share IS all AND motion_intensity IS high AND activity_time IS transition THEN risk IS critical
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'
+- id: C332
+  rule: IF unknown_share IS all AND motion_intensity IS high AND activity_time IS off_hours THEN risk IS critical
+  meta:
+    source: A3 (TOD-43), modules/hfs/policy.py camera()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'Strangers matter by their share and by the location''s schedule, not by head count or actions: part → low,
+      most → medium, all → medium in working hours and high around / after them; high motion → one level up with anybody unknown
+      in view (or after hours with nobody unknown: medium).'

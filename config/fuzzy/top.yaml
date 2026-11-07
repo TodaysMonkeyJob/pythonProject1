@@ -25,6 +25,9 @@ default_output: 0.0
 variables:
   risk_gas: &subsystem_risk        # risk 1; term peaks = centroids of the subsystems' own output terms
     universe: [0, 1, 0.005]
+    source:
+      universe: {kind: design, text: "a subsystem's risk 0..1"}
+      terms: {kind: design, text: "peaks 0.13 / 0.35 / 0.65 / 0.87 = the centroids of the subsystems' output terms, so a subsystem's level maps onto the same term; Ruspini partition (monotonicity)"}
     default: 0
     terms:                         # Ruspini partition: μ sums to 1 everywhere
       low: [trap, 0, 0, 0.15, 0.35]
@@ -35,6 +38,9 @@ variables:
   risk_audio: *subsystem_risk      # risk 3
   risk:
     universe: [0, 1, 0.005]
+    source:
+      universe: {kind: design, text: "risk 0..1"}
+      terms: {kind: design, text: "equal areas, see gas.risk"}
     terms:                         # equal areas (0.25): the centroid is the weighted mean of the term centroids
       low: [trap, 0, 0, 0.125, 0.375]
       medium: [tri, 0.1, 0.35, 0.6]
