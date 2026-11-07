@@ -374,7 +374,12 @@ hfs:                        # A1 (TOD-41): hierarchical fuzzy system — rule ba
     level_stale_sec: 10     # audio_level older than this → the loudest sound event's relative_db
     danger_words: config/danger_words.yaml
     stale_sec: 30
-  top: {}                   # update_sec / rules override the defaults of config/fuzzy/top.yaml
+  top:                      # update_sec / rules override the defaults of config/fuzzy/top.yaml
+    calm_risk: 0.15         # A9 (TOD-51): a subsystem is active when its risk interval's lower bound is above this
+    co_window_sec: 60       # a subsystem active within this long still combines with one active now (same location)
+    benign:                 # inside the activity hours these combinations count once (object_type → list; default)
+      default: [{subsystems: [camera, audio], max_level: low}]   # people talking at work: camera low + audio low
+    correlated: []          # channels of one device counted once: [{node: <node_id>}] or [{devices: [cam, mic]}]
 
 agents:                     # B2 (TOD-49): plug-in agents (agents/<name>/agent.yaml + code), docs/agents.md
   enabled: true             # the host process; dashboard page «Агенти» switches single agents on / off

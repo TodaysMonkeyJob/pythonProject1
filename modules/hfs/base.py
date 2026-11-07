@@ -78,6 +78,7 @@ class FuzzySubsystem:
         self._engines2: Dict[Optional[str], FuzzyEngine2] = {}
         self.engine = self.engine_for(None)
         self.last_seen: Dict[str, float] = {}         # location → last event of this subsystem
+        self.sources: Dict[str, Dict[str, float]] = {}   # location → device → its last event (TOD-51: one device)
         hfs = config.get("hfs") or {}
         self.uncertainty = Uncertainty.load(hfs.get("uncertainty", DEFAULT_PATH) if hfs.get("it2", True) else None,
                                             getattr(self, "table", None))
@@ -100,6 +101,11 @@ class FuzzySubsystem:
     def observe(self, event: Event, now: float) -> None:
         """Updates the per-location evidence from one event (called for ``event_types`` only)."""
         self.last_seen[event.location_id] = now
+        self.sources.setdefault(event.location_id, {})[event.device_id] = now
+
+    def devices_of(self, location_id: str, now: float) -> set:
+        """:return: the devices whose evidence of this location is still fresh (``stale_sec``)"""
+        return {d for d, t in (self.sources.get(location_id) or {}).items() if now - t <= self.stale_sec}
 
     def forget_device(self, device_id: str) -> None:
         """A device went offline: its evidence no longer counts."""

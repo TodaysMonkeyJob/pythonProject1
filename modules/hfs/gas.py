@@ -239,6 +239,9 @@ class GasSubsystem(FuzzySubsystem):
             text = explain(a, result["level"], {k: v.get("name_uk", k) for k, v in self.table.groups.items()},
                            dynamics_sharp=max(dyn, key=dyn.get) == "sharp_rise",
                            third_high=bool(third) and third[0].level in ("високий", "критичний"))
+            if a.gases and a.gases[0].level != "спокійно":
+                g = a.gases[0]
+                result["headline"] = f"{g.name_uk or g.name} {g.norm:.2f}".replace(".", ",")
             if text:
                 result["explanation"] = text
                 if self.explained.get(location_id) != text:
