@@ -38,11 +38,12 @@ def test_snapshot_v21_carries_term_ranges_but_no_readings(tmp_path):
     view_ = snapshot["llm_view"]
     gas = next(item for item in view_["trusted_evidence"] if item["kind"] == "gas")
     assert view_["v"] == 2.1 and gas["level"] == {"slight": 1.0}
-    assert gas["range_pct"] == [0.5, 1.5]                              # acetone's own slight term (5 % limit)
-    assert gas["trend_range_pct_per_min"] == [2.5, 10.0]               # sharply_rising
-    assert view_["gas_scale_pct"]["acetone"]["elevated"] == [2.5, 4.0]
+    # TOD-53: the terms are shares of C_crit; × acetone's C_crit (0.25 vol %) they are shown in vol %
+    assert gas["range_pct"] == [0.025, 0.075]                          # slight = 0.1–0.3 C_crit
+    assert gas["trend_range_pct_per_min"] == [0.125, 0.5]              # sharply_rising = 0.5–2 C_crit / min
+    assert view_["gas_scale_pct"]["acetone"]["elevated"] == [0.125, 0.2]
     text = json.dumps(view_)
-    for reading in ("1.23", "2.61", "12.7", "12300"):                  # concentration, rise rate, dB, ppm
+    for reading in ("0.0615", "0.1305", "12.7", "615"):                # concentration, rise rate, dB, ppm
         assert reading not in text
 
 
@@ -62,9 +63,9 @@ def test_snapshot_version_option(tmp_path):
 
 def test_term_ranges_from_the_location_engine():
     engine = FuzzyEngine.from_config(FUZZY)
-    base = term_ranges(engine, "gas_concentration")
-    assert base["elevated"] == [1.8, 2.6] and base["dangerous"] == [3.4, 10.0]
-    assert term_ranges(engine, "gas_concentration", "ethanol")["elevated"] == [2.5, 4.0]
+    base = term_ranges(engine, "gas_concentration")                   # c / C_crit (TOD-53)
+    assert base["elevated"] == [0.5, 0.8] and base["dangerous"] == [1.0, 1.2]
+    assert term_ranges(engine, "gas_concentration", scale=0.33)["elevated"] == [0.165, 0.264]   # ethanol, vol %
 
 
 def test_prompt_rubric_uses_the_rule_base_risk_scale():

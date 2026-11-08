@@ -145,6 +145,8 @@ h2 { font-size: .78em; text-transform: uppercase; letter-spacing: .07em; color: 
             border-bottom: 1px solid var(--line); }
 .talk-text { overflow-wrap: anywhere; }
 .gas-big { font-size: 1.1em; } .gas-big b { font-size: 1.6em; }
+.gas-safety { margin-top: 4px; color: var(--danger, #c62828); font-weight: 600; }   /* G1 (TOD-53) */
+.gas-crit { color: var(--danger); font-weight: 600; }
 .trend.rising { color: var(--attention); } .trend.falling { color: var(--safe); }
 .gas-bars { width: 100%; flex: 1; min-height: 120px; max-height: 320px; display: block; }
 .gpt-now { flex: 0 0 auto; }

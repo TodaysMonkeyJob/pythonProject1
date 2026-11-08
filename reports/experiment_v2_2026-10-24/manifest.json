@@ -963,5 +963,10 @@
   "config/trust_registry.yaml": "b99bc8f28a3a802f",
   "config/trust_priors.yaml": "907c02358710e1a4"
  },
- "written_at": "2026-10-24T09:11:34"
+ "written_at": "2026-10-24T09:11:34",
+ "old_scale": {
+  "marked": "2026-11-08",
+  "by": "TOD-53",
+  "note": "obtained on the OLD gas scale: gas in vol % against the 3–5 % thresholds of config.yaml gas.thresholds and config/fuzzy.yaml (scripted labels v1: 0.3–3.3 % acetone = up to 13 × C_crit labelled high, 0.3–0.9 % toluene = up to 18 × C_crit labelled medium). Superseded by the runs on c / C_crit (config/gases.yaml, scripted labels v2); not comparable with them."
+ }
 }

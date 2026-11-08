@@ -189,8 +189,6 @@ export function renderLocations(root) {
     const icon = h("input", { value: l.icon || "", placeholder: "📦", maxlength: 4, class: "icon-input" });
     const name = h("input", { value: l.name });
     const after = h("input", { value: (l.rules || {}).unknown_person_after || "", placeholder: "20:00", title: "невідома людина підозріла після" });
-    const gas = h("input", { value: Object.entries((l.rules || {}).gas_thresholds || {}).map(([k, v]) => `${k}=${v}`).join(", "),
-                             placeholder: "acetone=3.0", title: "газові пороги, %" });
     // A3 (TOD-43): activity schedule (object type preset or own windows) and the actions mode toggle
     const rules = l.rules || {};
     const kind = h("select", { title: "тип об'єкта: розклад активності за замовчуванням" },
@@ -200,11 +198,10 @@ export function renderLocations(root) {
     const actions = h("input", { type: "checkbox", checked: !!rules.actions_enabled,
                                  title: "розпізнавання дій (поза, дії): завантажує моделі для камер цієї локації" });
     const fixed = l.location_id === "unassigned";
-    return h("div", { class: "locrow" }, icon, name, after, gas, kind, hours, h("label", { class: "actions-toggle" }, actions, " дії"),
+    return h("div", { class: "locrow" }, icon, name, after, kind, hours, h("label", { class: "actions-toggle" }, actions, " дії"),
       h("button", { onclick: guard(async () => {
-        const thresholds = Object.fromEntries(gas.value.split(",").map((x) => x.split("=").map((s) => s.trim())).filter((x) => x[0] && x[1]));
         await api("PATCH", `/api/locations/${encodeURIComponent(l.location_id)}`, { name: name.value, icon: icon.value,
-          rules: { ...(l.rules || {}), unknown_person_after: after.value || null, gas_thresholds: thresholds,
+          rules: { ...(l.rules || {}), unknown_person_after: after.value || null, gas_thresholds: undefined,
                    object_type: kind.value || null, activity_hours: hours.value.trim() || null, actions_enabled: actions.checked } });
         await loadLocations(); renderLocations(root);
       }) }, "Зберегти"),

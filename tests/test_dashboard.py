@@ -27,7 +27,7 @@ def config(tmp_path, **dashboard):
             "aggregator": {"export_dir": str(tmp_path / "exports"),
                            "outbox_path": str(tmp_path / "exports" / "outbox.db"),
                            "incidents": {"dir": str(tmp_path / "exports" / "incidents")}},
-            "gas": {"thresholds": {"acetone": 5.0}}, "vision": {},
+            "gas": {}, "vision": {},
             "identity": {"registry_path": str(tmp_path / "identity.db"), "faces_dir": str(tmp_path / "persons")},
             "network": {"devices_path": str(tmp_path / "devices.db"), "node_port": 0},
             "locations": {"notify": {"path": str(tmp_path / "notifications.db")}}}
@@ -69,7 +69,9 @@ def test_status_reports_modules_and_system(tmp_path):
     status = http.get("/api/status", auth=AUTH).json()
     assert status["video_fps"] == 14.2 and status["yolo_fps"] == 6.1 and status["mic_state"] == "standby"
     assert status["modules"]["vision"]["alive"] and not status["modules"]["gas"]["alive"]
-    assert status["ram_total_mb"] > 0 and status["gas_thresholds"] == {"acetone": 5.0}
+    assert status["ram_total_mb"] > 0 and "gas_thresholds" not in status
+    assert status["gas_limits"]["acetone"] == {"c_crit_pct": 0.25, "lel_pct": 2.5, "name_uk": "ацетон"}   # TOD-53
+    assert status["gas_limits"]["toluol"]["c_crit_pct"] == 0.05 and "pm2_5" not in status["gas_limits"]
 
 
 def test_snapshot_shows_digest_sent_to_gpt(tmp_path):

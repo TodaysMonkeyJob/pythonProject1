@@ -12,7 +12,6 @@ seeds it from ``config/locations.yaml`` (optional)::
         icon: "📦"
         rules:
           unknown_person_after: "20:00"   # an unknown person only counts as a warning after this time (until 06:00)
-          gas_thresholds: {acetone: 3.0}  # a reading above → critical in this location
           object_type: warehouse         # A3 (TOD-43): schedule preset (hfs.camera.schedules) …
           activity_hours: [["06:00", "14:00"], ["14:00", "22:00"]]   # … or own windows (shifts) + activity_days
           actions_enabled: false         # A3: pose / action models for this location's cameras (dashboard toggle)
@@ -27,10 +26,15 @@ from typing import Any, Callable, Dict, List, Optional
 from core.devices import slug
 from core.schedule import parse_days, parse_windows
 from core.events import UNASSIGNED, Event
+from system_setup.logger_setup import init_logger
+
+logger = init_logger()
 
 COLUMNS = {"order_index": "INTEGER NOT NULL DEFAULT 50", "icon": "TEXT", "rules_json": "TEXT"}
-RULE_KEYS = ("unknown_person_after", "gas_thresholds", "attention_window_min", "cooldown_min", "activity_hours",
+RULE_KEYS = ("unknown_person_after", "attention_window_min", "cooldown_min", "activity_hours",
              "activity_days", "object_type", "actions_enabled")
+# G1 (TOD-53): the percentage gas_thresholds rule is gone (every gas is judged against its C_crit in
+# config/gases.yaml); a stored value is dropped with a warning
 
 
 class LocationRegistry:
@@ -170,10 +174,11 @@ class LocationRegistry:
 
 
 def clean_rules(rules: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Only known rule keys; gas thresholds as floats."""
+    """Only known rule keys."""
+    if (rules or {}).get("gas_thresholds"):
+        logger.warning(f"location rule gas_thresholds {rules['gas_thresholds']} ignored: gases are judged against "
+                       "C_crit of config/gases.yaml (TOD-53)")
     rules = {k: v for k, v in (rules or {}).items() if k in RULE_KEYS and v not in (None, "")}
-    if "gas_thresholds" in rules:
-        rules["gas_thresholds"] = {str(k): float(v) for k, v in (rules["gas_thresholds"] or {}).items()}
     if "activity_hours" in rules:                       # A3 (TOD-43): daily windows; ScheduleError on bad input
         rules["activity_hours"] = parse_windows(rules["activity_hours"])
     if "activity_days" in rules:

@@ -166,6 +166,7 @@ class HierarchicalFuzzySystem:
             return True
         return (last["level"] != payload["level"] or last["missing"] != payload["missing"]
                 or last["partial"] != payload["partial"] or last.get("excluded") != payload.get("excluded")
+                or last.get("explosive") != payload.get("explosive")
                 or abs(last["overall"] - payload["overall"]) >= self.min_delta
                 or abs(last.get("corridor_width", 0) - payload.get("corridor_width", 0)) >= self.min_delta)
 

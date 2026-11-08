@@ -378,12 +378,17 @@ def test_drivers_mode_publishes_native_readings(tmp_path):
     assert t == "gas_reading" and p["readings"][0] == {"gas": "ammonia", "concentration": 42.0, "unit": "ppm",
                                                        "range": [0.0, 100.0], "resolution": 1.0,
                                                        "accuracy": {"relative": 0.1, "absolute": 5.0},
-                                                       "saturated": False, "selectivity": "selective"}
+                                                       "saturated": False, "selectivity": "selective",
+                                                       "pct_of_crit": 14.0}                 # TOD-53: 42 / 300 ppm
     assert kw["device_id"] == p["sensor_id"]
     assert by_driver["sds011"][1]["readings"][0]["unit"] == "ug_m3"
     graphene = by_driver["graphene_fet"][1]
     assert graphene["concentration_pct"] == 0.5 and graphene["unit"] == "vol_pct" and graphene["readings"][0]["unit"] \
         == "vol_pct"
+    # TOD-53: the model's range starts at or above C_crit — its per-gas start is the floor of every reading
+    floor = graphene["readings"][0]["range"][0]
+    assert floor >= 0.25 and graphene["detection_floor"] == floor
+    assert graphene["pct_of_crit"] >= 100 and "model_note" in graphene
     assert by_driver["ens160"][0] == "air_quality_index"
     state = json.load(open(tmp_path / "gas_sensors.json", encoding="utf-8"))
     assert len(state["sensors"]) == 4 and (tmp_path / "gen.yaml").is_file()

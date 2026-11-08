@@ -318,7 +318,7 @@ def article1_payloads():
 def test_only_the_fuzzy_agent_reproduces_article1(enabled):
     events = article1_payloads()
     scenarios = yaml.safe_load(open(os.path.join(REPO, "experiments", "hfs", "scenarios.yaml"), encoding="utf-8"))
-    assert len(events) == len(scenarios["scenarios"]) >= 46
+    assert len(events) == len(scenarios["scenarios"]) >= 50
     bus = Bus()
     host = AgentHost(registry(enabled=enabled), bus)
     host.start()

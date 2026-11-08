@@ -2,8 +2,9 @@
 Per-location security state (F12 / TOD-23): every room / territory is ``safe``, ``attention``, ``danger`` or
 ``offline``, computed from its own events.
 
-* ``danger`` — an unacknowledged critical event (gas threshold, lying, smoking + gas, a per-location gas threshold …)
-  newer than ``cooldown_min``, or a GPT risk ``high`` / ``critical`` for this location (valid ``llm_valid_min``).
+* ``danger`` — a gas at or above its critical concentration now (G1 / TOD-53 safety invariant, see below), an
+  unacknowledged critical event (gas at C_crit, lying …) newer than ``cooldown_min``, or a GPT risk ``high`` /
+  ``critical`` for this location (valid ``llm_valid_min``).
 * ``attention`` — warnings in the last ``attention_window_min``, unacknowledged older alerts, or GPT risk ``medium``.
 * ``offline`` — every device of the location is offline (and nothing is pending).
 * ``safe`` — none of the above.
@@ -20,11 +21,20 @@ the reason «агенти не відповідають». GPT (``llm_decision``
 ``summary()["mode"]`` = {requested, effective, reason}.
 
 ``danger`` de-escalates only after ``cooldown_min`` without new critical events; acknowledging clears the location's
-alerts (and the GPT risk) at once. Every transition is returned as a ``location_state_changed`` payload; ``summary()``
-is the live object pushed to the dashboard.
+alerts (and the GPT risk) at once.
+
+G1 (TOD-53) safety invariant: the engine keeps the latest reading of every gas sensor of a location
+(``modules.hfs.gas_safety.SafetyTracker``, lower bound = reading − its sensor error, c / C_crit of
+``config/gases.yaml``). While a fresh reading has a lower bound ≥ C_crit the location is ``danger`` with the gas in the
+reason — before any decider, and an acknowledge cannot clear it; a reading at or above a flammable gas's LEL adds
+«вибухонебезпечно». ``summary()["gas_safety"]`` carries the block.
+
+Every transition is returned as a ``location_state_changed`` payload; ``summary()`` is the live object pushed to the
+dashboard.
 
 Per-location rules (``core.locations``): ``unknown_person_after`` ("20:00": an unknown person only counts as a warning
-from then until 06:00), ``gas_thresholds`` ({gas: %} → critical), ``attention_window_min``, ``cooldown_min``.
+from then until 06:00), ``attention_window_min``, ``cooldown_min``. (The percentage ``gas_thresholds`` rule is gone —
+TOD-53: every gas is judged against its C_crit.)
 """
 import collections
 from dataclasses import dataclass, field
@@ -32,6 +42,11 @@ from datetime import datetime
 from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from core.events import Event, utc_timestamp
+from modules.hfs.gas_normalize import flat_reading, reading_text
+from modules.hfs.gas_safety import SafetyTracker
+from system_setup.logger_setup import init_logger
+
+logger = init_logger()
 
 SAFE, ATTENTION, DANGER, OFFLINE = "safe", "attention", "danger", "offline"
 RANK = {SAFE: 0, OFFLINE: 0, ATTENTION: 1, DANGER: 2}
@@ -73,6 +88,8 @@ class LocationLive:
     last_critical: float = float("-inf")
     acknowledged_at: float = float("-inf")
     updated_at: float = 0.0
+    gas_safety: Optional[Dict[str, Any]] = None             # G1 (TOD-53) gas at / above C_crit, explosion flag
+    gas_event: Optional[str] = None                         # id of the latest gas reading
 
 
 def in_evening(now_local: datetime, after: str, until: str = "06:00") -> bool:
@@ -112,7 +129,7 @@ def describe(event: Event) -> str:
     if event.type == "person_identified":
         return f"{p.get('identity')} #{p.get('track_id')}"
     if event.type == "gas_reading":
-        return f"{p.get('gas')} {p.get('concentration_pct')}% {p.get('trend', '')}".strip()
+        return reading_text(p)                          # TOD-53: raw value + «% від критичного рівня»
     return event.type
 
 
@@ -140,6 +157,15 @@ class LocationStateEngine:
                                         and not self.agents_decide))       # GPT decides only in the TOD-41 hybrid
         self.local_now = local_now
         self.ignore = ignore
+        self.safety = cfg.get("safety")                          # G1 (TOD-53); tests may pass a tracker / False
+        if self.safety is None:
+            try:
+                self.safety = SafetyTracker.from_files(cfg.get("gases", "config/gases.yaml"),
+                                                       cfg.get("uncertainty", "config/uncertainty.yaml"),
+                                                       float(cfg.get("gas_stale_sec", 30)))
+            except OSError as e:
+                logger.error(f"locations: gas safety invariant unavailable ({e})")
+                self.safety = None
         self.live: Dict[str, LocationLive] = {}
         self.dirty: set = set()
 
@@ -180,12 +206,13 @@ class LocationStateEngine:
             loc.last_speech = {"name": p.get("speaker_name") or p.get("speaker") or "?",
                                "person_id": p.get("person_id"), "text": p.get("text", ""), "ts": event.timestamp}
         elif event.type == "gas_reading":
-            loc.gas = {"main": p.get("gas"), "concentration_pct": p.get("concentration_pct"),
-                       "trend": p.get("trend")}
-            limit = (self.rules(loc.location_id).get("gas_thresholds") or {}).get(p.get("gas"))
-            if limit is not None and float(p.get("concentration_pct") or 0) >= float(limit):
-                self._critical(loc, event, now, f"{p.get('gas')} {p.get('concentration_pct')}% ≥ {limit}% "
-                                                f"(rule of {self.names(loc.location_id)})")
+            flat = flat_reading(p)                      # TOD-53: any sensor format, + % of C_crit
+            loc.gas = {"main": flat.get("gas"), "concentration_pct": flat.get("concentration_pct"),
+                       "pct_of_crit": flat.get("pct_of_crit"), "trend": p.get("trend"),
+                       "text": reading_text(p)}
+            if self.safety:
+                self.safety.observe(loc.location_id, event.device_id, p, now)
+                loc.gas_event = event.event_id
         if event.type == "escalation_resolved":         # F25: the operator accepted GPT's higher level
             if p.get("accepted") and loc.last_llm and loc.last_llm.get("event_id") == p.get("review_id") \
                     and p.get("risk_level_llm"):
@@ -240,6 +267,9 @@ class LocationStateEngine:
 
     def compute(self, loc: LocationLive, now: float) -> Tuple[str, str, List[str]]:
         """:return: (state, reason, event ids behind it)"""
+        loc.gas_safety = self.safety.state(loc.location_id, now) if self.safety else None
+        if loc.gas_safety and loc.gas_safety["critical"]:     # G1 (TOD-53): above every decider and acknowledge
+            return DANGER, "газ: " + loc.gas_safety["text"], [loc.gas_event] if loc.gas_event else []
         cooldown = self._rule(loc.location_id, "cooldown_min", self.cooldown)
         window = self._rule(loc.location_id, "attention_window_min", self.attention_window)
         while loc.warnings and now - loc.warnings[0][0] > window:
@@ -326,6 +356,7 @@ class LocationStateEngine:
         return {"location_id": location_id, "name": self.names(location_id), "state": loc.state, "reason": loc.reason,
                 "since": utc_timestamp(datetime.fromtimestamp(loc.since).astimezone()) if loc.since else None,
                 "people": people[:20], "people_count": len(people), "last_speech": loc.last_speech, "gas": loc.gas,
+                "gas_safety": loc.gas_safety,
                 "devices": {"online": sum(d["status"] == "online" for d in devices), "total": len(devices)},
                 "last_llm": {k: llm[k] for k in ("risk_level", "summary", "ts", *ENVELOPE_FIELDS) if k in llm}
                 if llm else None,

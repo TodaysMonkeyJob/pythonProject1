@@ -1,0 +1,417 @@
+version: 2
+output: risk
+update_sec: 2
+defuzzification: centroid
+operators:
+  and: prod
+  or: probor
+  implication: prod
+  aggregation: sum
+default_output: 0.0
+variables:
+  max_risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: a subsystem's risk 0..1
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      low:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      medium:
+      - gauss
+      - 0.35
+      - 0.10616522503600238
+      high:
+      - gauss
+      - 0.65
+      - 0.10616522503600238
+      critical:
+      - gauss
+      - 1.0
+      - 0.21233045007200477
+  second_risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: risk of the second active subsystem (TOD-51)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      none:
+      - gauss
+      - 0.0
+      - 0.06369913502160143
+      low:
+      - gauss
+      - 0.175
+      - 0.08493218002880192
+      medium:
+      - gauss
+      - 0.35
+      - 0.09554870253240214
+      high:
+      - gauss
+      - 1.0
+      - 0.42466090014400953
+  third_risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: 'risk of the third active subsystem (TOD-51: all three active + one high → critical)'
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      none:
+      - gauss
+      - 0.0
+      - 0.06369913502160143
+      active:
+      - gauss
+      - 1.0
+      - 0.7856226652664177
+  risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: risk 0..1
+      terms:
+        kind: design
+        text: equal areas, see gas.risk
+    terms:
+      low:
+      - trap
+      - 0
+      - 0
+      - 0.125
+      - 0.375
+      medium:
+      - tri
+      - 0.1
+      - 0.35
+      - 0.6
+      high:
+      - tri
+      - 0.4
+      - 0.65
+      - 0.9
+      critical:
+      - trap
+      - 0.625
+      - 0.875
+      - 1
+      - 1
+rules:
+- id: T000
+  rule: IF max_risk IS low AND second_risk IS none AND third_risk IS none THEN risk IS low
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: &id001 2026-11-07
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T001
+  rule: IF max_risk IS low AND second_risk IS none AND third_risk IS active THEN risk IS low
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T010
+  rule: IF max_risk IS low AND second_risk IS low AND third_risk IS none THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T011
+  rule: IF max_risk IS low AND second_risk IS low AND third_risk IS active THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T020
+  rule: IF max_risk IS low AND second_risk IS medium AND third_risk IS none THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T021
+  rule: IF max_risk IS low AND second_risk IS medium AND third_risk IS active THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T030
+  rule: IF max_risk IS low AND second_risk IS high AND third_risk IS none THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T031
+  rule: IF max_risk IS low AND second_risk IS high AND third_risk IS active THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T100
+  rule: IF max_risk IS medium AND second_risk IS none AND third_risk IS none THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T101
+  rule: IF max_risk IS medium AND second_risk IS none AND third_risk IS active THEN risk IS medium
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T110
+  rule: IF max_risk IS medium AND second_risk IS low AND third_risk IS none THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T111
+  rule: IF max_risk IS medium AND second_risk IS low AND third_risk IS active THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T120
+  rule: IF max_risk IS medium AND second_risk IS medium AND third_risk IS none THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T121
+  rule: IF max_risk IS medium AND second_risk IS medium AND third_risk IS active THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T130
+  rule: IF max_risk IS medium AND second_risk IS high AND third_risk IS none THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T131
+  rule: IF max_risk IS medium AND second_risk IS high AND third_risk IS active THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T200
+  rule: IF max_risk IS high AND second_risk IS none AND third_risk IS none THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T201
+  rule: IF max_risk IS high AND second_risk IS none AND third_risk IS active THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T210
+  rule: IF max_risk IS high AND second_risk IS low AND third_risk IS none THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T211
+  rule: IF max_risk IS high AND second_risk IS low AND third_risk IS active THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T220
+  rule: IF max_risk IS high AND second_risk IS medium AND third_risk IS none THEN risk IS high
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T221
+  rule: IF max_risk IS high AND second_risk IS medium AND third_risk IS active THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T230
+  rule: IF max_risk IS high AND second_risk IS high AND third_risk IS none THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T231
+  rule: IF max_risk IS high AND second_risk IS high AND third_risk IS active THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T300
+  rule: IF max_risk IS critical AND second_risk IS none AND third_risk IS none THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T301
+  rule: IF max_risk IS critical AND second_risk IS none AND third_risk IS active THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T310
+  rule: IF max_risk IS critical AND second_risk IS low AND third_risk IS none THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T311
+  rule: IF max_risk IS critical AND second_risk IS low AND third_risk IS active THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T320
+  rule: IF max_risk IS critical AND second_risk IS medium AND third_risk IS none THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T321
+  rule: IF max_risk IS critical AND second_risk IS medium AND third_risk IS active THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T330
+  rule: IF max_risk IS critical AND second_risk IS high AND third_risk IS none THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.
+- id: T331
+  rule: IF max_risk IS critical AND second_risk IS high AND third_risk IS active THEN risk IS critical
+  meta:
+    source: TOD-41 supervisor requirements + A9 (TOD-51), modules/hfs/policy.py top()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: The highest subsystem sets the level; a second active subsystem (independent confirmation in the same place
+      and time) → one level above it; critical only with evidence — a subsystem at critical, two at high, or all three active
+      with one at high — otherwise capped at high.

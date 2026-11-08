@@ -31,8 +31,7 @@ TEST_REGRESSOR_GRID = [{"model": [SVR()], "model__C": [100], "model__gamma": ["s
 GAS_CONFIG = {
     "gas_poll_sec": 1.0,
     "sensor_id": "gas-test",
-    "thresholds": {"ethanol": 5.0, "ammonia": 3.0, "acetone": 5.0, "toluol": 3.0},
-    "rise_rate_threshold": 2.0,
+    "rise_alert_norm_per_min": 0.25,        # TOD-53: alerts on C_crit / LEL of config/gases.yaml, no % thresholds
     "trend_window_sec": 60,
     "alert_cooldown_sec": 30,
 }
@@ -241,16 +240,17 @@ def test_worker_replay_publishes_readings_and_alerts(trained):
     assert set(readings[-1].payload["curve"]) == {"r_min", "r_max", "r_mean", "peak_ug_v"}
 
     reasons = {a.payload["reason"] for a in alerts}
-    assert {"gas_threshold", "gas_rising"} <= reasons
-    assert all(a.severity == "critical" for a in alerts)
+    assert {"gas_threshold", "gas_explosive", "gas_rising"} <= reasons
+    assert all(a.severity == ("warning" if a.payload["reason"] == "gas_rising" else "critical") for a in alerts)
+    # G1 (TOD-53): the threshold is the gas's C_crit (acetone 2500 ppm = 0.25 vol %), the explosion flag its LEL
     first_threshold = next(a for a in alerts if a.payload["reason"] == "gas_threshold")
-    assert first_threshold.payload["gas"] == "acetone"
-    assert first_threshold.payload["concentration_pct"] >= 5.0
-    # The reading that triggered the first threshold alert is published right before it; the one before
-    # that was still below the threshold
+    assert first_threshold.payload["c_crit_pct"] == pytest.approx(0.25) and first_threshold.payload["ratio"] >= 1.0
     readings_before = [e for e in events[:events.index(first_threshold)] if e.type == "gas_reading"]
-    assert readings_before[-1].payload["concentration_pct"] >= 5.0
-    assert readings_before[-2].payload["concentration_pct"] < 5.0
+    assert readings_before[-1].payload["ratio"] >= 1.0 and readings_before[-1].payload["concentration_pct"] >= 0.25
+    explosive = next(a for a in alerts if a.payload["reason"] == "gas_explosive")
+    assert explosive.payload["concentration_pct"] >= explosive.payload["lel_pct"] and "вибухонебезпечно" in \
+        explosive.payload["text"]
+    assert not any(a.payload["reason"] == "gas_threshold" and a.payload["ratio"] < 1.0 for a in alerts)
 
 
 class StubPredictor:
@@ -271,7 +271,44 @@ def test_worker_alert_cooldown():
         worker.poll_once()
         clock.now += 1.0
     alerts = [e for e in _drain(worker.event_queue) if e.type == "alert"]
-    assert [a.payload["reason"] for a in alerts] == ["gas_threshold", "gas_threshold"]  # t=0 and t=30
+    # 4 vol % NH₃ = 133 × C_crit (300 ppm), below its LEL (15 %): one threshold alert per cooldown (t=0 and t=30)
+    assert [a.payload["reason"] for a in alerts] == ["gas_threshold", "gas_threshold"]
+
+
+def test_worker_has_no_percentage_thresholds():
+    """G1 (TOD-53): 0.6 vol % ammonia (2000 % of C_crit) alerts; the old 3 % threshold would have stayed silent."""
+    clock = FakeClock()
+    worker = GasWorker(queue.Queue(), queue.Queue(), {"gas": GAS_CONFIG},
+                       predictor=StubPredictor([0.6] * 3), reader=lambda: [0.5] * 16, clock=clock)
+    worker.poll_once()
+    events = _drain(worker.event_queue)
+    (alert,) = [e for e in events if e.type == "alert"]
+    assert alert.payload["reason"] == "gas_threshold" and alert.payload["ratio"] == pytest.approx(20.0)
+    (reading,) = [e for e in events if e.type == "gas_reading"]
+    assert reading.payload["pct_of_crit"] == 2000 and not reading.payload["below_model_range"]
+
+
+def test_graphene_prediction_below_the_training_range_counts_as_its_start(monkeypatch):
+    """TOD-53: the model was trained from 0.3 vol % NH₃ (10 × C_crit) up — a lower prediction is extrapolation."""
+    from modules.gas import worker as gas_worker
+
+    noted = []
+    monkeypatch.setattr(gas_worker.logger, "warning", noted.append)
+    clock = FakeClock()
+    worker = GasWorker(queue.Queue(), queue.Queue(), {"gas": GAS_CONFIG},
+                       predictor=StubPredictor([0.01, 0.0, 0.01]), reader=lambda: [0.5] * 16, clock=clock)
+    for _ in range(3):
+        worker.poll_once()
+        clock.now += 1.0
+    events = _drain(worker.event_queue)
+    readings = [e.payload for e in events if e.type == "gas_reading"]
+    first = readings[0]
+    assert first["concentration_pct"] == 0.01 and first["below_model_range"] and first["detection_floor"] == 0.3
+    assert first["ratio"] == pytest.approx(10.0) and first["pct_of_crit"] == 1000
+    assert "не нижче критичного рівня" in first["model_note"] and "від 0.3 об.%" in first["model_note"]
+    assert readings[1]["ratio"] == 0.0                                       # a zero prediction stays clean
+    assert len(noted) == 1 and "аміак" in noted[0]                          # logged once per gas
+    assert [e.payload["reason"] for e in events if e.type == "alert"] == ["gas_threshold"]
 
 
 def test_worker_sensor_error_becomes_warning():

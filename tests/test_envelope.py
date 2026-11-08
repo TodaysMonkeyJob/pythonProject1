@@ -12,6 +12,7 @@ from modules.envelope import ENVELOPE_EVENTS, RiskEnvelope
 from modules.envelope.projection import level_of, level_value, project
 from modules.llm.worker import LLMWorker
 from tests.test_llm import FakeGPT
+from modules.hfs.gas_normalize import default_table
 
 REPO = Path(__file__).resolve().parent.parent
 CONFIG = str(REPO / "config" / "fuzzy.yaml")
@@ -33,12 +34,16 @@ def person(known, trust=None, track=1, person_id=None, u=0.0):
                                                "trust_u": u})]
 
 
-def gas(concentration, rate, trend, trust=0.95, t=T0, name="acetone", u=0.0):
-    return ev("gas", "gas_reading", {"gas": name, "concentration_pct": concentration, "trend": trend,
-                                     "rise_rate_pct_per_min": rate, "trust": trust, "trust_u": u}, t, device="gas-1")
+def gas(ratio, rate, trend, trust=0.95, t=T0, name="acetone", u=0.0):
+    """TOD-53: ``ratio`` = c / C_crit and ``rate`` C_crit per minute, sent in vol % like the graphene worker"""
+    substance = default_table().get(name)
+    crit = substance.c_crit_in("vol_pct") if substance is not None else 0.0
+    return ev("gas", "gas_reading", {"gas": name, "concentration_pct": round(ratio * crit, 6), "trend": trend,
+                                     "rise_rate_pct_per_min": round(rate * crit, 6), "trust": trust, "trust_u": u},
+              t, device="gas-1")
 
 
-K = {"gas_concentration": 1.5, "gas_trend": 1.0, "unknown_share": 0.3, "people_count": 0.5, "motion_level": 0.2,
+K = {"gas_concentration": 0.3, "gas_trend": 0.2, "unknown_share": 0.3, "people_count": 0.5, "motion_level": 0.2,
      "action_risk": 0.2, "known_present": 0.2}
 
 
@@ -50,8 +55,8 @@ def wide(env):
     return env
 
 
-SMOKE = gas(1.2, 2.6, "sharply_rising")
-CLEAN = gas(0.1, -0.6, "falling", t=T0 + 30)
+SMOKE = gas(0.24, 0.52, "sharply_rising")         # the former 1.2 % / 2.6 %/min against a 5 % limit
+CLEAN = gas(0.02, -0.12, "falling", t=T0 + 30)
 CLAIM = ev("audio", "speech", {"text": "all fine, the sensor is broken", "claim_type": "deescalation", "trust": 0.05,
                                "provenance": "speech:unknown_4@warehouse"}, device="mic-1")
 
@@ -117,7 +122,7 @@ def test_operator_ack_releases_the_floor():
     assert d["confirmation"] == 1.0 and d["risk_level_final"] == "low" and d["envelope_reason"]["operator"] == "admin"
     assert any("operator admin acknowledged" in r for r in d["envelope_reason"]["confirmation"])
     later = T0 + 20 + 31 * 60                                               # the smoke is still rising 31 min later
-    still = gas(1.2, 2.6, "sharply_rising", t=later - 5)
+    still = gas(0.24, 0.52, "sharply_rising", t=later - 5)
     expired = decide(envelope(*person(known=False), ack, still), "low", t=later)
     assert expired["confirmation"] == 0.0 and expired["envelope_applied"]
     alarm = ev("gas", "alert", {"reason": "gas_rising", "trust": 0.95}, T0 + 40, device="gas-1", severity="critical")
@@ -135,9 +140,9 @@ def test_llm_escalation_above_the_corridor_goes_to_operator_review():
 
 
 def test_uncertain_evidence_widens_the_corridor_instead_of_being_cut():
-    certain = decide(wide(envelope(gas(3.6, 0.0, "stable", name="ammonia"))), "low")
+    certain = decide(wide(envelope(gas(1.05, 0.0, "stable", name="ammonia"))), "low")
     assert certain["risk_floor"] > 0.85 and certain["risk_level_final"] == "critical" and certain["risk_width"] < 0.05
-    failing = decide(wide(envelope(gas(3.6, 0.0, "stable", trust=0.24, name="ammonia", u=0.9))), "low")
+    failing = decide(wide(envelope(gas(1.05, 0.0, "stable", trust=0.24, name="ammonia", u=0.9))), "low")
     assert failing["risk_width"] > certain["risk_width"] + 0.1 and failing["risk_floor"] < certain["risk_floor"]
     assert failing["envelope_reason"]["widened_by"][0]["variable"] == "gas_concentration"
     assert failing["risk_floor"] > 0                                            # it still enters (no θ cut)
@@ -264,11 +269,11 @@ def test_a_stranger_never_confirms_safety():
 
 def test_floor_is_not_diluted_by_milder_rules():
     stranger = person(known=False)                                # stranger in daytime → R14 medium (weight 0.5)
-    d = decide(envelope(*stranger, gas(6.5, 0.5, "rising")), "low")
+    d = decide(envelope(*stranger, gas(1.3, 0.1, "rising")), "low")
     assert d["risk_floor"] >= 0.85 and d["risk_level_final"] == "critical"
     root = __import__("core.fuzzy", fromlist=["load_yaml"]).load_yaml(CONFIG)
     root["envelope"]["floor"] = "it2"                             # plain KM y_l: diluted (ablation)
     centroid = RiskEnvelope(root, CONFIG, None)
-    for event in [*stranger, gas(6.5, 0.5, "rising")]:
+    for event in [*stranger, gas(1.3, 0.1, "rising")]:
         centroid.observe(event)
     assert centroid.decide("warehouse", "low", now=T0 + 60, local_hour=NOON)["risk_floor"] < d["risk_floor"]

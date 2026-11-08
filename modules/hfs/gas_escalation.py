@@ -19,6 +19,8 @@ explains.
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
+from modules.hfs.gas_normalize import pct_of_crit
+
 LEVEL_UK = {"low": "низький", "medium": "середній", "high": "високий", "critical": "критичний"}
 TERM_LEVEL = {"safe": "низький", "moderate": "середній", "dangerous": "високий", "critical": "критичний"}
 CALM = "спокійно"
@@ -40,6 +42,13 @@ class GasState:
     selectivity: Optional[str] = None   # selective | cross_sensitive | None (unknown)
     level: str = ""                     # Ukrainian per-gas level
     delta: float = 0.0                  # δ of c / c_crit (FOU half-width, A5)
+    ratio: Optional[float] = None       # c / c_crit not clipped (TOD-53: «% від критичного рівня»); None = norm
+
+    @property
+    def pct(self) -> str:
+        """:return: «2000 %» / «42 %» of the critical level"""
+        value = self.norm if self.ratio is None else self.ratio
+        return f"{pct_of_crit(value):g} %".replace(".", ",")
 
 
 @dataclass
@@ -101,7 +110,7 @@ def explain(a: Analysis, level: str, groups_uk: Dict[str, str], dynamics_sharp: 
     if not active:
         return None
     shown = [g for g in a.gases if g.level != CALM or g.norm > 0][:5]
-    parts = [f"{g.name_uk or g.name}: {g.level} ({num(g.norm)}" + (" від критичного)" if i == 0 else ")")
+    parts = [f"{g.name_uk or g.name}: {g.level} ({g.pct}" + (" від критичного рівня)" if i == 0 else ")")
              for i, g in enumerate(shown)]
     text = [", ".join(parts)[0].upper() + ", ".join(parts)[1:] + "."]
     final = LEVEL_UK[level]
@@ -124,7 +133,7 @@ def explain(a: Analysis, level: str, groups_uk: Dict[str, str], dynamics_sharp: 
         reasons = []
         if critical_gas is not None:
             name = critical_gas.name_uk or critical_gas.name
-            reasons.append(f"{name} на критичному рівні ({num(critical_gas.norm)})")
+            reasons.append(f"{name} на критичному рівні ({critical_gas.pct} від критичного рівня)")
         if a.group_index >= 1.0 and len(a.counted) >= 2:
             reasons.append(f"індекс суміші групи «{group_uk}» {num(a.group_index)} ≥ 1")
         if third_high:

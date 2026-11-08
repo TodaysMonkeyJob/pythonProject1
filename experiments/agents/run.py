@@ -3,7 +3,7 @@ Article 2 comparison (TOD-47): Article 1 (fuzzy only) vs the multi-agent system 
 
     python -m experiments.agents.run --seed 42 [--out reports/article2_<date>]
 
-Scenarios: the 46 Article 1 scenarios (``experiments/hfs/scenarios.yaml``) + the multi-agent ones
+Scenarios: the 50 Article 1 scenarios (``experiments/hfs/scenarios.yaml``) + the multi-agent ones
 (``experiments/agents/scenarios.yaml``: actions, spoken attacks). Each is replayed through the real
 ``HierarchicalFuzzySystem`` (→ ``hfs_risk``) and then through ``agents.framework.orchestrator.AgentHost`` with the
 shipped agents and their measured weights, in these configurations:

@@ -66,16 +66,18 @@ class ScenarioResult:
     distributions: List[Dict[str, float]] = field(default_factory=list)
 
 
-GAS_LIMITS = {"ethanol": 5.0, "acetone": 5.0, "ammonia": 3.0, "toluol": 3.0}   # config.yaml gas.thresholds, %
+RISE_NORM_PER_MIN = 0.25           # config.yaml gas.rise_alert_norm_per_min (C_crit per minute)
 
 
-def rules_level(snapshot: Dict[str, Any], limits: Optional[Dict[str, float]] = None) -> str:
+def rules_level(snapshot: Dict[str, Any], table=None) -> str:
     """
-    rules_only baseline (crisp, deterministic): gas concentration ≥ its threshold → critical, rising faster than
-    2 %/min or a gas alert → high; current action lying → critical, possible_smoking → medium;
-    an unknown person at night (22:00–06:00 local) → high; else low.
+    rules_only baseline (crisp, deterministic): gas concentration ≥ its C_crit (config/gases.yaml, G1 / TOD-53) or a
+    gas_threshold / gas_explosive alert → critical; rising faster than 0.25 C_crit / min or a gas_rising alert → high;
+    current action lying → critical, possible_smoking → medium; an unknown person at night (22:00–06:00 local) → high;
+    else low.
     """
-    limits = limits or GAS_LIMITS
+    from modules.hfs.gas_normalize import fuzzy_gas
+
     gas = snapshot.get("gas") or {}
     alerts = " ".join(gas.get("alerts", []) + snapshot.get("alerts", []))
     end = datetime.strptime(snapshot["window"]["to"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -87,10 +89,11 @@ def rules_level(snapshot: Dict[str, Any], limits: Optional[Dict[str, float]] = N
         level = "high"
     if "possible_smoking" in current or "possible_smoking" in alerts:
         level = max(level, "medium", key=LEVELS.index)          # gas never confirms smoking (owner review 2026-10-24)
-    concentration = gas.get("concentration_ppm", 0) / 10_000
-    if "gas_rising" in alerts or (gas.get("rise_rate_pct_per_min") or 0) > 2.0:
+    norm, rate = fuzzy_gas(gas.get("gas"), gas.get("concentration_ppm", 0) / 10_000,
+                           gas.get("rise_rate_pct_per_min"), table)
+    if "gas_rising" in alerts or (rate or 0) > RISE_NORM_PER_MIN:
         level = max(level, "high", key=LEVELS.index)
-    if concentration >= limits.get(gas.get("gas"), 3.0) or "gas_threshold" in alerts or "lying" in current:
+    if norm >= 1.0 or "gas_threshold" in alerts or "gas_explosive" in alerts or "lying" in current:
         level = "critical"
     return level
 

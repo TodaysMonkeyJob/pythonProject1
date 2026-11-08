@@ -208,18 +208,26 @@ function selectTab(tab) {
 }
 
 // --- live parts -------------------------------------------------------------------------------------------------
-function gasThreshold(location, gasName) {
-  const rule = ((location.rules || {}).gas_thresholds || {})[gasName];
-  return rule ?? (store.status.gas_thresholds || {})[gasName] ?? null;
+// G1 (TOD-53): gas as «% від критичного рівня» (C_crit of config/gases.yaml); the chart line is 100 % = C_crit
+function gasThreshold(gasName) {
+  const limit = (store.status.gas_limits || {})[String(gasName || "").toLowerCase()];
+  return limit ? limit.c_crit_pct : null;
+}
+
+const GAS_CHART_CAP = 300;      // % of C_crit shown at most (5 vol % NH₃ is 16 700 %: the bar is capped, the text is not)
+
+function pctOfCrit(p) {
+  if (p.pct_of_crit !== undefined && p.pct_of_crit !== null) return Number(p.pct_of_crit);
+  const crit = gasThreshold(p.gas);                     // events logged before TOD-53 have no pct_of_crit
+  return crit && p.concentration_pct !== undefined ? 100 * Number(p.concentration_pct) / crit : null;
 }
 
 function drawGas() {
   if (!current || current.tab !== "gas" || !current.data) return;
-  const location = locationOf(current.id) || {};
   const last = current.data.gas.at(-1);
   const name = last ? last.payload.gas : null;
-  const points = current.data.gas.map((e) => ({ t: Date.parse(e.timestamp), v: Number(e.payload.concentration_pct) || 0 }));
-  bars(current.refs.gasChart, points, { threshold: gasThreshold(location, name) });
+  const points = current.data.gas.map((e) => ({ t: Date.parse(e.timestamp), v: Math.min(GAS_CHART_CAP, pctOfCrit(e.payload) ?? 0) }));
+  bars(current.refs.gasChart, points, { threshold: 100, label: `критичний рівень${name ? ` (${name})` : ""} = 100 %` });
 }
 
 function update() {
@@ -244,9 +252,13 @@ function update() {
   refs.thumbs.replaceChildren(...cams.filter((d) => d !== main).map((d) => tile(d, "small", () => { mem.cam = d.device_id; go(null); })));
   refs.people.replaceChildren(...(s.people.length ? s.people.map(personChip) : [h("span", { class: "muted" }, "нікого")]));
   const g = s.gas;
-  refs.gasNow.replaceChildren(g ? h("div", { class: "gas-big" }, h("b", {}, `${g.concentration_pct ?? "?"} %`), ` ${g.main || ""} `,
+  refs.gasNow.replaceChildren(g ? h("div", { class: "gas-big" }, h("b", {}, `${g.concentration_pct ?? "?"} об.%`), ` ${g.main || ""} `,
       h("span", { class: `trend ${g.trend || ""}` }, `${ARROW[g.trend] || ""} ${g.trend || ""}`),
-      gasThreshold(location, g.main) !== null ? h("span", { class: "muted" }, ` · поріг ${gasThreshold(location, g.main)} %`) : null)
+      g.pct_of_crit !== undefined && g.pct_of_crit !== null
+        ? h("span", { class: g.pct_of_crit >= 100 ? "gas-crit" : "muted" }, ` · ${g.pct_of_crit} % від критичного рівня`) : null,
+      gasThreshold(g.main) !== null ? h("span", { class: "muted" }, ` (критичний рівень ${gasThreshold(g.main)} %)`) : null,
+      s.gas_safety ? h("div", { class: "gas-safety" }, s.gas_safety.explosive ? "⚠ ВИБУХОНЕБЕЗПЕЧНО · " : "⚠ ",
+        s.gas_safety.text) : null)
     : h("span", { class: "muted" }, "немає газового датчика"));
   refs.gptNow.replaceChildren(s.last_llm ? decisionCard(s.last_llm, s.last_llm.ts) : h("div", { class: "muted" }, "ще немає оцінки"));
 }

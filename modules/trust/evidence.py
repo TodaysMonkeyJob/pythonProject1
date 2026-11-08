@@ -28,6 +28,7 @@ from collections import deque
 from typing import Any, Deque, Dict, Optional, Set, Tuple
 
 from core.events import Event
+from modules.hfs.gas_normalize import flat_reading, fuzzy_gas
 from modules.trust.channels import epoch
 from modules.trust.registry import TrustRegistry
 
@@ -298,20 +299,22 @@ class TrustEvidence:
     def _on_gas_reading(self, event: Event, now: float, scored) -> None:
         p, sensor, loc = event.payload, event.device_id, event.location_id
         if self.scorer is not None:
-            limit = float(self.gas_cfg.get("disagreement_pct", 1.0))
+            limit = float(self.gas_cfg.get("disagreement_norm", 0.2))      # G1 (TOD-53): c / C_crit
+            flat = flat_reading(p)
+            mine = fuzzy_gas(flat.get("gas"), float(flat.get("concentration_pct") or 0))[0]
             for other, reading in self.scorer.state.at(loc).gas.items():
                 if other == sensor or now - reading["t"] > 30 or reading["concentration"] is None:
                     continue
-                delta = abs(float(p.get("concentration_pct") or 0) - float(reading["concentration"]))
+                delta = abs(mine - fuzzy_gas(reading.get("gas"), float(reading["concentration"]))[0])
                 pair = tuple(sorted((sensor, other)))
                 if delta > limit:
                     for device in pair:
                         for channel in ("gas_class", "gas_concentration", "gas_trend"):
+                            twin = pair[1] if device == pair[0] else pair[0]
                             self._refute(self._channel(device, "gas", channel, loc, now),
-                                         f"розходиться з {pair[1] if device == pair[0] else pair[0]} на {delta:.1f} %",
-                                         now)
-                        self.registry.set_health(device, {"twin_disagreement": {"detail": f"Δ {delta:.1f} %"}}, now,
-                                                 reporter="twin")
+                                         f"розходиться з {twin} на {delta:.2f} C_crit", now)
+                        self.registry.set_health(device, {"twin_disagreement": {"detail": f"Δ {delta:.2f} C_crit"}},
+                                                 now, reporter="twin")
                 else:
                     for device in pair:
                         self.registry.set_health(device, {}, now, reporter="twin")

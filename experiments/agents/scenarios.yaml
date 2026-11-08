@@ -6,7 +6,7 @@
 #   attack:  true — someone in the room tries to talk the system down; the label is what is really happening
 #
 # Labels are DRAFT expert labels by the author (to be confirmed by the supervisor), written before running. The
-# 46 Article 1 scenarios are replayed too, with their own labels: the agents must not make them worse.
+# 50 Article 1 scenarios are replayed too, with their own labels: the agents must not make them worse.
 version: 1
 status: draft — author's expert labels, to be confirmed by the supervisor
 scenarios:

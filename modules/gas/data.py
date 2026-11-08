@@ -23,6 +23,11 @@ CLEAN_AIR = CLASS_NAMES.index("clean_air")
 N_FEATURES = 16
 DEFAULT_VOLTAGES = tuple(round(0.1 * i, 1) for i in range(N_FEATURES))
 DEFAULT_DATA_PATH = "data/gas/data.xls"
+# G1 (TOD-53): smallest / largest non-zero concentration of each gas in data.xls (vol %) = the range the graphene model
+# was trained on. Every minimum is at or above the gas's critical concentration (C_crit, config/gases.yaml: ethanol
+# 0.33, ammonia 0.03, acetone 0.25, toluene 0.05 vol %), so the model can tell the gas and clean air from "above
+# critical", but cannot grade anything below C_crit (modules/gas/MODEL_CARD.md; tests/test_gas_safety.py checks it).
+MODEL_RANGE_VOL_PCT = {"ethanol": (0.4, 14.0), "ammonia": (0.3, 10.8), "acetone": (0.4, 13.2), "toluol": (0.25, 9.0)}
 DEFAULT_CLEAN_PATH = "data/gas/data_clean.xlsx"
 DEFAULT_REPLAY_PATH = "data/gas/replay_demo.csv"
 

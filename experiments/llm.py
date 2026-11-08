@@ -95,7 +95,7 @@ class SimAnalyst:
             level = max(level, "medium", key=_rank)        # smoking alone is medium; gas is judged on its own
         if re.search(r"gas_rising|gas_threshold|elevated|sharply_rising", text):
             level = max(level, "high", key=_rank)
-        if re.search(r"dangerous", text) or ("gas_threshold" in text and "ppm" in text and _ppm(text) >= 50000):
+        if re.search(r"dangerous|gas_threshold|gas_explosive", text):   # TOD-53: gas_threshold = at / above C_crit
             level = "critical"
         if "lying" in text:
             level = "critical"
@@ -104,11 +104,6 @@ class SimAnalyst:
 
 def _rank(level: str) -> int:
     return ["low", "medium", "high", "critical"].index(level)
-
-
-def _ppm(text: str) -> int:
-    match = re.search(r"(\d+)ppm", text)
-    return int(match.group(1)) if match else 0
 
 
 class AzureAnalyst:

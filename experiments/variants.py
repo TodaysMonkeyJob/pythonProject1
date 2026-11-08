@@ -5,7 +5,9 @@ Experiment v2 variants (F29 / TOD-40) that are not configuration of the live sys
   identity 0.8) instead of the measured, dynamic registry (TOD-34): no priors from held-out data, no confirmations /
   refutations, no device health, no uncertainty (u = 0 → the IT2 corridor collapses to its type-1 centre).
 * ``with_gas_failure`` — the sensor-failure block: a scenario replayed with its gas sensor broken — the clean-air
-  baseline drifts up by ``drift_pct`` (every reading reads higher) and the sensor's self-test reports
+  baseline drifts up by ``drift_norm`` × C_crit (G1 / TOD-53, config/gases.yaml; v1 added 1.5 vol %, which is
+  6 × C_crit of acetone): every reading reads higher, and clean air is read as ``phantom_gas`` (a drifted baseline
+  looks like gas to the classifier); the sensor's self-test reports
   ``baseline_drift`` with health ``health`` (0.3) from the start. With the registry the broken sensor's channels
   lose trust (τ·h, u_eff = 1 − h(1 − u)) and widen the corridor; with static trust it keeps holding the corridor at
   0.95.
@@ -70,15 +72,33 @@ def event_uuid(key: str) -> str:
     return str(uuid.UUID(bytes=hashlib.sha256(key.encode()).digest()[:16], version=4))
 
 
-def gas_failure_lines(lines: List[str], drift_pct: float = 1.5, health: float = 0.3) -> List[str]:
+def gas_failure_lines(lines: List[str], drift_norm: float = 0.5, health: float = 0.3,
+                      phantom_gas: str = "acetone") -> List[str]:
     """:return: the event log with drifted gas readings and a ``device_health`` report right after the gas device"""
+    from modules.hfs.gas_normalize import default_table, pct_of_crit
+
+    table = default_table()
     out: List[str] = []
     reported = set()
     for line in lines:
         event = json.loads(line)
         payload = event.get("payload") or {}
-        if event.get("type") == "gas_reading" and payload.get("concentration_pct") is not None:
-            payload["concentration_pct"] = round(float(payload["concentration_pct"]) + drift_pct, 3)
+        if event.get("type") == "gas_reading" and payload.get("readings"):            # TOD-48 / TOD-53 driver format
+            for item in payload["readings"]:
+                substance = table.get(item.get("gas"))
+                if substance is not None and item.get("concentration") is not None:
+                    item["concentration"] = round(float(item["concentration"])
+                                                  + drift_norm * substance.c_crit_in(item.get("unit") or "ppm"), 3)
+                    item["pct_of_crit"] = pct_of_crit(substance.ratio(item["concentration"], item.get("unit") or "ppm"))
+            event["payload"] = payload
+            line = json.dumps(event, ensure_ascii=False)
+        elif event.get("type") == "gas_reading" and payload.get("concentration_pct") is not None:
+            if table.get(payload.get("gas")) is None:              # clean air: the drifted baseline reads as gas
+                payload["gas"] = phantom_gas
+            crit = table.get(payload["gas"]).c_crit_in("vol_pct")
+            payload["concentration_pct"] = round(float(payload["concentration_pct"]) + drift_norm * crit, 5)
+            if payload.get("ratio") is not None:
+                payload["ratio"] = round(float(payload["ratio"]) + drift_norm, 4)
             event["payload"] = payload
             line = json.dumps(event, ensure_ascii=False)
         out.append(line if line.endswith("\n") else line + "\n")
@@ -89,14 +109,14 @@ def gas_failure_lines(lines: List[str], drift_pct: float = 1.5, health: float = 
                       "type": "device_health",
                       "severity": "warning",
                       "payload": {"device_id": device, "kind": "gas", "reporter": "device",
-                                  "failing": {"baseline_drift": {"factor": health, "value": drift_pct,
-                                                                 "detail": f"simulated drift +{drift_pct} %"}}}}
+                                  "failing": {"baseline_drift": {"factor": health, "value": drift_norm,
+                                                                 "detail": f"simulated drift +{drift_norm} C_crit"}}}}
             out.append(json.dumps(report, ensure_ascii=False) + "\n")
     return out
 
 
-def with_gas_failure(scenario, drift_pct: float = 1.5, health: float = 0.3) -> FailedScenario:
-    return FailedScenario(scenario, lambda lines: gas_failure_lines(lines, drift_pct, health))
+def with_gas_failure(scenario, drift_norm: float = 0.5, health: float = 0.3) -> FailedScenario:
+    return FailedScenario(scenario, lambda lines: gas_failure_lines(lines, drift_norm, health))
 
 
 __all__ = ["StaticTrustRegistry", "static_registry", "with_gas_failure", "gas_failure_lines", "FailedScenario",

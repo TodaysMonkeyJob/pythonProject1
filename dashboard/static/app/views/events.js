@@ -16,6 +16,16 @@ export const forGlobalLog = (ev) => GLOBAL.has(ev.type) && !(ev.type === "person
   && ["not_visible", "unidentified"].includes(ev.payload.identity)) && !(ev.type === "action"
   && !["lying", "possible_smoking"].includes(ev.payload.action));
 
+// G1 (TOD-53): raw value in the sensor's unit + «% від критичного рівня» (graphene vol % or driver readings)
+const UNIT = { vol_pct: "об.%", ppm: "ppm", mg_m3: "мг/м³", ug_m3: "мкг/м³" };
+function gasText(p) {
+  const share = (x) => (x !== undefined && x !== null ? ` (${x} % від критичного рівня)` : "");
+  const items = (p.readings || []).length && p.concentration_pct === undefined
+    ? p.readings.map((r) => `${r.gas} ${r.concentration} ${UNIT[r.unit] || r.unit || ""}${share(r.pct_of_crit)}`)
+    : [`${p.gas} ${p.concentration_pct ?? "?"} об.%${share(p.pct_of_crit)}${p.below_model_range ? " — нижче діапазону моделі" : ""}`];
+  return `${items.join(", ")} ${p.trend || ""}`.trim();
+}
+
 export function describe(ev) {
   const p = ev.payload || {};
   switch (ev.type) {
@@ -33,7 +43,7 @@ export function describe(ev) {
     case "object_detected": return `${p.class} #${p.track_id} ${p.state === "disappeared" ? "зник" : "з'явився"}`;
     case "action": return `#${p.track_id} ${p.action}`;
     case "speech": return `«${p.text || ""}»`;
-    case "gas_reading": return `${p.gas} ${p.concentration_pct}% ${p.trend || ""}`;
+    case "gas_reading": return gasText(p);
     case "motion": return `рух ${p.state === "end" ? "припинився" : "почався"}`;
     case "device_offline": return `пристрій офлайн: ${p.name || p.device_id}`;
     case "device_online": return `пристрій онлайн: ${p.name || p.device_id}`;

@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from modules.aggregator.digest import UNIDENTIFIED, _local_hms, _offset, _tz_label, rules_line
+from modules.hfs.gas_normalize import UnitError, default_table, fuzzy_gas
 
 PPM_PER_PERCENT = 10_000
 
@@ -74,10 +75,22 @@ def core_range(parts) -> List[float]:
     return [round(min(lows), 3), round(max(highs), 3)]
 
 
-def term_ranges(engine, variable: str, gas: Optional[str] = None) -> Dict[str, List[float]]:
-    """:return: {term: core range} of a variable of the location's engine (the gas's own terms with ``gas``)"""
+def term_ranges(engine, variable: str, gas: Optional[str] = None, scale: float = 1.0) -> Dict[str, List[float]]:
+    """
+    :param scale: unit factor — G1 (TOD-53) the gas terms are c / C_crit; × the gas's C_crit in vol % gives vol %
+    :return: {term: core range} of a variable of the location's engine (the gas's own terms with ``gas``)
+    """
     terms = engine.variables[variable].term_set(gas)
-    return {term: core_range(parts) for term, parts in terms.items()}
+    return {term: [round(v * scale, 6) for v in core_range(parts)] for term, parts in terms.items()}
+
+
+def c_crit_pct(gas: Optional[str]) -> Optional[float]:
+    """:return: the gas's critical concentration in vol % (config/gases.yaml), None when unknown"""
+    substance = default_table().get(gas)
+    try:
+        return substance.c_crit_in("vol_pct") if substance is not None else None
+    except UnitError:
+        return None
 
 
 VERSIONS = ("v2", "v2.1")
@@ -125,20 +138,22 @@ def llm_view(snapshot: Dict[str, Any], engine=None, theta: float = 0.6, rules: O
         item: Dict[str, Any] = {"kind": "gas"}
         if gas.get("gas"):
             item["gas"] = gas["gas"]
-        if engine is not None and "concentration_ppm" in gas:
-            item["level"] = _terms(engine.fuzzify("gas_concentration", gas["concentration_ppm"] / PPM_PER_PERCENT,
-                                                  gas.get("gas")))
-        if engine is not None and gas.get("rise_rate_pct_per_min") is not None:
-            item["trend"] = _terms(engine.fuzzify("gas_trend", gas["rise_rate_pct_per_min"]))
+        norm, rate = fuzzy_gas(gas.get("gas"), gas["concentration_ppm"] / PPM_PER_PERCENT
+                               if "concentration_ppm" in gas else None, gas.get("rise_rate_pct_per_min"))
+        if engine is not None and "concentration_ppm" in gas:      # G1 (TOD-53): c / C_crit
+            item["level"] = _terms(engine.fuzzify("gas_concentration", norm))
+        if engine is not None and rate is not None:
+            item["trend"] = _terms(engine.fuzzify("gas_trend", rate))
         elif gas.get("trend"):
             item["trend"] = {gas["trend"]: 1.0}
-        if ranges and item.get("level"):
-            scale = term_ranges(engine, "gas_concentration", gas.get("gas"))
+        crit = c_crit_pct(gas.get("gas"))
+        if ranges and item.get("level") and crit:
+            scale = term_ranges(engine, "gas_concentration", scale=crit)
             item["range_pct"] = scale[next(iter(item["level"]))]
             view["gas_scale_pct"] = {gas.get("gas") or "gas": scale}
-        if ranges and item.get("trend") and "gas_trend" in engine.variables:
+        if ranges and item.get("trend") and "gas_trend" in engine.variables and crit:
             strongest = next(iter(item["trend"]))
-            trend_scale = term_ranges(engine, "gas_trend")
+            trend_scale = term_ranges(engine, "gas_trend", scale=crit)
             if strongest in trend_scale:
                 item["trend_range_pct_per_min"] = trend_scale[strongest]
         if gas.get("alerts"):

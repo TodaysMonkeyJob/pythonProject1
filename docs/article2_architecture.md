@@ -79,8 +79,8 @@ An agent that is late or missing is ignored for that round and named in the reco
 - Every agent except the fuzzy one can be switched off at runtime (dashboard «Агенти», or
   `agents.enabled_agents`).
 - With only the fuzzy agent on, or only the fuzzy and validation agents, the decisions equal Article 1. The tests
-  check this on all 46 Article 1 scenarios. In the comparison below, the multi-agent system also keeps the Article 1
-  level on all 46.
+  check this on all 50 Article 1 scenarios. In the comparison below, the multi-agent system also keeps the Article 1
+  level on all 50.
 - Cloud agents, and the audio agent's `interpreter: llm`, never run in `mode: autonomous`.
 - The mode (TOD-52, [`modes.md`](modes.md)) decides who decides: `autonomous` → the HFS, `multiagent` → the
   validation agent, with an automatic fallback to the HFS when the validator, the network or a required agent is
@@ -88,7 +88,7 @@ An agent that is late or missing is ignored for that round and named in the reco
 
 ## Comparison for the article
 
-`python -m experiments.agents.run --seed 42` writes `reports/article2_<date>/`. It covers 56 scenarios: the 46 of
+`python -m experiments.agents.run --seed 42` writes `reports/article2_<date>/`. It covers 60 scenarios: the 50 of
 Article 1 plus 10 multi-agent ones (falls, a fight vs a hug, spoken attacks), all with draft expert labels. The
 report gives macro-F1, attack success rate, operator load and latency for:
 - `article1`;

@@ -78,7 +78,7 @@ def test_ammonia_low_and_co_medium_give_high_with_the_explanation():
     result = run(reading("ammonia", 45), reading("CO", 504, device="co"))
     assert result["level"] == "high"
     text = result["explanation"]
-    assert text.startswith("CO: середній (0,42 від критичного), аміак: низький (0,15)")
+    assert text.startswith("CO: середній (42 % від критичного рівня), аміак: низький (15 %)")
     assert "Два гази одночасно вище норми — рівень підвищено на один щабель: високий." in text
     assert "Критичний не присвоєно: жоден газ не досягає критичного рівня" in text
     assert "«задушливі» 0,42 < 1 (гази різних груп не додаються)" in text

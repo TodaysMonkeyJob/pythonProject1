@@ -64,7 +64,7 @@ class FuzzySubsystem:
 
     def __init__(self, config: Dict[str, Any], path: Optional[str] = None, clock=time.time):
         """
-        :param config: Full merged config (``hfs.<name>`` section + what the subsystem needs, e.g. gas.thresholds)
+        :param config: Full merged config (``hfs.<name>`` section + what the subsystem needs, e.g. hfs.gas.gases)
         :param path: Rule base (``hfs.<name>.rules`` or ``config/fuzzy/<name>.yaml``)
         """
         self.config = config

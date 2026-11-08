@@ -45,6 +45,30 @@ sensor measures **0.25–14 vol %**; a sensor or calibration below 0.03 vol % (3
 "moderate" and "dangerous" terms of NH₃ can be reached. This is why the electrochemical modules are listed above.
 Their own problem is the opposite one: their range ends below C_crit (TOD-48 flags it).
 
+| Gas | Smallest non-zero in `data.xls` | C_crit | Ratio |
+| -- | -- | -- | -- |
+| Ethanol | 0.4 vol % | 0.33 vol % (3300 ppm) | 1.2 × |
+| Acetone | 0.4 vol % | 0.25 vol % (2500 ppm) | 1.6 × |
+| Toluene | 0.25 vol % | 0.05 vol % (500 ppm) | 5 × |
+| Ammonia | 0.3 vol % | 0.03 vol % (300 ppm) | 10 × |
+
+The model has never seen a sub-critical concentration. It can identify the gas and tell clean air from "above
+critical", but it cannot grade safe, low or medium levels. G1 (TOD-53) acts on this:
+
+- **A non-zero graphene reading counts as at least the start of its training range**, which is ≥ C_crit for every
+  gas. This is `modules.gas.data.MODEL_RANGE_VOL_PCT`, which is the driver's per-gas `range` and the worker's
+  `detection_floor`.
+- **Such a reading is critical.** The gas worker adds `below_model_range` and a Ukrainian `model_note`, and logs the
+  note once per gas. The safety invariant (`modules/hfs/gas_safety.py`) makes the reading critical, and the text
+  says «нижче діапазону сенсора».
+- **Grading below C_crit needs other data:** sensors whose range covers it (electrochemical / MOS / PID, the drivers
+  above), or new low-concentration measurements to retrain the model.
+- **Scenarios** never feed sub-critical values to the graphene model. The scripted set (`experiments/scripted.py`)
+  uses a low-range sensor in ppm (range 0–2 × C_crit).
+
+Every gas value is shown in its sensor's unit together with «% від критичного рівня» (`pct_of_crit` in the readings,
+on the dashboard and in the logs). Model card: [`modules/gas/MODEL_CARD.md`](../modules/gas/MODEL_CARD.md).
+
 ## Sampling and inference periods
 
 | What | Period | Where | Why |

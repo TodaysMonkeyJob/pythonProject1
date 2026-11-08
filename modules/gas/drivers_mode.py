@@ -130,9 +130,13 @@ class DriverPoller:
     def _item(q, gas: str, value: float) -> Dict[str, Any]:
         from modules.hfs.gas_model_builder import saturated
 
-        return {"gas": gas, "concentration": value, "unit": q.unit, "range": q.range, "resolution": q.resolution,
+        from modules.hfs.gas_normalize import flat_reading
+
+        item = {"gas": gas, "concentration": value, "unit": q.unit, "range": q.range, "resolution": q.resolution,
                 "accuracy": q.accuracy, "saturated": saturated(value, q.range, q.resolution),
                 "selectivity": q.selectivity}
+        flat = flat_reading({"readings": [item]})                   # TOD-53: «% від критичного рівня»
+        return {**item, **({"pct_of_crit": flat["pct_of_crit"]} if flat.get("ratio") else {})}
 
     def _model_reading(self, desc, values: Dict[str, Any]) -> bool:
         """Graphene board: the trained model's gas + vol % as it outputs them (no conversion of its input)."""
@@ -148,5 +152,15 @@ class DriverPoller:
         gates = len(values["curve"])
         grid = [voltages[0] + (voltages[1] - voltages[0]) * i / max(1, gates - 1) for i in range(gates)]
         payload["curve"] = curve_summary(values["curve"], grid)
+        if quantity is not None:                                        # TOD-53: the model's range starts ≥ C_crit
+            from modules.gas.worker import model_note
+            from modules.hfs.gas_normalize import default_table, flat_reading
+
+            substance = default_table().get(gas)
+            flat = flat_reading(payload)
+            payload.update(ratio=flat["ratio"], pct_of_crit=flat["pct_of_crit"], detection_floor=quantity.range[0],
+                           below_model_range=0 < values["concentration"] < quantity.range[0])
+            if substance is not None:
+                payload["model_note"] = model_note(substance, quantity.range[0])
         self.emit("gas_reading", payload, confidence=values["gas_confidence"], device_id=desc.device_id)
         return True

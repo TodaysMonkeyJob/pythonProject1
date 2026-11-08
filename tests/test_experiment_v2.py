@@ -87,10 +87,14 @@ def test_failure_block_drifts_readings_and_reports_health():
     assert len(failed) == len(healthy) + 1 and with_gas_failure(scenario).scenario_id == scenario.scenario_id
     (health,) = [e for e in failed if e.type == "device_health"]
     assert health.payload["failing"]["baseline_drift"]["factor"] == 0.3 and health.device_id == "gas-1"
-    readings = [(a.payload["concentration_pct"], b.payload["concentration_pct"])
-                for a, b in zip([e for e in healthy if e.type == "gas_reading"],
-                                [e for e in failed if e.type == "gas_reading"], strict=True)]
-    assert all(abs(f - h - 1.5) < 1e-6 for h, f in readings)
+    from modules.hfs.gas_normalize import default_table
+    table = default_table()
+    pairs = list(zip([e for e in healthy if e.type == "gas_reading"], [e for e in failed if e.type == "gas_reading"],
+                     strict=True))
+    for a, b in pairs:                       # TOD-53: +0.5 C_crit of the gas read (low-range sensor, ppm)
+        (before,), (after,) = a.payload["readings"], b.payload["readings"]
+        crit = table.get(after["gas"]).c_crit_in(after["unit"])
+        assert abs(after["concentration"] - before["concentration"] - 0.5 * crit) < 1e-2
     assert gas_failure_lines(scenario.events()) == with_gas_failure(scenario).events()      # deterministic
 
 

@@ -38,6 +38,7 @@ from agents.framework.base import Agent, Message
 from agents.framework.bus_adapter import Claim, ScopeFilter, SituationBoard
 from agents.framework.registry import AgentRegistry
 from core.mode import AUTONOMOUS, MULTIAGENT
+from modules.hfs.gas_safety import enforce
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
@@ -335,6 +336,9 @@ class AgentHost:
                                sorted({corridor.agent, decided_by, *rnd.answers})},
                   "evidence_ids": sorted({e for c in [corridor, *claims] for e in c.evidence_ids}),
                   "latency_ms": round((now - rnd.opened_at) * 1000, 1)}
+        # G1 (TOD-53): a gas at / above C_crit keeps the decision critical whatever the agents said (hard floor)
+        enforce(record, corridor.value.get("safety"), f"agent {decided_by}",
+                float(corridor.value.get("risk") or 0.0))
         self.decisions = (self.decisions + [record])[-200:]
         decides = self.decides is not False
         severity = {"critical": "critical", "high": "warning"}.get(str(record.get("level")), "info") \

@@ -1,0 +1,2992 @@
+version: 3
+output: risk
+update_sec: 2
+defuzzification: centroid
+operators:
+  and: prod
+  or: probor
+  implication: prod
+  aggregation: sum
+default_output: 0.0
+variables:
+  max_norm:
+    universe:
+    - 0
+    - 1.2
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: c / C_crit of config/gases.yaml (NIOSH IDLH, EPA AQI 2024 Hazardous), clipped to 0..1.2 to keep an exceedance
+          visible (TOD-42)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    terms:
+      safe:
+      - gauss
+      - 0.0
+      - 0.16986436005760383
+      moderate:
+      - gauss
+      - 0.3
+      - 0.10616522503600236
+      dangerous:
+      - gauss
+      - 0.6
+      - 0.14863131505040336
+      critical:
+      - gauss
+      - 1.2
+      - 0.33972872011520755
+  second_norm:
+    universe:
+    - 0
+    - 1.2
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: c / C_crit of the second active gas, same scale as max_norm (TOD-50)
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      none:
+      - gauss
+      - 0.0
+      - 0.02123304500720048
+      low:
+      - gauss
+      - 0.07500000000000001
+      - 0.07431565752520168
+      medium:
+      - gauss
+      - 0.3
+      - 0.10616522503600236
+      high:
+      - gauss
+      - 1.2
+      - 0.6369913502160143
+  group_index:
+    universe:
+    - 0
+    - 3.6
+    - 0.01
+    source:
+      universe:
+        kind: design
+        text: Σ c / C_crit of up to three substances at the 1.2 clip
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      below:
+      - gauss
+      - 0.0
+      - 0.8450751912865789
+      reached:
+      - gauss
+      - 3.6
+      - 2.2124832897502897
+  third_norm:
+    universe:
+    - 0
+    - 1.2
+    - 0.005
+    source:
+      universe:
+        kind: requirement
+        text: 'c / C_crit of the third active gas (TOD-50: three gases at high → critical)'
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    default: 0
+    terms:
+      below:
+      - gauss
+      - 0.0
+      - 0.38219481012960854
+      high:
+      - gauss
+      - 1.2
+      - 0.6369913502160143
+  dynamics:
+    universe:
+    - -0.5
+    - 0.5
+    - 0.005
+    source:
+      universe:
+        kind: expert
+        text: ±0.5 C_crit per minute = from clean air to the critical level in 2 minutes; faster changes saturate
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    unit: /min
+    default: 0
+    terms:
+      falling:
+      - gauss
+      - -0.5
+      - 0.3821948101296086
+      stable:
+      - gauss
+      - 0.0
+      - 0.04246609001440096
+      rising:
+      - gauss
+      - 0.1
+      - 0.053082612518001185
+      sharp_rise:
+      - gauss
+      - 0.5
+      - 0.2760295850936062
+  risk:
+    universe:
+    - 0
+    - 1
+    - 0.005
+    source:
+      universe:
+        kind: design
+        text: risk 0..1
+      terms:
+        kind: design
+        text: A6 Gaussian variant of the triangular terms (same centre, same width at μ = 0.5)
+    terms:
+      low:
+      - gauss
+      - 0.0
+      - 0.21233045007200477
+      medium:
+      - gauss
+      - 0.35
+      - 0.10616522503600238
+      high:
+      - gauss
+      - 0.65
+      - 0.10616522503600238
+      critical:
+      - gauss
+      - 1.0
+      - 0.21233045007200477
+rules:
+- id: G00000
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: &id001 2026-11-07
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00001
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00002
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00003
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00010
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00011
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00012
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00013
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00100
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS falling
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00101
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS stable
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00102
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS rising
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00103
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00110
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS falling
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00111
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS stable
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00112
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS rising
+    THEN risk IS low
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G00113
+  rule: IF max_norm IS safe AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01000
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01001
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01002
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01003
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01010
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01011
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01012
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01013
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01100
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01101
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01102
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01103
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01110
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01111
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01112
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G01113
+  rule: IF max_norm IS safe AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02000
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02001
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02002
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02003
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02010
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02011
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02012
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02013
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02100
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02101
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02102
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02103
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02110
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02111
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02112
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G02113
+  rule: IF max_norm IS safe AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03000
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03001
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03002
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03003
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03010
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03011
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03012
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03013
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03100
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03101
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03102
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03103
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03110
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03111
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03112
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G03113
+  rule: IF max_norm IS safe AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10000
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10001
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10002
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10003
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10010
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10011
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10012
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10013
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10100
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10101
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10102
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10103
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10110
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10111
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10112
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS medium
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G10113
+  rule: IF max_norm IS moderate AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11000
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11001
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11002
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11003
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11010
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11011
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11012
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11013
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11100
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11101
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11102
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11103
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11110
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS falling
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11111
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS stable
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11112
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS rising
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G11113
+  rule: IF max_norm IS moderate AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12000
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12001
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12002
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12003
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12010
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12011
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12012
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12013
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12100
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12101
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12102
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12103
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12110
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12111
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12112
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G12113
+  rule: IF max_norm IS moderate AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13000
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13001
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13002
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13003
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13010
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13011
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13012
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13013
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13100
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13101
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13102
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13103
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13110
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13111
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13112
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G13113
+  rule: IF max_norm IS moderate AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20000
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20001
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20002
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20003
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20010
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20011
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20012
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20013
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20100
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20101
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20102
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20103
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20110
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20111
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20112
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G20113
+  rule: IF max_norm IS dangerous AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21000
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21001
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21002
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21003
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21010
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21011
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21012
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21013
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21100
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21101
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21102
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21103
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21110
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21111
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21112
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G21113
+  rule: IF max_norm IS dangerous AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22000
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22001
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22002
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22003
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22010
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22011
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22012
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22013
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22100
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22101
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22102
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22103
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22110
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics
+    IS falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22111
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics
+    IS stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22112
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics
+    IS rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G22113
+  rule: IF max_norm IS dangerous AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics
+    IS sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23000
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS
+    falling THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23001
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS
+    stable THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23002
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS
+    rising THEN risk IS high
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23003
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23010
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23011
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23012
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23013
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23100
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23101
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23102
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23103
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23110
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23111
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23112
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G23113
+  rule: IF max_norm IS dangerous AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30000
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30001
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30002
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30003
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30010
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30011
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30012
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30013
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30100
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30101
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30102
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30103
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30110
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30111
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30112
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G30113
+  rule: IF max_norm IS critical AND second_norm IS none AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31000
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31001
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31002
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31003
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31010
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31011
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31012
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31013
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31100
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31101
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31102
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31103
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31110
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31111
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31112
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G31113
+  rule: IF max_norm IS critical AND second_norm IS low AND group_index IS reached AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32000
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32001
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32002
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32003
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32010
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32011
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32012
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32013
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS below AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32100
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32101
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32102
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32103
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS below AND dynamics
+    IS sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32110
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32111
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32112
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G32113
+  rule: IF max_norm IS critical AND second_norm IS medium AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33000
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33001
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33002
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33003
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS below AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33010
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS falling
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33011
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS stable
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33012
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS rising
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33013
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS below AND third_norm IS high AND dynamics IS sharp_rise
+    THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33100
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33101
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33102
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33103
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS below AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33110
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    falling THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33111
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    stable THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33112
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    rising THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'
+- id: G33113
+  rule: IF max_norm IS critical AND second_norm IS high AND group_index IS reached AND third_norm IS high AND dynamics IS
+    sharp_rise THEN risk IS critical
+  meta:
+    source: A2 (TOD-42) + A8 (TOD-50), modules/hfs/policy.py gas()
+    author: TodaysMonkeyJob
+    added: *id001
+    rationale: 'The highest gas (c / C_crit: safe / moderate / dangerous / critical → low / medium / high / critical) sets
+      the level; a second active gas → one level above it (co-occurring gases usually mean one incident); critical only with
+      evidence — a gas at critical, Σ c / C_crit ≥ 1 inside one effect group (additive mixture rule) or three gases at high
+      — otherwise capped at high; a sharp rise → one level up; falling never lowers a level.'

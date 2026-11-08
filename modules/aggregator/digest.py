@@ -38,14 +38,12 @@ def _tz_label(offset: timedelta) -> str:
 
 
 def rules_line(rules: Optional[Dict[str, Any]]) -> Optional[str]:
-    """Per-location rules GPT should apply (F12), e.g. ``rules: unknown person after 20:00; acetone ≥ 3.0%``."""
+    """Per-location rules GPT should apply (F12), e.g. ``rules: unknown person suspicious after 20:00``."""
     if not rules:
         return None
     parts = []
     if rules.get("unknown_person_after"):
         parts.append(f"unknown person suspicious after {rules['unknown_person_after']}")
-    for gas, limit in (rules.get("gas_thresholds") or {}).items():
-        parts.append(f"{gas} ≥ {limit}% is dangerous here")
     return "rules: " + "; ".join(parts) if parts else None
 
 

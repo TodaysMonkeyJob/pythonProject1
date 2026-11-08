@@ -4,7 +4,8 @@ from typing import List, Optional
 from agents.framework.base import Agent, Message
 from agents.framework.bus_adapter import Claim
 
-KEPT = ("risk1", "risk2", "risk3", "partial", "missing", "corridor_width", "widened_by", "excluded", "rules_version")
+KEPT = ("risk1", "risk2", "risk3", "partial", "missing", "corridor_width", "widened_by", "excluded", "rules_version",
+        "safety", "explosive")      # G1 (TOD-53): the gas safety invariant travels with the corridor
 
 
 class FuzzyAgent(Agent):

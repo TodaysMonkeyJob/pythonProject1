@@ -20,7 +20,14 @@ from drivers.gas.base import Descriptor, Driver, DriverError, Quantity
 
 HELLO, READ = b"ID?\n", b"READ\n"
 GASES = ("ethanol", "ammonia", "acetone", "toluene")       # the TOD-19 classes (toluol = toluene)
-RANGE_VOL_PCT = [0.25, 14.0]
+RANGE_VOL_PCT = [0.25, 14.0]          # all gases together; per gas: modules.gas.data.MODEL_RANGE_VOL_PCT (TOD-53)
+
+
+def model_range(gas: str) -> List[float]:
+    """:return: [min, max] vol % of the gas in the training data (a non-zero reading below min means at least min)"""
+    from modules.gas.data import MODEL_RANGE_VOL_PCT
+
+    return list(MODEL_RANGE_VOL_PCT.get("toluol" if gas == "toluene" else gas, RANGE_VOL_PCT))
 
 
 def board_line(port, request: bytes) -> Dict[str, Any]:
@@ -61,9 +68,10 @@ class GrapheneFET(Driver):
         accuracy = measured_accuracy((options or {}).get("uncertainty", "config/uncertainty.yaml"))
         return Descriptor(cls.name, "graphene FET board", getattr(port, "name", "?"), serial=hello.get("serial"),
                           needs_model=True, quantities=[
-                              Quantity(gas, gas, "vol_pct", range=list(RANGE_VOL_PCT), accuracy=accuracy.get(gas),
+                              Quantity(gas, gas, "vol_pct", range=model_range(gas), accuracy=accuracy.get(gas),
                                        sample_period=1.0, selectivity="cross_sensitive",
-                                       source="dataset range data/gas/data.xls; accuracy = regressor MAE "
+                                       source="dataset range data/gas/data.xls (starts at or above C_crit: "
+                                              "nothing below it is measurable, TOD-53); accuracy = regressor MAE "
                                               "(reports/gas_metrics.json)")
                               for gas in GASES],
                           details={"gates": hello.get("gates", 16), "vg": hello.get("vg", [0.0, 1.5]),

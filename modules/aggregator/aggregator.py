@@ -22,6 +22,7 @@ from core.events import Event
 from core.module import BaseModule
 from modules.aggregator.digest import snapshot_digest
 from modules.aggregator.llm_view import llm_view, payload_text
+from modules.hfs.gas_normalize import flat_reading
 from modules.aggregator.incidents import IncidentRecorder
 from modules.aggregator.outbox import Outbox
 from system_setup.logger_setup import init_logger
@@ -171,7 +172,7 @@ class SceneState:
         elif event.type == "sound":
             self.sounds.append({"t": hms(event), "label": p.get("label", "loud_noise"), "db": p.get("rms_db", 0)})
         elif event.type == "gas_reading":
-            self.gas = p
+            self.gas = flat_reading(p)                  # TOD-53: any sensor format → vol % + c / C_crit
         elif event.type == "alert":
             reason = p.get("reason", "alert")
             detail = p.get("gas") or p.get("module") or ""
@@ -350,10 +351,12 @@ class EventCsv:
         day = event.timestamp[:10]
         if day != self._day:
             self._open(day)
-        p = event.payload
+        p = flat_reading(event.payload) if event.type == "gas_reading" else event.payload
         gas_pct = p.get("concentration_pct")
         text = p.get("text") or p.get("reason") or ""
-        if "class" in p:
+        if event.type == "gas_reading":                 # TOD-53: raw value + «% від критичного рівня»
+            text = f"{p.get('gas')} {p.get('pct_of_crit', 0):g} % від критичного рівня"
+        elif "class" in p:
             text = f"{p['class']} {p.get('state', '')}".strip()
         elif event.type == "mic_state":
             text = f"{p.get('state')} ({p.get('reason')})"

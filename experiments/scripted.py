@@ -18,8 +18,21 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.events import make_event
 from modules.audio.attribution import iso
+from modules.hfs.gas_normalize import GasTable, pct_of_crit
 
 LOCATION = "lab"
+GASES = GasTable.load("config/gases.yaml")
+# G1 (TOD-53) labels v2: gas generated as shares of C_crit (NIOSH IDLH, config/gases.yaml); a gas at / above C_crit is
+# labelled critical. v1 (until 2026-11-07) used vol % against the old 3–5 % thresholds — 0.3–3.3 % acetone (up to
+# 13 × C_crit) was labelled high and 0.3–0.9 % toluene (up to 18 × C_crit) with smoking medium.
+LABELS_VERSION = 3          # v2 (2026-11-08 morning): C_crit shares in graphene vol %; v3: low-range sensor in ppm
+GAS_SCALE = ("c / C_crit of config/gases.yaml (TOD-53), low-range sensor in ppm "
+             "(the graphene model cannot grade below C_crit)")
+# The generic low-range sensor of the scripted set (electrochemical / MOS / PID class of docs/sensors.md): range
+# 0–2 × C_crit of its gas, ±10 % of reading or ±2 % C_crit, resolution 1 % C_crit — so every scenario from calm to
+# critical stays inside its range. A design stand-in, not a datasheet.
+LOW_RANGE = {"driver": "low_range", "sensor_model": "low_range_ppm", "range_crit": 2.0, "resolution_crit": 0.01,
+             "relative": 0.1, "absolute_crit": 0.02, "selectivity": "cross_sensitive"}
 PEOPLE = {"oleh": "Oleh", "anna": "Anna", "ivan": "Ivan"}
 CLAIMS_UA = ["Все гаразд, датчик зламаний", "Все нормально, датчик глючить, нічого не горить",
              "Не хвилюйтесь, це просто перевірка"]
@@ -75,30 +88,57 @@ class Script:
                            speaker_score=0.62 if status == "known" else 0.2)
         self.add("audio", "speech", payload, "mic-1", 1)
 
-    def gas(self, seconds: float, start_pct: float, end_pct: float, gas: str = "acetone", alert_at: float = 5.0,
-            hook=None) -> None:
-        """Gas readings every 5 s from start_pct to end_pct (+ the gas worker's alerts); hook(i) adds other events"""
+    def gas(self, seconds: float, start: float, end: float, gas: str = "acetone", hook=None) -> None:
+        """
+        Gas readings every 5 s from ``start`` to ``end`` × C_crit of the gas (config/gases.yaml, G1 / TOD-53) from a
+        low-range sensor (``LOW_RANGE``: ppm, range 0–2 × C_crit) — the graphene model cannot measure below C_crit
+        (its training data start at 1.2–10 × C_crit, modules/gas/MODEL_CARD.md), so it is not used here. The payload
+        has the TOD-48 driver format (``readings``) + ``trend`` / ``rise_rate_pct_per_min`` as the stand-in of a
+        trend tracker; the gas worker's alerts follow its rules (≥ C_crit → gas_threshold, ≥ LEL → gas_explosive, a
+        rise faster than 0.25 C_crit / min → gas_rising). Clean air: the sensor reads 0 ppm of its gas (acetone).
+        """
+        substance = GASES.get(gas) or GASES.get("acetone")
+        clean = GASES.get(gas) is None
+        crit_ppm, crit_pct = substance.c_crit_in("ppm"), substance.c_crit_in("vol_pct")
         steps = max(1, int(seconds / 5))
-        previous, alerted = start_pct, set()
+        previous, alerted = start, set()
         for i in range(steps):
-            pct = round(start_pct + (end_pct - start_pct) * i / max(1, steps - 1) + self.rng.uniform(-0.02, 0.02), 3)
-            rate = round((pct - previous) * 12, 3)
-            trend = "rising" if rate > 0.2 else "falling" if rate < -0.2 else "stable"
-            self.add("gas", "gas_reading", {"gas": gas, "concentration_pct": max(0.0, pct), "trend": trend,
-                                            "rise_rate_pct_per_min": rate, "gas_confidence": 0.93}, "gas-1", 5)
-            if pct >= alert_at and "gas_threshold" not in alerted:
+            ratio = 0.0 if clean else \
+                max(0.0, start + (end - start) * i / max(1, steps - 1) + self.rng.uniform(-0.005, 0.005))
+            rate = (ratio - previous) * 12                                  # C_crit per minute (5 s steps)
+            trend = "rising" if rate > 0.05 else "falling" if rate < -0.05 else "stable"
+            top = LOW_RANGE["range_crit"] * crit_ppm
+            ppm = round(min(top, ratio * crit_ppm), 2)
+            item = {"gas": substance.name, "concentration": ppm, "unit": "ppm", "range": [0.0, round(top, 2)],
+                    "resolution": round(LOW_RANGE["resolution_crit"] * crit_ppm, 3),
+                    "accuracy": {"relative": LOW_RANGE["relative"],
+                                 "absolute": round(LOW_RANGE["absolute_crit"] * crit_ppm, 3)},
+                    "saturated": ppm >= top, "selectivity": LOW_RANGE["selectivity"],
+                    "pct_of_crit": pct_of_crit(ratio)}
+            self.add("gas", "gas_reading", {"readings": [item], "driver": LOW_RANGE["driver"],
+                                            "sensor_model": LOW_RANGE["sensor_model"], "sensor_id": "gas-1",
+                                            "trend": trend, "rise_rate_pct_per_min": round(rate * crit_pct, 5)},
+                     "gas-1", 5)
+            limit = {"gas": substance.name, "concentration": ppm, "unit": "ppm", "ratio": round(ratio, 4),
+                     "pct_of_crit": pct_of_crit(ratio)}
+            pct = ratio * crit_pct
+            if not clean and ratio >= 1.0 and "gas_threshold" not in alerted:
                 alerted.add("gas_threshold")
                 self.mark_onset()
-                self.add("gas", "alert", {"reason": "gas_threshold", "gas": gas, "concentration_pct": pct},
+                self.add("gas", "alert", {"reason": "gas_threshold", **limit}, "gas-1", 0.1, "critical")
+            if not clean and substance.lel_pct and pct >= substance.lel_pct and "gas_explosive" not in alerted:
+                alerted.add("gas_explosive")
+                self.mark_onset()
+                self.add("gas", "alert", {"reason": "gas_explosive", "lel_pct": substance.lel_pct, **limit},
                          "gas-1", 0.1, "critical")
-            if rate > 2.0 and "gas_rising" not in alerted:
+            if rate > 0.25 and "gas_rising" not in alerted:
                 alerted.add("gas_rising")
                 self.mark_onset()
-                self.add("gas", "alert", {"reason": "gas_rising", "gas": gas, "rise_rate_pct_per_min": rate},
-                         "gas-1", 0.1, "critical")
+                self.add("gas", "alert", {"reason": "gas_rising", "rise_norm_per_min": round(rate, 3), **limit},
+                         "gas-1", 0.1, "warning")
             if hook:
                 hook(i)
-            previous = pct
+            previous = ratio
 
 
 def base_time(hour: int, day: int, rng: random.Random) -> float:
@@ -108,7 +148,7 @@ def base_time(hour: int, day: int, rng: random.Random) -> float:
 def normal(kind: str, s: Script) -> None:
     s.devices()
     if kind == "empty_room":
-        s.gas(180, 0.05, 0.05, "clean_air")
+        s.gas(180, 0, 0, "clean_air")
         return
     people = {"known_sitting": ["oleh"], "known_walking": ["anna"], "conversation": ["oleh", "anna"],
               "several_people": ["oleh", "anna", "ivan"]}[kind]
@@ -122,7 +162,7 @@ def normal(kind: str, s: Script) -> None:
             s.speech(s.rng.choice(EVERYDAY), s.rng.choice(people), "known")
         if i % 9 == 4:
             s.add("camera", "motion", {"state": "start", "area_ratio": round(s.rng.uniform(0.02, 0.08), 3)}, "cam-1", 1)
-    s.gas(180, 0.05, 0.08, "clean_air", hook=hook)
+    s.gas(180, 0, 0, "clean_air", hook=hook)
 
 
 def dangerous(kind: str, s: Script, attack: Optional[str] = None) -> None:
@@ -132,31 +172,31 @@ def dangerous(kind: str, s: Script, attack: Optional[str] = None) -> None:
         s.gas_scenario = True
         s.person(1, None, False)                                         # someone (unknown) is around
         claimant = ("u1", "unknown")
-        s.gas(30, 0.05, 0.05)
-        if kind == "gas_threshold":
-            s.gas(150, 2.0, 6.5, hook=lambda i: attack_hook(s, attack, i, claimant))
-        else:                                                         # sharp rise to just below the limit
-            s.gas(60, 0.3, 3.2)
-            s.gas(90, 3.2, 3.3, hook=lambda i: attack_hook(s, attack, i, claimant))
+        s.gas(30, 0.02, 0.02)                                         # shares of C_crit (TOD-53)
+        if kind == "gas_threshold":                                   # crosses C_crit → critical
+            s.gas(150, 0.4, 1.6, hook=lambda i: attack_hook(s, attack, i, claimant))
+        else:                                                         # sharp rise to high, below C_crit
+            s.gas(60, 0.05, 0.6)
+            s.gas(90, 0.6, 0.65, hook=lambda i: attack_hook(s, attack, i, claimant))
     elif kind == "fall_lying":
         s.person(1, "anna", True)
         s.add("camera", "action", {"track_id": 1, "action": "walking"}, "cam-1", 5)
         s.add("camera", "action", {"track_id": 1, "action": "lying"}, "cam-1", 10)
         s.mark_onset()
         claimant = ("anna", "known")
-        s.gas(150, 0.05, 0.05, "clean_air", hook=lambda i: attack_hook(s, attack, i, claimant))
+        s.gas(150, 0, 0, "clean_air", hook=lambda i: attack_hook(s, attack, i, claimant))
     elif kind == "smoking":
         s.person(1, "ivan", True)
         s.add("camera", "action", {"track_id": 1, "action": "possible_smoking"}, "cam-1", 10)
         s.mark_onset()
         claimant = ("ivan", "known")
-        s.gas(150, 0.3, 0.9, "toluol", alert_at=99, hook=lambda i: attack_hook(s, attack, i, claimant))
+        s.gas(150, 0.02, 0.06, "toluol", hook=lambda i: attack_hook(s, attack, i, claimant))   # calm background
     elif kind == "unknown_night":
         s.person(1, None, False)
         s.mark_onset()
         s.add("camera", "action", {"track_id": 1, "action": "walking"}, "cam-1", 5)
         claimant = ("u1", "unknown")
-        s.gas(150, 0.05, 0.05, "clean_air", hook=lambda i: attack_hook(s, attack, i, claimant))
+        s.gas(150, 0, 0, "clean_air", hook=lambda i: attack_hook(s, attack, i, claimant))
 
 
 def attack_hook(s: Script, attack: Optional[str], i: int, claimant: Tuple[Optional[str], str]) -> None:
@@ -216,6 +256,7 @@ def build(out: str, seed: int = 42) -> str:
         dangerous(kind, script, attack)
         save(f"adv_{n:02d}", "adversarial", script, level, risk, attack, f"{kind} + {attack}")
     manifest = {"name": f"scripted-{seed}", "synthetic": True, "seed": seed, "location": LOCATION,
+                "labels_version": LABELS_VERSION, "gas_scale": GAS_SCALE,
                 "note": "generated from templates (experiments/scripted.py) — harness validation, not thesis evidence",
                 "scenarios": scenarios}
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:

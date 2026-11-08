@@ -364,7 +364,9 @@ def write_v2(out_dir: str, summaries, results, tests, manifest, corridor, failur
               *tables["corridor.md"], "",
               "## Sensor-failure block", "",
               f"Every evaluation scenario replayed with its gas sensor broken: clean-air baseline drift "
-              f"+{manifest['failure_block']['drift_pct']} % on every reading and a `baseline_drift` self-test report "
+              f"+{manifest['failure_block'].get('drift_norm', manifest['failure_block'].get('drift_pct'))} "
+              f"{'C_crit' if 'drift_norm' in manifest['failure_block'] else '%'} on every reading and a "
+              "`baseline_drift` self-test report "
               f"with health {manifest['failure_block']['health']}. Registry trust discounts the sensor (τ·h, wider "
               "corridor); static trust keeps it at 0.95.", "", *tables["failure.md"], ""]
     with open(os.path.join(out_dir, "mcnemar.md"), encoding="utf-8") as f:

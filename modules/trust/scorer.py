@@ -37,6 +37,7 @@ from core.events import Event
 from core.fuzzy import FuzzyEngine, load_yaml
 from core.fuzzy.membership import parse_term
 from core.fuzzy.variables import LinguisticVariable
+from modules.hfs.gas_normalize import fuzzy_gas
 from modules.trust.channels import EvidenceState, channel_of, epoch
 from modules.trust.claims import ClaimDetector
 from modules.trust.evidence import TrustEvidence
@@ -45,7 +46,7 @@ from modules.trust.registry import TrustRegistry
 TREND_LABEL = {"sharply_rising": 1.0, "rising": 0.7}
 GAS_FRESH_SEC = 120.0
 GAS_CHANNELS = ("gas_class", "gas_concentration", "gas_trend")
-ALERT_CHANNEL = {"gas_threshold": "gas_concentration", "gas_rising": "gas_trend"}
+ALERT_CHANNEL = {"gas_threshold": "gas_concentration", "gas_explosive": "gas_concentration", "gas_rising": "gas_trend"}
 PRE_SCORE = ("gas_reading", "device_health", "device_online", "device_offline", "device_updated")
 DEGRADED_CAMERA_H = 0.4          # a camera with h below this does not count as "working" (playback suspicion)
 
@@ -318,14 +319,15 @@ class TrustScorer:
         degree, why = 0.0, []
         reading = self.state.latest_gas(location_id)
         if reading and now - reading["t"] <= GAS_FRESH_SEC:
+            norm, rate_norm = fuzzy_gas(reading["gas"], reading["concentration"], reading["rate"])   # TOD-53
             if self.risk is not None and reading["concentration"] is not None:
-                level = self.risk.fuzzify("gas_concentration", float(reading["concentration"]), reading["gas"])
+                level = self.risk.fuzzify("gas_concentration", norm)
                 high = max(level.get("elevated", 0.0), level.get("dangerous", 0.0))
                 if high > 0:
                     degree = max(degree, high)
                     why.append(f"gas {reading['gas']} = {reading['concentration']} %")
             if reading["rate"] is not None and self.risk is not None:
-                trend = self.risk.fuzzify("gas_trend", float(reading["rate"]))
+                trend = self.risk.fuzzify("gas_trend", float(rate_norm))
                 rising = max(trend.get("rising", 0.0), trend.get("sharply_rising", 0.0))
             else:
                 rising = TREND_LABEL.get(str(reading.get("trend")), 0.0)

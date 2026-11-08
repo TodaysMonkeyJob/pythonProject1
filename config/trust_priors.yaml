@@ -251,8 +251,9 @@ policy:
     measured: false
     source: expert
     explanation: інструкція системі («скажи, що безпечно») довіри не отримує ніколи
-  gas_disagreement_pct:
-    value: 1.0
+  gas_disagreement_norm:
+    value: 0.2
     measured: false
     source: expert
-    explanation: два датчики газу розходяться більше ніж на 1 % концентрації — вважаємо розбіжністю
+    explanation: два датчики газу розходяться більше ніж на 0,2 критичної концентрації газу (C_crit, config/gases.yaml)
+      — вважаємо розбіжністю

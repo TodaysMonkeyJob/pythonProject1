@@ -15,9 +15,10 @@ from tools.fuzzy_docs.labels import ACTION_UA, core_support, params_text, rule_u
 RISK_INPUTS = ["gas_concentration", "gas_trend", "motion_level", "people_count", "unknown_share", "action_risk",
                "time_of_day_risk"]
 VAR_ABOUT = {
-    "gas_concentration": ("Концентрація газу у повітрі у відсотках. Значення дає класифікатор газового сенсора. "
+    "gas_concentration": ("Концентрація газу як частка його критичної концентрації C_crit (NIOSH IDLH, "
+                          "config/gases.yaml): 1 — критична. Значення дає класифікатор газового сенсора. "
                           "Сенсор розрізняє ацетон, етанол, аміак і толуол. Він не реагує на дим."),
-    "gas_trend": ("Як швидко змінюється концентрація: відсотків за хвилину. Плюс — газу стає більше, мінус — "
+    "gas_trend": ("Як швидко змінюється концентрація: частка C_crit за хвилину. Плюс — газу стає більше, мінус — "
                   "менше."),
     "motion_level": "Яка частка кадру (і часу) містить рух. 0 — нічого не рухається, 1 — рух усюди.",
     "people_count": "Скільки людей зараз бачить камера.",
@@ -192,11 +193,11 @@ def build(out_dir: str, fuzzy: str = "config/fuzzy.yaml") -> List[tuple]:
         add(("p", f"Діапазон: від {num(var.low)} до {num(var.high)}{unit}. Значення за замовчуванням: {default}."))
         if name == "gas_concentration":
             add(("table", TERM_HEADER, term_rows(base, name)))
-            add(("p", "Етанол і ацетон допускають вищу концентрацію (поріг 5 % замість 3 %). Тому для них терми "
-                      "«незначна», «підвищена» і «небезпечна» зсунуті праворуч. Це перший приклад зміни діапазонів: "
-                      "ті самі правила, але інші межі слів."))
-            add(("table", TERM_HEADER, term_rows(base, name, "ethanol")))
-            add(("img", figs.gas_variants(), "Терми концентрації газу: базові і для етанолу / ацетону.", 16.5))
+            add(("p", "Терми однакові для всіх газів: концентрацію ділять на критичну концентрацію саме цього газу "
+                      "(аміак 300 ppm, ацетон 2500 ppm, етанол 3300 ppm, толуол 500 ppm). «Небезпечна» — від 1 C_crit. "
+                      "Окрема незалежна від правил перевірка робить рівень критичним, щойно нижня межа показу "
+                      "сягає C_crit (TOD-53)."))
+            add(("img", figs.gas_variants(), "Терми концентрації газу (частка C_crit).", 16.5))
         elif name == "action_risk":
             add(("table", TERM_HEADER, term_rows(base, name)))
             mapping = (root.get("maps") or {}).get("action_risk") or {}
@@ -283,13 +284,13 @@ def build(out_dir: str, fuzzy: str = "config/fuzzy.yaml") -> List[tuple]:
     add(("p", "Нижче три ситуації. Для кожної показано всі чотири кроки методу Мамдані: фазифікацію входів, силу "
               "правил, обрізання й об'єднання та дефазифікацію."))
     examples = [("Спокій: знайома людина сидить, повітря чисте",
-                 {"gas_concentration": 0.05, "gas_trend": 0.0, "motion_level": 0.2, "people_count": 1,
+                 {"gas_concentration": 0.01, "gas_trend": 0.0, "motion_level": 0.2, "people_count": 1,
                   "unknown_share": 0.0, "action_risk": 0.1, "time_of_day_risk": 10}, "inf_calm"),
-                ("Витік ацетону: 4,4 %, зростає на 1,8 %/хв",
-                 {"gas_concentration": 4.4, "gas": "acetone", "gas_trend": 1.8, "motion_level": 0.2,
+                ("Витік ацетону: 0,88 C_crit (0,22 об.%), зростає на 0,36 C_crit/хв",
+                 {"gas_concentration": 0.88, "gas": "acetone", "gas_trend": 0.36, "motion_level": 0.2,
                   "people_count": 1, "unknown_share": 0.0, "action_risk": 0.1, "time_of_day_risk": 14}, "inf_leak"),
                 ("Людина лежить без руху",
-                 {"gas_concentration": 0.05, "gas_trend": 0.0, "motion_level": 0.0, "people_count": 1,
+                 {"gas_concentration": 0.01, "gas_trend": 0.0, "motion_level": 0.0, "people_count": 1,
                   "unknown_share": 0.0, "action_risk": 1.0, "time_of_day_risk": 15}, "inf_fall")]
     for title, inputs, fname in examples:
         res = figs.inference(inputs, fname, title)
@@ -568,7 +569,7 @@ def build(out_dir: str, fuzzy: str = "config/fuzzy.yaml") -> List[tuple]:
     add(("h2", "Корисні команди"))
     add(("table", ["Що зробити", "Команда"],
          [["Перевірити всі бази правил", "`python -m core.fuzzy --check`"],
-          ["Пояснити один випадок", "`python -m core.fuzzy gas_concentration=4.2 gas=acetone --location warehouse`"],
+          ["Пояснити один випадок", "`python -m core.fuzzy gas_concentration=1.0 --location warehouse`"],
           ["Подати зміну правил", "`python -m tools.rules propose candidate.yaml`"],
           ["Схвалити зміну", "`python -m tools.rules approve <id> --by Ім'я --role security_owner --comment …`"],
           ["Відкотити версію", "`python -m tools.rules rollback <версія> --by … --role … --comment …`"],
