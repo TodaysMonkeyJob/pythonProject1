@@ -1,0 +1,52 @@
+# D1 (TOD-55) survey of the gas / particle sensors without a full declaration in a driver (docs/sensors.md, checked
+# 2026-11-06). The logic documentation (python -m tools.logic_docs) builds its sensor table from this file, the
+# drivers' own declarations (drivers/gas/electrochemical.py GAS_TYPES) and the graphene model range
+# (modules/gas/data.py MODEL_RANGE_VOL_PCT); tests/test_logic_docs.py checks this file against the drivers.
+# null = not checked / not published — shown as such, never guessed.
+sensors:
+  - model: Winsen MQ-137 (через АЦП ADS1115)
+    measures: [ammonia]
+    unit: ppm
+    range: [5, 500]
+    accuracy: "наближено: крива R_s/R₀ з паспорта, потрібне власне калібрування R₀"
+    interface: "аналоговий вихід → АЦП ADS1115 на I2C"
+    source: "сторінка продукту Winsen [13]"
+  - model: Winsen MQ-7
+    measures: [carbon_monoxide]
+    unit: ppm
+    range: null
+    accuracy: null
+    interface: "аналоговий вихід → АЦП ADS1115 на I2C"
+    source: "первинного джерела не знайдено"
+  - model: Plantower PMS5003
+    measures: [pm2_5]
+    unit: ug_m3
+    range: null
+    accuracy: null
+    interface: UART
+    source: "інструкцію виробника не вдалося отримати"
+  - model: Nova Fitness SDS011
+    driver: sds011
+    measures: [pm2_5]
+    unit: ug_m3
+    range: [0, 999.9]
+    resolution: 0.3
+    accuracy: {relative: 0.15, absolute: 10.0}
+    interface: "UART / USB"
+    source: "копія паспорта Nova Fitness [13]"
+  - model: Sensirion SPS30
+    driver: sps30
+    measures: [pm2_5]
+    unit: ug_m3
+    range: [0, 1000]
+    accuracy: {relative: 0.10, absolute: 10.0}
+    interface: "I2C / UART"
+    source: "копія паспорта Sensirion [13] (±10 мкг/м³ до 100, ±10 % від 100 до 1000)"
+  - model: ScioSense ENS160
+    driver: ens160
+    measures: [index]
+    unit: index
+    range: [1, 5]
+    accuracy: "індекс якості повітря (UBA 1–5), TVOC і eCO₂ — не концентрація небезпечного газу: окремий вхід"
+    interface: I2C
+    source: "паспорт ScioSense ENS160 [13]"

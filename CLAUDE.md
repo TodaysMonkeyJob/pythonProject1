@@ -414,6 +414,14 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `sensor_calibration` section). Events `calibration_status` (→ HFS: δ × `uncertainty_factor` per device) and
   `calibration_control` (dashboard → gas / vision / audio). Dashboard Devices → «Калібрування» (`views/calibration.js`,
   `/api/calibration…`, admin). `python -m tools.calibration_restart` → `reports/calibration_restart/` (ready times).
+- D1 (TOD-55) human-readable logic documentation (Ukrainian, plain language, no code): `python -m tools.logic_docs
+  [--check] [--export]` → `docs/logic/` (README, part1_autonomous, part2_multiagent, references + figures/, export/
+  DOCX / HTML / PDF via `tools/fuzzy_docs/render.py` + headless Chrome). Text = `tools/logic_docs/text/*.md` templates
+  with placeholders `{{v:…}}` / `{{t:…}}` / `{{f:…|caption}}` / `{{F:id}}` filled from the live config
+  (`tools/logic_docs/data.py` `Facts`: gases, rule bases, uncertainty, drivers + `config/sensor_catalog.yaml`, agents,
+  calibration, latest article1 / article2 reports, worked examples through the real HFS); `FORMULAS` = formula index
+  with sources. `--check` (and tests/test_logic_docs.py): no code / hand-typed tables in the parts, every placeholder,
+  formula and citation resolves. Edit the templates, never docs/logic/*.md; rebuild after config changes.
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —
