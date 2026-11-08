@@ -16,7 +16,7 @@ from core.fuzzy.membership import evaluate, parse_term, trapmf  # noqa: E402
 from tools.fuzzy_docs.labels import ACTION_UA, term_ua, var_ua  # noqa: E402
 
 COLORS = ["#2b8a3e", "#e8a317", "#d9480f", "#a61e4d", "#1c7ed6", "#7048e8", "#0b7285", "#5c940d"]
-ZOOM = {"gas_concentration": (0, 6), "gas_trend": (-3, 4), "people_count": (0, 7)}   # readable ranges in examples
+ZOOM = {"gas_concentration": (0, 1.2), "gas_trend": (-0.6, 0.8), "people_count": (0, 7)}   # readable ranges in examples
 LEVEL_COLORS = {"low": "#2b8a3e", "medium": "#e8a317", "high": "#d9480f", "critical": "#a61e4d"}
 plt.rcParams.update({"font.family": ["Arial", "Arial Unicode MS"], "font.size": 9, "axes.titlesize": 10,
                      "axes.spines.top": False,
@@ -171,13 +171,11 @@ class Figures:
         return self.save(fig, f"{prefix}_{name}{'_' + variant if variant else ''}")
 
     def gas_variants(self) -> str:
-        fig, axes = plt.subplots(1, 2, figsize=(11, 2.8), sharey=True)
-        self._variable(axes[0], self.base, "gas_concentration",
-                       title="Базові терми (ліміт 3 %: аміак, толуол, невідомі гази)")
-        self._variable(axes[1], self.base, "gas_concentration", "ethanol",
-                       title="Етанол і ацетон (ліміт 5 %) — терми зсунуті праворуч")
-        for ax in axes:
-            ax.set_xlim(0, 7)
+        """G1 (TOD-53): one scale for every gas — c / C_crit (NIOSH IDLH of config/gases.yaml)"""
+        fig, ax = plt.subplots(figsize=(11, 2.8))
+        self._variable(ax, self.base, "gas_concentration",
+                       title="Терми концентрації: частка критичної концентрації C_crit (однакові для всіх газів)")
+        ax.set_xlim(0, 1.2)
         fig.tight_layout()
         return self.save(fig, "var_gas_concentration_variants")
 
@@ -222,11 +220,11 @@ class Figures:
 
     def overlap(self) -> str:
         fig, axes = plt.subplots(1, 2, figsize=(11, 2.8))
-        self._variable(axes[0], self.base, "gas_concentration", value=1.4,
-                       title="Накладання термів: 1,4 % — одночасно «незначна» і «підвищена»")
-        axes[0].set_xlim(0, 5)
+        self._variable(axes[0], self.base, "gas_concentration", value=0.4,
+                       title="Накладання термів: 0,4 C_crit — одночасно «незначна» і «підвищена»")
+        axes[0].set_xlim(0, 1.2)
         var = self.base.variables["gas_concentration"]
-        xs = np.linspace(0, 5, 501)
+        xs = np.linspace(0, 1.2, 501)
         grid, curves = var.curves()
         for i, mu in enumerate(curves.values()):
             axes[1].plot(grid, mu, color=COLORS[i], lw=1, alpha=0.6)
@@ -324,8 +322,8 @@ class Figures:
         labels = [["" for _ in t_terms] for _ in c_terms]
         for i, c in enumerate(c_terms):
             for j, t in enumerate(t_terms):
-                out = self.base.infer({"gas_concentration": min(9.5, centre(conc.terms[c])),
-                                       "gas_trend": max(-9.5, min(9.5, centre(trend.terms[t]))),
+                out = self.base.infer({"gas_concentration": min(1.15, centre(conc.terms[c])),
+                                       "gas_trend": max(-1.9, min(1.9, centre(trend.terms[t]))),
                                        "time_of_day_risk": 12})
                 matrix[i, j] = out["crisp"]
                 best = max(out["memberships"], key=out["memberships"].get) if any(out["memberships"].values()) \
@@ -347,10 +345,9 @@ class Figures:
 
     def gas_curve(self) -> str:
         fig, ax = plt.subplots(figsize=(9, 2.9))
-        xs = np.linspace(0, 8, 161)
-        for gas, label, color in ((None, "аміак / толуол / невідомий (ліміт 3 %)", "#d9480f"),
-                                  ("acetone", "ацетон / етанол (ліміт 5 %)", "#1c7ed6")):
-            for trend, ls in ((0.0, "-"), (3.0, "--")):
+        xs = np.linspace(0, 1.2, 161)
+        for gas, label, color in ((None, "будь-який газ (частка C_crit)", "#d9480f"),):
+            for trend, ls in ((0.0, "-"), (0.6, "--")):
                 ys = [self.base.infer({"gas_concentration": x, "gas_trend": trend, "time_of_day_risk": 12,
                                        **({"gas": gas} if gas else {})})["crisp"] for x in xs]
                 ax.plot(xs, ys, ls=ls, color=color, label=f"{label}, {'стабільна' if trend == 0 else 'різко зростає'}")
@@ -483,7 +480,7 @@ class Figures:
         return self.save(fig, f"it2_fou_{variable}")
 
     def interval_vs_u(self) -> str:
-        inputs = {"gas_concentration": 2.0, "gas": "acetone", "gas_trend": 0.8, "people_count": 1,
+        inputs = {"gas_concentration": 0.4, "gas": "acetone", "gas_trend": 0.16, "people_count": 1,
                   "action_risk": 0.1, "time_of_day_risk": 14}
         us = np.linspace(0, 1, 21)
         lo, hi, t1 = [], [], []

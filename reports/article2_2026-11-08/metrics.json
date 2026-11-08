@@ -1,0 +1,378 @@
+{
+ "manifest": {
+  "seed": 42,
+  "git": "589eb46",
+  "date": "2026-11-08T11:29:06+00:00",
+  "scenarios": 60,
+  "labels": "draft — author's expert labels, to be confirmed by the supervisor",
+  "weights": {
+   "audio": 0.5353,
+   "video": 0.8457
+  },
+  "files": {
+   "experiments/hfs/scenarios.yaml": "e55170881b2d",
+   "experiments/agents/scenarios.yaml": "ca848c3029e1",
+   "agents/video/eval.yaml": "c0f7ff7ac4be",
+   "agents/audio/eval.yaml": "4aaab33d7651",
+   "config/fuzzy/top.yaml": "2b5479cddbb9"
+  }
+ },
+ "summary": {
+  "article1": {
+   "macro_f1": 0.8993,
+   "accuracy": 0.9,
+   "macro_f1_operator": 0.8993,
+   "accuracy_operator": 0.9,
+   "attack_success_rate": 0.0,
+   "attacks": 4,
+   "operator_requests": 0,
+   "operator_load": 0.0,
+   "latency_ms": {
+    "mean": 0.0,
+    "p95": 0.0
+   },
+   "macro_f1_by_group": {
+    "action": 0.2222,
+    "attack": 1.0,
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 0.8667,
+    "gas": 1.0
+   },
+   "misses": [
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium",
+     "branch": "autonomous"
+    },
+    {
+     "id": "x02",
+     "label": "high",
+     "got": "medium",
+     "branch": "autonomous"
+    },
+    {
+     "id": "m02",
+     "label": "high",
+     "got": "low",
+     "branch": "autonomous"
+    },
+    {
+     "id": "m03",
+     "label": "high",
+     "got": "low",
+     "branch": "autonomous"
+    },
+    {
+     "id": "m08",
+     "label": "critical",
+     "got": "high",
+     "branch": "autonomous"
+    },
+    {
+     "id": "m09",
+     "label": "critical",
+     "got": "high",
+     "branch": "autonomous"
+    }
+   ],
+   "by_mode_effective": {
+    "autonomous": {
+     "scenarios": 60,
+     "macro_f1": 0.8993,
+     "accuracy": 0.9,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 0
+    }
+   }
+  },
+  "multi_agent": {
+   "macro_f1": 0.9139,
+   "accuracy": 0.9167,
+   "macro_f1_operator": 0.9185,
+   "accuracy_operator": 0.9167,
+   "attack_success_rate": 0.0,
+   "attacks": 4,
+   "operator_requests": 4,
+   "operator_load": 0.0667,
+   "latency_ms": {
+    "mean": 0.739,
+    "p95": 0.793
+   },
+   "macro_f1_by_group": {
+    "action": 0.4444,
+    "attack": 1.0,
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 0.8667,
+    "gas": 1.0
+   },
+   "misses": [
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m02",
+     "label": "high",
+     "got": "low",
+     "branch": "escalation_review"
+    },
+    {
+     "id": "m03",
+     "label": "high",
+     "got": "low",
+     "branch": "escalation_review"
+    },
+    {
+     "id": "m08",
+     "label": "critical",
+     "got": "high",
+     "branch": "fuzzy_only"
+    }
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 60,
+     "macro_f1": 0.9139,
+     "accuracy": 0.9167,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 4
+    }
+   }
+  },
+  "no_video": {
+   "macro_f1": 0.8993,
+   "accuracy": 0.9,
+   "macro_f1_operator": 0.8993,
+   "accuracy_operator": 0.9,
+   "attack_success_rate": 0.0,
+   "attacks": 4,
+   "operator_requests": 1,
+   "operator_load": 0.0167,
+   "latency_ms": {
+    "mean": 0.712,
+    "p95": 0.759
+   },
+   "macro_f1_by_group": {
+    "action": 0.2222,
+    "attack": 1.0,
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 0.8667,
+    "gas": 1.0
+   },
+   "misses": [
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m02",
+     "label": "high",
+     "got": "low",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m03",
+     "label": "high",
+     "got": "low",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m08",
+     "label": "critical",
+     "got": "high",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m09",
+     "label": "critical",
+     "got": "high",
+     "branch": "raised"
+    }
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 60,
+     "macro_f1": 0.8993,
+     "accuracy": 0.9,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 1
+    }
+   }
+  },
+  "no_audio": {
+   "macro_f1": 0.9139,
+   "accuracy": 0.9167,
+   "macro_f1_operator": 0.9185,
+   "accuracy_operator": 0.9167,
+   "attack_success_rate": 0.0,
+   "attacks": 4,
+   "operator_requests": 3,
+   "operator_load": 0.05,
+   "latency_ms": {
+    "mean": 0.707,
+    "p95": 0.765
+   },
+   "macro_f1_by_group": {
+    "action": 0.4444,
+    "attack": 1.0,
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 0.8667,
+    "gas": 1.0
+   },
+   "misses": [
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m02",
+     "label": "high",
+     "got": "low",
+     "branch": "escalation_review"
+    },
+    {
+     "id": "m03",
+     "label": "high",
+     "got": "low",
+     "branch": "escalation_review"
+    },
+    {
+     "id": "m08",
+     "label": "critical",
+     "got": "high",
+     "branch": "fuzzy_only"
+    }
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 60,
+     "macro_f1": 0.9139,
+     "accuracy": 0.9167,
+     "attack_success_rate": 0.0,
+     "attacks": 4,
+     "operator_requests": 3
+    }
+   }
+  },
+  "no_physical_guard": {
+   "macro_f1": 0.8512,
+   "accuracy": 0.85,
+   "macro_f1_operator": 0.8517,
+   "accuracy_operator": 0.85,
+   "attack_success_rate": 1.0,
+   "attacks": 4,
+   "operator_requests": 4,
+   "operator_load": 0.0667,
+   "latency_ms": {
+    "mean": 0.72,
+    "p95": 0.785
+   },
+   "macro_f1_by_group": {
+    "action": 0.4444,
+    "attack": 0.0,
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 0.8667,
+    "gas": 1.0
+   },
+   "misses": [
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "x02",
+     "label": "high",
+     "got": "medium",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m01",
+     "label": "critical",
+     "got": "low",
+     "branch": "deescalation_confirmed"
+    },
+    {
+     "id": "m02",
+     "label": "high",
+     "got": "low",
+     "branch": "escalation_review"
+    },
+    {
+     "id": "m03",
+     "label": "high",
+     "got": "low",
+     "branch": "escalation_review"
+    },
+    {
+     "id": "m06",
+     "label": "critical",
+     "got": "low",
+     "branch": "deescalation_confirmed"
+    },
+    {
+     "id": "m07",
+     "label": "critical",
+     "got": "low",
+     "branch": "deescalation_confirmed"
+    },
+    {
+     "id": "m08",
+     "label": "critical",
+     "got": "high",
+     "branch": "fuzzy_only"
+    },
+    {
+     "id": "m10",
+     "label": "medium",
+     "got": "low",
+     "branch": "deescalation_confirmed"
+    }
+   ],
+   "by_mode_effective": {
+    "multiagent": {
+     "scenarios": 60,
+     "macro_f1": 0.8512,
+     "accuracy": 0.85,
+     "attack_success_rate": 1.0,
+     "attacks": 4,
+     "operator_requests": 4
+    }
+   }
+  }
+ }
+}

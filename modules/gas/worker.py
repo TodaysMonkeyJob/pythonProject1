@@ -8,10 +8,17 @@ Curve sources (``gas.mode``):
     (``modules/gas/drivers_mode.py``, ``drivers/gas``).
 
 Events:
-  * ``gas_reading`` (info) every poll: gas, gas_confidence, concentration_pct, trend, sensor_id, curve summary;
-  * ``alert`` (critical) when concentration ≥ ``thresholds[gas]`` (reason ``gas_threshold``) or the
-    concentration rises faster than ``rise_rate_threshold`` %/min over ``trend_window_sec`` (reason ``gas_rising``).
-    Each reason is repeated at most once per ``alert_cooldown_sec``.
+  * ``gas_reading`` (info) every poll: gas, gas_confidence, concentration_pct (the model's prediction, vol %), trend,
+    sensor_id, curve summary, ``ratio`` = c / C_crit and ``pct_of_crit`` («% від критичного рівня»). G1 (TOD-53): the
+    model was trained from ``MODEL_RANGE_VOL_PCT`` up (0.25–0.4 vol %, ≥ C_crit of every gas): a gas it reports
+    counts as at least that floor (``detection_floor``, ``below_model_range`` when the prediction is lower) and the
+    reading carries ``model_note``, which is also logged once per gas;
+  * ``alert`` — G1 (TOD-53) on the scale of ``config/gases.yaml`` (``gas.gases``), never on percentages:
+    ``gas_threshold`` (critical) when the reading is ≥ the gas's C_crit; ``gas_explosive`` (critical,
+    «вибухонебезпечно») when it is ≥ the gas's lower explosive limit; ``gas_rising`` (warning) when c / C_crit rises
+    faster than ``rise_alert_norm_per_min`` over ``trend_window_sec`` (how much a rise means is the HFS's
+    ``dynamics`` input). Each reason is repeated at most once per ``alert_cooldown_sec``. The trend label uses
+    ``trend_stable_norm`` (C_crit per minute); ``rise_rate_pct_per_min`` stays in vol % per minute.
 """
 import collections
 import importlib
@@ -21,7 +28,8 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from core.module import BaseModule
-from modules.gas.data import read_replay_csv
+from modules.gas.data import MODEL_RANGE_VOL_PCT, read_replay_csv
+from modules.hfs.gas_normalize import GasTable, pct_of_crit
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
@@ -102,6 +110,14 @@ class TrendTracker:
         return rate, "stable"
 
 
+def model_note(substance, floor_pct: float) -> str:
+    """G1 (TOD-53): why a graphene reading means "at or above the critical level" (Ukrainian, logs + payload)"""
+    share = pct_of_crit(substance.ratio(floor_pct, "vol_pct"))
+    return (f"модель графенового сенсора навчена для «{substance.name_uk}» від {floor_pct} об.% ({share:g} % від "
+            "критичного рівня): нижчих концентрацій вона не розрізняє, тому будь-який ненульовий показ — не нижче "
+            "критичного рівня; рівні нижче критичного вимірюють лише низькодіапазонні сенсори")
+
+
 def curve_summary(curve: Sequence[float], voltages: Sequence[float]) -> Dict[str, float]:
     """
     :return: Compact description of a curve for the event payload
@@ -128,15 +144,18 @@ class GasWorker(BaseModule):
         self.gas_config = gas
         self.poll_sec = float(gas.get("gas_poll_sec", 1.0))
         self.sensor_id = gas.get("sensor_id", "gas-1")
-        self.thresholds: Dict[str, float] = gas.get("thresholds", {})
-        self.rise_rate_threshold = float(gas.get("rise_rate_threshold", 1.0))
+        self.table = GasTable.load(gas.get("gases", "config/gases.yaml"))     # G1 (TOD-53): C_crit + LEL
+        self.rise_alert_norm = float(gas.get("rise_alert_norm_per_min", 0.25))
         self.alert_cooldown_sec = float(gas.get("alert_cooldown_sec", 30.0))
-        self.trend = TrendTracker(float(gas.get("trend_window_sec", 60.0)), float(gas.get("trend_stable_band", 0.2)))
+        window = float(gas.get("trend_window_sec", 60.0))
+        self.trend = TrendTracker(window, 0.0)                                   # vol % / min (payload only)
+        self.trend_norm = TrendTracker(window, float(gas.get("trend_stable_norm", 0.05)))   # C_crit / min
         self.predictor = predictor
         self.reader = reader
         self.clock = clock
         self._next_poll = 0.0
         self._last_alert: Dict[str, float] = {}
+        self._noted: set = set()
         from modules.trust.health import HealthPublisher, registry_config
 
         health_cfg = registry_config(config)    # F23 (TOD-34): gas self-diagnostics + clean-air self-test
@@ -211,28 +230,47 @@ class GasWorker(BaseModule):
             return None
 
         gas, concentration = prediction["gas"], prediction["concentration_pct"]
-        rate, trend = self.trend.add(now, concentration)
+        substance = self.table.get(gas)
+        floor = (MODEL_RANGE_VOL_PCT.get(gas) or (None,))[0] if substance is not None else None
+        effective = max(concentration, floor) if floor is not None and concentration > 0 else concentration
+        ratio = substance.ratio(effective, "vol_pct") if substance is not None else 0.0
+        rate, _ = self.trend.add(now, concentration)
+        rate_norm, trend = self.trend_norm.add(now, ratio)
         payload = {
             "gas": gas,
             "gas_confidence": prediction["gas_confidence"],
             "concentration_pct": concentration,
+            "ratio": round(ratio, 4),
+            "pct_of_crit": pct_of_crit(ratio),
             "trend": trend,
             "rise_rate_pct_per_min": None if rate is None else round(rate, 3),
             "sensor_id": self.sensor_id,
             "curve": curve_summary(curve, self.predictor.voltages),
         }
+        if floor is not None:
+            payload.update(detection_floor=floor, below_model_range=0 < concentration < floor,
+                           model_note=model_note(substance, floor))
+            if gas not in self._noted:
+                self._noted.add(gas)
+                logger.warning(f"gas {gas}: {payload['model_note']}")
         self.emit("gas_reading", payload, confidence=prediction["gas_confidence"])
         if self.health is not None:
             self._check_health(curve, gas, now)
 
-        threshold = self.thresholds.get(gas)
-        if threshold is not None and concentration >= threshold:
-            self._alert(now, "gas_threshold", {"gas": gas, "concentration_pct": concentration,
-                                               "threshold_pct": threshold})
-        if rate is not None and rate > self.rise_rate_threshold:
-            self._alert(now, "gas_rising", {"gas": gas, "concentration_pct": concentration,
-                                            "rise_rate_pct_per_min": round(rate, 3),
-                                            "rise_rate_threshold": self.rise_rate_threshold})
+        if substance is not None:
+            limit = {"gas": gas, "concentration_pct": concentration, "ratio": round(ratio, 4),
+                     "pct_of_crit": pct_of_crit(ratio), "c_crit_pct": round(substance.c_crit_in("vol_pct"), 6)}
+            if ratio >= 1.0:
+                self._alert(now, "gas_threshold", limit)
+            if substance.lel_pct is not None and concentration >= substance.lel_pct:
+                self._alert(now, "gas_explosive", {**limit, "lel_pct": substance.lel_pct,
+                                                   "text": f"вибухонебезпечно: {substance.name_uk} {concentration} "
+                                                           f"об.% ≥ НКМПР {substance.lel_pct} об.%"})
+            if rate_norm is not None and rate_norm > self.rise_alert_norm:
+                self._alert(now, "gas_rising", {**limit, "rise_rate_pct_per_min": round(rate or 0.0, 3),
+                                                "rise_norm_per_min": round(rate_norm, 3),
+                                                "rise_alert_norm_per_min": self.rise_alert_norm},
+                            severity="warning")
         return payload
 
     def _check_health(self, curve, gas: str, now: float) -> None:

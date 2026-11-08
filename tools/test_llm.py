@@ -45,7 +45,7 @@ CASES = [
     ])),
     ("gas: rising, empty room", {"high", "critical"}, "\n".join([
         "23:40:00-23:40:05 UTC+3 CRITICAL alert gas_rising | incident 20261017-234005-9f00",
-        "gas: ammonia 21000ppm rising conf0.84 alerts gas_rising",
+        "gas: ammonia 210ppm rising conf0.84 alerts gas_rising",   # 0.7 C_crit (TOD-53)
         "system: mic standby, scene idle, 4 events",
     ])),
     ("fall: lying 45 s", {"critical"}, "\n".join([

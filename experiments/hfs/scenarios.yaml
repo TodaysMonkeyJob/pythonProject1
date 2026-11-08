@@ -11,7 +11,11 @@
 #   audio:  {intensity, sound: {type, danger, confidence}, speech: {text, speaker}}
 #   offline: [gas | camera | mic]      — that device is offline (its subsystem missing)
 #   label:  low | medium | high | critical
+# labels_version 2 (G1 / TOD-53, 2026-11-08): + g16 / g17 — 5 vol % of a dataset gas is far above C_crit and must be
+# critical (acetone also above its LEL: «вибухонебезпечно»). Every other gas scenario was already written relative to
+# C_crit (config/gases.yaml) and keeps its label; v1 = the 48 scenarios of TOD-46 … TOD-51.
 version: 1
+labels_version: 2
 status: draft — author's expert labels, to be confirmed by the supervisor
 scenarios:
   # --- gas (subsystem 1) ----------------------------------------------------------------------------------------
@@ -47,6 +51,10 @@ scenarios:
      label: high, why: "TOD-50 example: NH3 low (0.15) + CO medium (0.42) — two gases above normal → one step up"}
   - {id: g15, group: gas, gas: [{gas: ammonia, value: 165, unit: ppm}, {gas: chlorine, value: 5, unit: ppm}],
      label: critical, why: "two irritants at 0.55 + 0.5 C_crit: group index 1.05 ≥ 1 (additive mixture rule)"}
+  - {id: g16, group: gas, gas: [{gas: acetone, value: 5, unit: vol_pct}], label: critical, explosive: true,
+     why: "TOD-53: 5 vol % acetone = 20 × C_crit (2500 ppm) and above its LEL 2.5 % — critical + вибухонебезпечно"}
+  - {id: g17, group: gas, gas: [{gas: ammonia, value: 5, unit: vol_pct}], label: critical, explosive: false,
+     why: "TOD-53: 5 vol % ammonia ≈ 167 × C_crit (300 ppm); below its LEL 15 % — critical, not explosive"}
   # --- camera (subsystem 2) -------------------------------------------------------------------------------------
   - {id: c01, group: camera, label: low, why: "empty room in working hours"}
   - {id: c02, group: camera, camera: {known: 2, motion: 0.05}, label: low, why: "two known people working"}

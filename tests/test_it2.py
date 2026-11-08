@@ -13,10 +13,11 @@ from core.fuzzy.membership import evaluate, parse_term
 
 REPO = Path(__file__).resolve().parents[1]
 CONFIG = str(REPO / "config" / "fuzzy.yaml")
-K = {"gas_concentration": 1.0, "gas_trend": 1.0, "unknown_share": 0.3, "time_of_day_risk": 1.0,
+K = {"gas_concentration": 0.2, "gas_trend": 0.2, "unknown_share": 0.3, "time_of_day_risk": 1.0,
      "people_count": 1.0, "motion_level": 0.2, "action_risk": 0.3}
 DOC_RULES = {"R2", "R3", "R4", "R5", "R14"}
-DOC_INPUTS = {"gas_concentration": 1.4, "gas_trend": 2.0, "unknown_share": 1.0, "time_of_day_risk": 14.0}
+# slight / elevated and rising / sharply_rising at 0.5 each (TOD-53: c / C_crit; formerly 1.4 % and 2.0 %/min)
+DOC_INPUTS = {"gas_concentration": 0.4, "gas_trend": 0.4, "unknown_share": 1.0, "time_of_day_risk": 14.0}
 
 
 def doc_engine():
@@ -25,7 +26,8 @@ def doc_engine():
 
 
 def random_inputs(rng):
-    return {"gas_concentration": rng.uniform(0, 8), "gas_trend": rng.uniform(-3, 6), "motion_level": rng.uniform(0, 1),
+    return {"gas_concentration": rng.uniform(0, 1.2), "gas_trend": rng.uniform(-0.6, 1.2),
+            "motion_level": rng.uniform(0, 1),
             "people_count": rng.uniform(0, 7), "unknown_share": rng.uniform(0, 1), "action_risk": rng.uniform(0, 1),
             "time_of_day_risk": rng.uniform(0, 24), "gas": rng.choice(["acetone", "ammonia", None])}
 

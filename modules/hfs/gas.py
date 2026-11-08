@@ -35,8 +35,9 @@ from typing import Any, Callable, Dict, List, Optional
 from core.events import Event
 from modules.hfs.base import FuzzySubsystem, window
 from modules.hfs.gas_escalation import GasState, analyse, explain
-from modules.hfs.gas_normalize import GasTable, UnitError, reading_items, slope_per_minute
+from modules.hfs.gas_normalize import NORM_MAX, GasTable, UnitError, reading_items, slope_per_minute
 from modules.hfs.gas_model_builder import reading_interval
+from modules.hfs.gas_safety import SafetyTracker, critical_floor, enforce
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
@@ -55,6 +56,7 @@ class SensorState:
     norms: Dict[str, float] = field(default_factory=dict)       # substance → c / c_crit
     deltas: Dict[str, float] = field(default_factory=dict)      # substance → δ of c / c_crit (half-width, A5)
     lows: Dict[str, float] = field(default_factory=dict)        # substance → lower bound of c / c_crit
+    ratios: Dict[str, float] = field(default_factory=dict)      # substance → c / c_crit not clipped (TOD-53)
     selectivity: Optional[str] = None                           # selective | cross_sensitive | None
     saturated: set = field(default_factory=set)
 
@@ -80,6 +82,8 @@ class GasSubsystem(FuzzySubsystem):
         self.analysis: Dict[str, Any] = {}                            # location → last escalation analysis
         self.explained: Dict[str, str] = {}                           # location → last logged explanation
         self._warned: set = set()
+        self.safety = SafetyTracker(self.table, self.uncertainty, self.stale_sec)   # G1 (TOD-53): rule-independent
+        self.critical_risk = critical_floor(self.engine)
 
     def normalise(self, payload: Dict[str, Any], state: Optional[SensorState] = None) -> Dict[str, float]:
         """
@@ -102,6 +106,7 @@ class GasSubsystem(FuzzySubsystem):
                 out[substance.name] = max(out.get(substance.name, 0.0), norm)
                 if state is None:
                     continue
+                state.ratios[substance.name] = max(state.ratios.get(substance.name, 0.0), substance.ratio(value, unit))
                 if "accuracy" in item or "range" in item:
                     low, high, is_open = reading_interval(value, unit, item, substance)
                     if is_open:
@@ -109,7 +114,8 @@ class GasSubsystem(FuzzySubsystem):
                         self._saturated(payload, substance.name, value, unit, item)
                 else:
                     delta = self.uncertainty.norm_delta(substance.name, value, unit, payload.get("sensor_model"))
-                    low, high = max(0.0, norm - delta), norm + delta
+                    ratio = substance.ratio(value, unit)            # G1 (TOD-53): ±δ before clipping
+                    low, high = min(NORM_MAX, max(0.0, ratio - delta)), min(NORM_MAX, ratio + delta)
                 state.deltas[substance.name] = max(norm - low, high - norm)
                 state.lows[substance.name] = low
             except UnitError as e:
@@ -141,10 +147,12 @@ class GasSubsystem(FuzzySubsystem):
         super().observe(event, now)
         state = SensorState(now, selectivity=self.selectivity_of(event.payload))
         state.norms = self.normalise(event.payload, state)
+        self.safety.observe(event.location_id, event.device_id, event.payload, now)
         self.readings.setdefault(event.location_id, {})[event.device_id] = state
         self.history.setdefault(event.location_id, []).append((now, self._max_norm(event.location_id, now)))
 
     def forget_device(self, device_id: str) -> None:
+        self.safety.forget(device_id)
         for per_location in self.readings.values():
             per_location.pop(device_id, None)
         for people in self.people.values():
@@ -164,7 +172,8 @@ class GasSubsystem(FuzzySubsystem):
                 if current is None or value >= current.norm:
                     previous = current.selectivity if current else None
                     merged[name] = GasState(name, value, state.lows.get(name, value), substance.group,
-                                            substance.name_uk, state.selectivity, delta=state.deltas.get(name, 0.0))
+                                            substance.name_uk, state.selectivity, delta=state.deltas.get(name, 0.0),
+                                            ratio=state.ratios.get(name))
                     if previous == "selective":
                         merged[name].selectivity = "selective"
                 elif state.selectivity == "selective":
@@ -228,6 +237,7 @@ class GasSubsystem(FuzzySubsystem):
         now = self.clock()
         gases = self._fresh_states(location_id, now) or {}
         result["substances"] = {name: round(g.norm, 4) for name, g in sorted(gases.items())}
+        enforce(result, self.safety.state(location_id, now), f"gas rule base ({location_id})", self.critical_risk)
         fresh = [s for s in (self.readings.get(location_id) or {}).values() if now - s.ts <= self.stale_sec]
         saturated = sorted({g for s in fresh for g in s.saturated})
         if saturated:
@@ -241,7 +251,7 @@ class GasSubsystem(FuzzySubsystem):
                            third_high=bool(third) and third[0].level in ("високий", "критичний"))
             if a.gases and a.gases[0].level != "спокійно":
                 g = a.gases[0]
-                result["headline"] = f"{g.name_uk or g.name} {g.norm:.2f}".replace(".", ",")
+                result["headline"] = f"{g.name_uk or g.name} {g.pct} від критичного рівня"
             if text:
                 result["explanation"] = text
                 if self.explained.get(location_id) != text:

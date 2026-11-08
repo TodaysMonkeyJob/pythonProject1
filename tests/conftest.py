@@ -17,6 +17,23 @@ def _state():
     return {p: os.stat(p).st_mtime_ns for p in files if os.path.isfile(p)}
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "safety_violation_expected: the test provokes a gas safety invariant "
+                                       "violation on purpose (G1 / TOD-53)")
+
+
+@pytest.fixture(autouse=True)
+def gas_safety_invariant_holds(request):
+    """G1 (TOD-53): a component that gives a gas at / above C_crit less than critical fails the test."""
+    from modules.hfs.gas_safety import VIOLATIONS
+
+    before = len(VIOLATIONS)
+    yield
+    new = VIOLATIONS[before:]
+    if request.node.get_closest_marker("safety_violation_expected") is None:
+        assert not new, f"gas safety invariant violated: {new}"
+
+
 @pytest.fixture(autouse=True, scope="session")
 def real_data_untouched():
     before = _state()

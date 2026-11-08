@@ -120,29 +120,36 @@ def test_missing_inputs_use_defaults_or_skip_rules():
     assert "(default)" in result["fired_rules"][0]["explanation"]
 
 
-def test_variants_select_per_gas_terms():
+def test_gas_terms_are_shares_of_the_critical_concentration():
+    """G1 (TOD-53): one scale for every gas — c / C_crit of config/gases.yaml, no per-gas % variants."""
+    from modules.hfs.gas_normalize import fuzzy_gas
+
     e = engine()
-    assert e.fuzzify("gas_concentration", 4.0)["dangerous"] == 1.0                   # base: 3 % limit
-    assert e.fuzzify("gas_concentration", 4.0, "acetone")["dangerous"] == 0.0         # acetone: 5 % limit
-    acetone = e.infer({"gas_concentration": 4.0, "gas": "acetone", "time_of_day_risk": 12})
-    ammonia = e.infer({"gas_concentration": 4.0, "gas": "ammonia", "time_of_day_risk": 12})
-    assert acetone["crisp"] < 0.85 <= ammonia["crisp"]
-    assert acetone["inputs"]["gas_concentration"]["variant"] == "acetone"
+    assert not e.variables["gas_concentration"].variants
+    assert e.fuzzify("gas_concentration", 1.0)["dangerous"] == 1.0
+    assert e.fuzzify("gas_concentration", 0.6)["elevated"] == 1.0
+    assert fuzzy_gas("acetone", 0.25) == (1.0, None)                # 2500 ppm = C_crit
+    assert fuzzy_gas("ammonia", 0.03)[0] == pytest.approx(1.0)      # 300 ppm
+    assert fuzzy_gas("toluol", 5.0, 0.05) == (1.2, 1.0)             # 100 × C_crit, clipped; 0.05 %/min = 1 C_crit/min
+    assert fuzzy_gas("clean_air", 0.05, 0.1) == (0.0, 0.0)
+    for gas in ("acetone", "ammonia", "ethanol", "toluol"):         # 5 vol % of any dataset gas is dangerous
+        norm, _ = fuzzy_gas(gas, 5.0)
+        assert e.infer({"gas_concentration": norm, "time_of_day_risk": 12})["crisp"] >= 0.85
 
 
 def test_fired_rules_are_readable():
-    result = engine().infer({"gas_concentration": 4.0, "gas": "acetone", "time_of_day_risk": 12})
+    result = engine().infer({"gas_concentration": 0.6, "gas": "acetone", "time_of_day_risk": 12})
     top = result["fired_rules"][0]
     assert top["id"] == "R3" and top["term"] == "high" and top["source"] == "base"
-    assert top["explanation"] == ("gas_concentration = 4 % → elevated 1.00; gas_trend = 0 %/min (default) → "
-                                  "NOT sharply_rising 1.00 ⇒ risk IS high (1.00)")
+    assert top["explanation"] == ("gas_concentration = 0.6 C_crit → elevated 1.00; "
+                                  "gas_trend = 0 C_crit/min (default) → NOT sharply_rising 1.00 ⇒ risk IS high (1.00)")
 
 
 # --- golden scenarios (acceptance) ------------------------------------------------------------------------------
 
 GOLDEN = [
-    ("dangerous gas", {"gas_concentration": 6.0, "time_of_day_risk": 12}, 0.85, 1.0),
-    ("dangerous acetone, people around", {"gas_concentration": 7.5, "gas": "acetone", "people_count": 2,
+    ("dangerous gas", {"gas_concentration": 1.0, "time_of_day_risk": 12}, 0.85, 1.0),
+    ("dangerous acetone, people around", {"gas_concentration": 1.2, "gas": "acetone", "people_count": 2,
                                           "motion_level": 0.5, "time_of_day_risk": 14}, 0.85, 1.0),
     ("empty quiet room at noon", {"time_of_day_risk": 12}, 0.0, 0.15),
     ("known person working at noon", {"people_count": 1, "motion_level": 0.3, "action_risk": 0.1,
@@ -151,7 +158,7 @@ GOLDEN = [
                                  "time_of_day_risk": 12}, 0.85, 1.0),
     ("stranger at night", {"people_count": 1, "unknown_share": 1.0, "motion_level": 0.3,
                            "time_of_day_risk": 23}, 0.55, 0.85),
-    ("gas rising sharply from slight", {"gas_concentration": 1.0, "gas_trend": 3.0, "time_of_day_risk": 12},
+    ("gas rising sharply from slight", {"gas_concentration": 0.2, "gas_trend": 0.6, "time_of_day_risk": 12},
      0.55, 0.85),
 ]
 
@@ -183,12 +190,12 @@ def test_location_override_changes_only_that_location():
 def test_locations_yaml_fuzzy_block(tmp_path):
     locations = tmp_path / "locations.yaml"
     locations.write_text(yaml.safe_dump({"locations": [{"id": "lab", "name": "Lab", "fuzzy": {
-        "shift": {"gas_concentration": {"dangerous": -1.0, "elevated": -1.0}},
+        "shift": {"gas_concentration": {"dangerous": -0.3, "elevated": -0.3}},
         "weights": {"R14": 1.0}}}]}))
     lab, base = engine("lab", str(locations)), engine()
-    gas = {"gas_concentration": 2.6, "time_of_day_risk": 12}
-    assert lab.fuzzify("gas_concentration", 2.6)["dangerous"] == 1.0
-    assert base.fuzzify("gas_concentration", 2.6)["dangerous"] == 0
+    gas = {"gas_concentration": 0.7, "time_of_day_risk": 12}
+    assert lab.fuzzify("gas_concentration", 0.7)["dangerous"] == 1.0
+    assert base.fuzzify("gas_concentration", 0.7)["dangerous"] == 0
     assert lab.infer(gas)["crisp"] > base.infer(gas)["crisp"]
     assert next(r for r in lab.rules if r.id == "R14").weight == 1.0
 
@@ -231,12 +238,12 @@ def test_no_network(monkeypatch):
 
     monkeypatch.setattr(socket, "socket", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
-    engine("warehouse").infer({"gas_concentration": 4.0, "people_count": 3, "time_of_day_risk": 2})
+    engine("warehouse").infer({"gas_concentration": 0.6, "people_count": 3, "time_of_day_risk": 2})
 
 
 def test_infer_is_fast():
     e = engine("warehouse")
-    case = {"gas_concentration": 2.0, "gas_trend": 1.0, "people_count": 3, "unknown_share": 0.5, "motion_level": 0.5,
+    case = {"gas_concentration": 0.4, "gas_trend": 0.2, "people_count": 3, "unknown_share": 0.5, "motion_level": 0.5,
             "action_risk": 0.6, "time_of_day_risk": 20}
     e.infer(case)
     start = time.perf_counter()
@@ -250,6 +257,6 @@ def test_cli_check_and_explain(capsys):
     from core.fuzzy.__main__ import main
 
     assert main(["--config", CONFIG, "--check"]) == 0
-    assert main(["--config", CONFIG, "gas_concentration=6", "time_of_day_risk=12"]) == 0
+    assert main(["--config", CONFIG, "gas_concentration=1.0", "time_of_day_risk=12"]) == 0
     out = capsys.readouterr().out
     assert "ok  warehouse" in out and "R1" in out and "risk = 0.9" in out

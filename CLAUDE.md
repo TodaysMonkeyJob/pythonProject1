@@ -53,7 +53,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
     thread pools via env (`orchestrator.child_threads`, `<section>.threads`) — without them 4 cameras were 14× slower.
   - `tls.py` (self-signed HTTPS cert via the system openssl), `onvif.py` (WS-Discovery probe, stdlib).
   - `locations.py` — F12 (TOD-23) `LocationRegistry`: the `locations` table of `devices.db` (order, icon, rules:
-    `unknown_person_after`, `gas_thresholds`, `attention_window_min`, `cooldown_min`); delete moves devices to
+    `unknown_person_after`, `attention_window_min`, `cooldown_min`; TOD-53 removed `gas_thresholds`); delete moves devices to
     `unassigned`; seed `config/locations.yaml` (example: `config/locations.example.yaml`).
   - Remote nodes (see `deploy/NETWORK.md`, no MQTT / extra programs): `dashboard/node.py` on the HTTPS port 8443 —
     pairing codes → tokens (hashes in `devices.db`), phone page `static/node.html` (JPEG `0x01` + PCM `0x02` over WSS →
@@ -305,7 +305,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   ({kind: normative|datasheet|measured|fitted|requirement|design|expert, text}); other thresholds in
   `config/parameter_sources.yaml` (every key of config.yaml `hfs` must be listed) → `python -m tools.params_doc`
   (→ `docs/parameters.md`, answers slides 25 / 26 / 8; `--check` fails on a missing source).
-  `python -m experiments.hfs.run --seed 42` → `reports/article1_<date>/`: `experiments/hfs/scenarios.yaml` (46
+  `python -m experiments.hfs.run --seed 42` → `reports/article1_<date>/`: `experiments/hfs/scenarios.yaml` (50
   scenarios, draft expert labels) through `HierarchicalFuzzySystem` × configs tri_type1 / tri_it2 / gauss_in_type1 /
   gauss_in_it2 / gauss_all_type1 / tri_it2_no_escalation (`variants.py`), macro-F1 / Brier / ECE / corridor coverage, δ
   sweep (`hfs.uncertainty_scale`), monotonicity + surfaces triangular vs Gaussian, latency (not the Pi).
@@ -324,7 +324,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   corridor only video / gas may lower, above → operator; no modules.envelope import), `echo` (template). Module
   `agents:run` (subscribe "*"; `agent_status` unlogged), dashboard `#/agents` «Агенти» (`/api/agents`, POST switch →
   `agent_control`); `agents.decides: true` → location state follows `agent_decision`. All agents but fuzzy off =
-  Article 1 decisions (test on the 46 scenarios).
+  Article 1 decisions (test on the 50 scenarios).
   TOD-47 Article 2 agents (`docs/article2_architecture.md`): `video` (action / person_identified / object_detected →
   `action` claims with confidence, `persons`, `risk_opinion` at_least from `maps.action_risk` of config/fuzzy.yaml;
   actions never reach the HFS), `audio` (speech / sound_type → `speech` claims with intent from
@@ -333,7 +333,7 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   `agents/audio/interpret.py` + `prompts/speech_interpreter.md`, hybrid only). Validation 1.1: `value.kind`
   at_least (only raises: `raised` / review) | estimate; `require_physical: false` = ablation only. Weights:
   `python -m tools.agent_eval [--check]` → `agents/<name>/eval.yaml` (Wilson LB). Comparison:
-  `python -m experiments.agents.run --seed 42` → `reports/article2_<date>/` (56 scenarios = Article 1 +
+  `python -m experiments.agents.run --seed 42` → `reports/article2_<date>/` (60 scenarios = Article 1 +
   `experiments/agents/scenarios.yaml`; article1 / multi_agent / no_video / no_audio / no_physical_guard; macro-F1,
   attack success, operator load, latency; `trace_m01.jsonl` end to end).
 - A7 (TOD-48) gas sensor drivers (`docs/sensors.md` "Drivers and discovery"): `drivers/gas/` — `base.py` (`Driver`
@@ -387,6 +387,19 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   viewer (`DASHBOARD_VIEWERS`), `/api/mode` GET / POST (admin, `confirm: true`), header chip + dialog
   (`views/mode.js`), fallback banner, card badge. Article 2 harness: `article1` = mode autonomous; summary
   `by_mode_effective`.
+- G1 (TOD-53) one gas scale (`reports/gas_scale_audit.md`): no percentage thresholds anywhere — `config/gases.yaml`
+  (C_crit = NIOSH IDLH + `lel_pct`, NIOSH) is the only scale. `modules/hfs/gas_safety.py`: a gas whose lower bound
+  (reading − sensor error) is ≥ C_crit makes the final level critical in every mode — `hfs_risk` (gas + top level),
+  `agent_decision` (agents host, after the validator), the location state (before every decider; acknowledge cannot
+  clear it); ≥ LEL → `explosive` + «вибухонебезпечно»; overruled records → error log + `gas_safety.VIOLATIONS`
+  (`tests/conftest.py` fails a test on an unexpected one; `@pytest.mark.safety_violation_expected`). ±δ is applied
+  before clipping c / C_crit at 1.2. Gas worker alerts: `gas_threshold` (≥ C_crit), `gas_explosive` (≥ LEL),
+  `gas_rising` (warning, > `rise_alert_norm_per_min` C_crit/min). `config/fuzzy.yaml` `gas_concentration` /
+  `gas_trend` are c / C_crit and C_crit/min (`gas_normalize.fuzzy_gas`); `flat_reading` / `reading_text` /
+  `pct_of_crit`: every format → vol % + «% від критичного рівня» (dashboard, logs). The graphene model's training
+  range starts at or above C_crit (`modules.gas.data.MODEL_RANGE_VOL_PCT`, `modules/gas/MODEL_CARD.md`): a non-zero
+  graphene reading counts as at least that floor (`detection_floor` / range start, `below_model_range`,
+  `model_note`). Scripted scenarios: labels v3, shares of C_crit from a low-range ppm sensor (never graphene).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

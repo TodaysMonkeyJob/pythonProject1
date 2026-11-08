@@ -53,6 +53,9 @@ class LocationsModule(BaseModule):
             ignore = (network.get("hub_location") or "hub", "unknown")
             # M1 (TOD-52): autonomous → the HFS decides, multiagent → the validation agent (HFS when it is silent)
             cfg = {**self.cfg, "mode": lambda location_id: location_mode(self.config, location_id)}
+            hfs = self.config.get("hfs") or {}                # G1 (TOD-53): the gas safety invariant's files
+            cfg.setdefault("gases", (hfs.get("gas") or {}).get("gases", "config/gases.yaml"))
+            cfg.setdefault("uncertainty", hfs.get("uncertainty", "config/uncertainty.yaml"))
             self.engine = LocationStateEngine(self.locations.name, self.locations.rules, self.devices, cfg,
                                               ignore=ignore)
         if self.notifications is None:

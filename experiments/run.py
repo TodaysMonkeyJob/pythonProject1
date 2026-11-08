@@ -170,7 +170,8 @@ def main(argv=None) -> int:
             print(f"  failure block {name}: done")
     out = args.out or os.path.join("reports", f"experiment{'_v2' if v2 else ''}_{datetime.now():%Y-%m-%d}")
     manifest = {"dataset": {"name": dataset.name, "path": dataset_path, "hash": dataset.hash(),
-                            "synthetic": dataset.synthetic, "scenarios": len(dataset.scenarios)},
+                            "synthetic": dataset.synthetic, "scenarios": len(dataset.scenarios),
+                            "labels_version": dataset.labels_version, "gas_scale": dataset.gas_scale},
                 "seed": args.seed, "split": {"calibration": len(calibration), "evaluation": len(evaluation),
                                              "calibration_share": args.calibration_share},
                 "kappa": annotator_kappa(dataset.labelled()),
@@ -186,7 +187,7 @@ def main(argv=None) -> int:
         from experiments.report import write_v2
 
         manifest["suite"] = "v2"
-        manifest["failure_block"] = {"configs": list(failure), "drift_pct": 1.5, "health": 0.3,
+        manifest["failure_block"] = {"configs": list(failure), "drift_norm": 0.5, "health": 0.3,
                                      "scenarios": len(evaluation)}
         write_v2(out, summaries, results, tests, manifest, {n: corridor_stats(rs) for n, rs in results.items()},
                  {n: failure_stats(rs) for n, rs in failure.items()}, failure)

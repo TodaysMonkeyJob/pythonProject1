@@ -14,9 +14,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.events import Event
+from modules.hfs.gas_normalize import flat_reading, fuzzy_gas
 
 LOWERING_CLAIMS = ("deescalation", "instruction_to_system")
-TREND_RATE = {"falling": -1.0, "stable": 0.0, "rising": 1.0, "sharply_rising": 3.0}   # %/min stand-ins
+TREND_RATE = {"falling": -0.2, "stable": 0.0, "rising": 0.2, "sharply_rising": 0.6}   # C_crit / min stand-ins
 
 
 def epoch(timestamp: Optional[str]) -> float:
@@ -85,7 +86,8 @@ class TrustedState:
             return
         key = (event.device_id, p.get("track_id"))
         if event.type == "gas_reading":
-            loc.gas = {"gas": p.get("gas"), "concentration": p.get("concentration_pct"),
+            flat = flat_reading(p)                      # TOD-53: any sensor format → vol % + c / C_crit
+            loc.gas = {"gas": flat.get("gas"), "concentration": flat.get("concentration_pct"),
                        "rate": p.get("rise_rate_pct_per_min"), "trend": p.get("trend"), "at": now, "u": u}
         elif event.type == "motion":
             area = float(p.get("area_ratio") or 0.0)
@@ -139,11 +141,13 @@ class TrustedState:
                        "motion_level": loc.motion_u if now - loc.motion_at <= self.motion_fresh_sec else 0.0}
         gas = loc.gas if loc.gas and now - loc.gas["at"] <= self.gas_fresh_sec else None
         if gas and gas["concentration"] is not None:
-            inputs["gas_concentration"] = float(gas["concentration"])
+            # G1 (TOD-53): c / C_crit and C_crit per minute of config/gases.yaml, never vol % against fixed limits
+            norm, rate = fuzzy_gas(gas["gas"], gas["concentration"], gas["rate"])
+            inputs["gas_concentration"] = norm
             if gas["gas"]:
                 inputs["gas"] = gas["gas"]
-            if gas["rate"] is not None:
-                inputs["gas_trend"] = float(gas["rate"])
+            if rate is not None:
+                inputs["gas_trend"] = rate
             elif gas["trend"] in TREND_RATE:            # no rate yet (short history): the label is enough
                 inputs["gas_trend"] = TREND_RATE[gas["trend"]]
             uncertainty["gas_concentration"] = uncertainty["gas_trend"] = float(gas.get("u", 1.0))

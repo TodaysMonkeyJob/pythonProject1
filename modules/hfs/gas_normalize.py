@@ -69,6 +69,11 @@ class Substance:
     aliases: List[str] = field(default_factory=list)
     group: Optional[str] = None          # TOD-50 effect group (additive mixture inside a group only)
     name_uk: str = ""
+    lel_pct: Optional[float] = None      # G1 (TOD-53) lower explosive limit, vol % (None: not flammable)
+
+    def ratio(self, value: float, unit: str) -> float:
+        """:return: c / c_crit, not clipped (G1 / TOD-53: 5 vol % NH₃ = 167 × C_crit)"""
+        return max(0.0, convert(value, unit, self.unit, self.molar_mass) / self.c_crit)
 
     def c_crit_in(self, unit: str) -> float:
         """:return: the critical concentration in another unit (e.g. NH₃ 300 ppm → 0.03 vol %)"""
@@ -76,7 +81,7 @@ class Substance:
 
     def norm(self, value: float, unit: str) -> float:
         """:return: clip(c / c_crit, 0, 1.2)"""
-        return min(NORM_MAX, max(0.0, convert(value, unit, self.unit, self.molar_mass) / self.c_crit))
+        return min(NORM_MAX, self.ratio(value, unit))
 
 
 class GasTable:
@@ -102,7 +107,8 @@ class GasTable:
             out.append(Substance(name, float(entry["c_crit"]), entry["unit"], entry.get("molar_mass"),
                                  str(entry.get("source", "")), str(entry.get("formula", "")),
                                  [str(a) for a in entry.get("aliases") or []], group,
-                                 str(entry.get("name_uk") or entry.get("formula") or name)))
+                                 str(entry.get("name_uk") or entry.get("formula") or name),
+                                 float(entry["lel_pct"]) if entry.get("lel_pct") is not None else None))
         return cls(out, (data.get("activity") or {}).get("calm_norm", 0.05), data.get("groups"), data.get("benign"))
 
     def get(self, name: Optional[str]) -> Optional[Substance]:
@@ -138,9 +144,62 @@ def reading_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             value, unit = float(item["concentration_pct"]), "vol_pct"
         else:
             continue
-        out.append({"gas": item.get("gas"), "value": value, "unit": unit,
+        floor = detection_floor(item)
+        below = floor is not None and 0.0 < value < floor
+        out.append({"gas": item.get("gas"), "value": max(value, floor) if below else value, "unit": unit,
+                    **({"raw_value": value, "below_range": True} if below else {}),
                     **{k: item[k] for k in ("range", "resolution", "accuracy") if item.get(k) is not None}})
     return out
+
+
+def detection_floor(item: Dict[str, Any]) -> Optional[float]:
+    """
+    G1 (TOD-53): the lowest concentration a sensor / model can measure (``detection_floor``, or a range starting above
+    0), in the reading's unit. A non-zero reading below it means "at least the floor": the graphene model was trained
+    from 0.25–0.4 vol % up (≥ C_crit of every gas), so any gas it reports is at or above its critical level.
+    """
+    if item.get("detection_floor") is not None:
+        return float(item["detection_floor"])
+    rng = item.get("range")
+    if rng and float(list(rng)[0]) > 0:
+        return float(list(rng)[0])
+    return None
+
+
+def pct_of_crit(ratio: float) -> float:
+    """:return: c / C_crit as «% від критичного рівня» (2000 for 20 × C_crit; one decimal below 100 %)"""
+    return round(ratio * 100.0) if ratio >= 1.0 else round(ratio * 100.0, 1)
+
+
+def flat_reading(payload: Dict[str, Any], table: Optional["GasTable"] = None) -> Dict[str, Any]:
+    """
+    :return: the payload with the strongest substance (by c / C_crit) in the TOD-19 flat fields — ``gas``,
+             ``concentration_pct`` (vol %, None for particles), ``ratio`` (not clipped), ``pct_of_crit`` — so the
+             F15 corridor, trust and snapshot code reads every sensor format (graphene vol %, driver ppm / µg/m³)
+    """
+    table = table or default_table()
+    best = None
+    for item in reading_items(payload):
+        substance = table.get(item["gas"])
+        if substance is None:
+            continue
+        try:
+            ratio = substance.ratio(item["value"], item["unit"])
+        except UnitError:
+            continue
+        if best is None or ratio > best[0]:
+            best = (ratio, item, substance)
+    if best is None:
+        first = (reading_items(payload) or [{}])[0].get("gas") or "clean_air"
+        return {**payload, "ratio": 0.0, "pct_of_crit": 0.0, **({} if payload.get("gas") else {"gas": first}),
+                **({} if payload.get("concentration_pct") is not None else {"concentration_pct": 0.0})}
+    ratio, item, substance = best
+    try:
+        vol = round(convert(item["value"], item["unit"], "vol_pct", substance.molar_mass), 6)
+    except UnitError:
+        vol = None
+    return {**payload, "gas": item["gas"], "concentration_pct": vol, "ratio": round(ratio, 4),
+            "pct_of_crit": pct_of_crit(ratio)}
 
 
 def mixture_index(norms: Sequence[float]) -> float:
@@ -162,3 +221,47 @@ def slope_per_minute(samples: Sequence[Tuple[float, float]], min_samples: int = 
     num = sum((t - mean_t) * (v - mean_v) for t, v in samples)
     den = sum((t - mean_t) ** 2 for t in ts)
     return 60.0 * num / den if den else 0.0
+
+
+_DEFAULT_TABLES: Dict[str, GasTable] = {}
+
+
+def default_table(path: str = "config/gases.yaml") -> GasTable:
+    """:return: the gas table of ``path``, loaded once per process"""
+    if path not in _DEFAULT_TABLES:
+        _DEFAULT_TABLES[path] = GasTable.load(path)
+    return _DEFAULT_TABLES[path]
+
+
+def fuzzy_gas(gas: Optional[str], concentration_pct: Optional[float], rate_pct_per_min: Optional[float] = None,
+              table: Optional[GasTable] = None) -> Tuple[float, Optional[float]]:
+    """
+    G1 (TOD-53): the inputs ``gas_concentration`` / ``gas_trend`` of ``config/fuzzy.yaml`` (F15 corridor, trust,
+    GPT view) from a TOD-19 reading in vol %: (c / C_crit clipped to 0..1.2, rate in C_crit per minute or None).
+    Clean air and substances without a C_crit read 0 (as in the HFS).
+    """
+    substance = (table or default_table()).get(gas)
+    if substance is None or concentration_pct is None:
+        return 0.0, None if rate_pct_per_min is None else 0.0
+    crit = substance.c_crit_in("vol_pct")
+    return (min(NORM_MAX, max(0.0, float(concentration_pct) / crit)),
+            None if rate_pct_per_min is None else float(rate_pct_per_min) / crit)
+
+
+UNIT_TEXT = {"vol_pct": "vol %", "ppm": "ppm", "mg_m3": "mg/m³", "ug_m3": "µg/m³"}
+
+
+def reading_text(payload: Dict[str, Any]) -> str:
+    """G1 (TOD-53): ``acetone 5.0 % (2000 % від критичного рівня) rising`` — raw value + share of C_crit (logs,
+    incident timelines, the location state)"""
+    flat = flat_reading(payload)
+    items = reading_items(payload)
+    best = next((i for i in items if i["gas"] == flat.get("gas")), items[0] if items else None)
+    if best is None:
+        return f"{payload.get('gas') or 'gas'} {payload.get('trend') or ''}".strip()
+    raw = best.get("raw_value", best["value"])
+    unit = UNIT_TEXT.get(best["unit"], best["unit"])
+    shown = f"{raw:g} {unit}"
+    share = f" ({flat['pct_of_crit']:g} % від критичного рівня)" if flat.get("ratio") else ""
+    floor = " (нижче діапазону сенсора: не нижче критичного рівня)" if best.get("below_range") else ""
+    return f"{best['gas']} {shown}{share}{floor} {payload.get('trend') or ''}".strip()

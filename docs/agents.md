@@ -3,7 +3,7 @@
 Article 2 adds AI agents to the system. Each agent has one role, and agents only talk to each other through typed
 claims on the event bus. The core does not change when an agent is added. To add one, drop in a folder with an
 `agent.yaml` and the code. The fuzzy agent (the Article 1 system) is always on. When every other agent is off, the
-decisions are exactly the Article 1 decisions (`tests/test_agents.py` checks this on the 46 Article 1 scenarios).
+decisions are exactly the Article 1 decisions (`tests/test_agents.py` checks this on the 50 Article 1 scenarios).
 
 ```
 evidence events ──► hfs module ──hfs_risk──► fuzzy agent ──claim "risk" (corridor)──┐

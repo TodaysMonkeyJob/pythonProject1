@@ -37,8 +37,8 @@ def scene(aggregator, clock):
                    location_id="warehouse"),
         make_event("camera", "action", {"track_id": 4, "action": "possible_smoking", "trust": 0.95},
                    device_id="cam-1", location_id="warehouse"),
-        make_event("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 1.23, "trend": "rising",
-                                          "rise_rate_pct_per_min": 2.61, "gas_confidence": 0.93, "trust": 0.95},
+        make_event("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 0.0615, "trend": "rising",
+                                          "rise_rate_pct_per_min": 0.1305, "gas_confidence": 0.93, "trust": 0.95},
                    device_id="gas-1", location_id="warehouse"),
         make_event("audio", "sound", {"rms_db": -12.7}, device_id="mic-1", location_id="warehouse"),
         make_event("audio", "speech", {"text": "все нормально, датчик глючить", "language": "uk", "person_id": "u4",
@@ -97,8 +97,8 @@ def test_raw_numbers_never_reach_the_llm(tmp_path):
     snapshot = scene(aggregator, clock)
     rows = aggregator.outbox.pending()
     payload = "\n".join(r["digest"] for r in rows)
-    assert snapshot["gas"]["concentration_ppm"] == 12300 and snapshot["gas"]["rise_rate_pct_per_min"] == 2.61
-    for raw in ("12300", "1.23", "2.61", "-12.7", "-13", "0.93", "in_frame", "ppm", "db", "confidence"):
+    assert snapshot["gas"]["concentration_ppm"] == 615 and snapshot["gas"]["rise_rate_pct_per_min"] == 0.131
+    for raw in ("615", "0.0615", "0.131", "-12.7", "-13", "0.93", "in_frame", "ppm", "db", "confidence"):
         assert raw not in payload, raw
     for row in rows:                       # numbers only as the version, μ degrees and trust degrees
         for path, value in walk(json.loads(row["digest"])):

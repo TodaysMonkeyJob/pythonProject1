@@ -66,7 +66,7 @@ export function timeline(canvas, segments, from, to) {
 }
 
 // F21 gas tab: 10-minute bar chart (one bar per 30 s, the bucket's max), coloured against the threshold
-export function bars(canvas, points, { threshold = null, minutes = 10, buckets = 20 } = {}) {
+export function bars(canvas, points, { threshold = null, minutes = 10, buckets = 20, label = null } = {}) {
   const { ctx, width, height } = prepare(canvas);
   ctx.clearRect(0, 0, width, height);
   const to = Date.now(), from = to - minutes * 60e3, step = (to - from) / buckets;
@@ -87,7 +87,7 @@ export function bars(canvas, points, { threshold = null, minutes = 10, buckets =
     const y = height - (threshold / max) * (height - 14);
     ctx.strokeStyle = css("--danger"); ctx.setLineDash([4, 3]); ctx.beginPath();
     ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = css("--muted"); ctx.font = "11px sans-serif"; ctx.fillText(`поріг ${threshold}%`, 4, Math.max(11, y - 3));
+    ctx.fillStyle = css("--muted"); ctx.font = "11px sans-serif"; ctx.fillText(label || `поріг ${threshold}%`, 4, Math.max(11, y - 3));
   }
 }
 

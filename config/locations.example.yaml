@@ -9,7 +9,6 @@ locations:
     icon: "📦"
     rules:                    # optional per-location overrides
       unknown_person_after: "20:00"   # an unknown person only counts as a warning from 20:00 to 06:00
-      gas_thresholds: {acetone: 3.0}  # % — a reading above is critical (danger) in this location
       object_type: warehouse          # two shifts 06–22, Monday–Saturday
       actions_enabled: false          # light mode (default): person detection + identification + motion only
     fuzzy:                    # optional F15 overrides of config/fuzzy.yaml for this location (see core/fuzzy)

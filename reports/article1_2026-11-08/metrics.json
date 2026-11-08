@@ -1,0 +1,1168 @@
+{
+ "manifest": {
+  "seed": 42,
+  "git": "589eb46",
+  "date": "2026-11-08T11:28:50+00:00",
+  "scenarios": 50,
+  "labels": "draft — author's expert labels, to be confirmed by the supervisor",
+  "labels_version": 2,
+  "files": {
+   "experiments/hfs/scenarios.yaml": "e55170881b2d",
+   "config/uncertainty.yaml": "c29c1ea5ebe8",
+   "config/gases.yaml": "8d03fad2bcce",
+   "config/fuzzy/gas.yaml": "25891a96f83d",
+   "config/fuzzy/camera.yaml": "e22fe96ab194",
+   "config/fuzzy/audio.yaml": "a27d4a3d1b4c",
+   "config/fuzzy/top.yaml": "2b5479cddbb9"
+  }
+ },
+ "summary": {
+  "tri_type1": {
+   "macro_f1": 0.9781,
+   "accuracy": 0.98,
+   "brier": 0.0607,
+   "ece": 0.1164,
+   "corridor_width_mean": 0.0,
+   "corridor_coverage": 0.98,
+   "macro_f1_by_group": {
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 1.0,
+    "gas": 1.0
+   },
+   "misses": [
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium"
+    }
+   ],
+   "explosive_flag": {
+    "g16": {
+     "expected": true,
+     "got": true
+    },
+    "g17": {
+     "expected": false,
+     "got": false
+    }
+   },
+   "confusion": {
+    "low": {
+     "low": 10,
+     "medium": 1,
+     "high": 0,
+     "critical": 0
+    },
+    "medium": {
+     "low": 0,
+     "medium": 12,
+     "high": 0,
+     "critical": 0
+    },
+    "high": {
+     "low": 0,
+     "medium": 0,
+     "high": 14,
+     "critical": 0
+    },
+    "critical": {
+     "low": 0,
+     "medium": 0,
+     "high": 0,
+     "critical": 13
+    }
+   }
+  },
+  "tri_it2": {
+   "macro_f1": 0.9596,
+   "accuracy": 0.96,
+   "brier": 0.0971,
+   "ece": 0.0963,
+   "corridor_width_mean": 0.1081,
+   "corridor_coverage": 0.96,
+   "macro_f1_by_group": {
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 0.8667,
+    "gas": 1.0
+   },
+   "misses": [
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "x02",
+     "label": "high",
+     "got": "medium"
+    }
+   ],
+   "explosive_flag": {
+    "g16": {
+     "expected": true,
+     "got": true
+    },
+    "g17": {
+     "expected": false,
+     "got": false
+    }
+   },
+   "confusion": {
+    "low": {
+     "low": 10,
+     "medium": 1,
+     "high": 0,
+     "critical": 0
+    },
+    "medium": {
+     "low": 0,
+     "medium": 12,
+     "high": 0,
+     "critical": 0
+    },
+    "high": {
+     "low": 0,
+     "medium": 1,
+     "high": 13,
+     "critical": 0
+    },
+    "critical": {
+     "low": 0,
+     "medium": 0,
+     "high": 0,
+     "critical": 13
+    }
+   }
+  },
+  "gauss_in_type1": {
+   "macro_f1": 0.176,
+   "accuracy": 0.28,
+   "brier": 1.1449,
+   "ece": 0.5421,
+   "corridor_width_mean": 0.0,
+   "corridor_coverage": 0.28,
+   "macro_f1_by_group": {
+    "audio": 0.1,
+    "camera": 0.0833,
+    "combined": 0.2833,
+    "gas": 0.1842
+   },
+   "misses": [
+    {
+     "id": "g01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "g02",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g03",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g07",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g08",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g09",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g10",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g12",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g14",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c02",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c04",
+     "label": "medium",
+     "got": "critical"
+    },
+    {
+     "id": "c05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c07",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c09",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c10",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c12",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a02",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a03",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a06",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a07",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a09",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a10",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a11",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a12",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "x04",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "x05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "x07",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "x08",
+     "label": "high",
+     "got": "critical"
+    }
+   ],
+   "explosive_flag": {
+    "g16": {
+     "expected": true,
+     "got": true
+    },
+    "g17": {
+     "expected": false,
+     "got": false
+    }
+   },
+   "confusion": {
+    "low": {
+     "low": 0,
+     "medium": 0,
+     "high": 11,
+     "critical": 0
+    },
+    "medium": {
+     "low": 0,
+     "medium": 0,
+     "high": 11,
+     "critical": 1
+    },
+    "high": {
+     "low": 0,
+     "medium": 0,
+     "high": 1,
+     "critical": 13
+    },
+    "critical": {
+     "low": 0,
+     "medium": 0,
+     "high": 0,
+     "critical": 13
+    }
+   }
+  },
+  "gauss_in_it2": {
+   "macro_f1": 0.457,
+   "accuracy": 0.56,
+   "brier": 0.7562,
+   "ece": 0.2604,
+   "corridor_width_mean": 0.135,
+   "corridor_coverage": 0.7,
+   "macro_f1_by_group": {
+    "audio": 0.5375,
+    "camera": 0.3654,
+    "combined": 0.381,
+    "gas": 0.4833
+   },
+   "misses": [
+    {
+     "id": "g01",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "g02",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g08",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g12",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c01",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "c02",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c04",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c09",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c12",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a01",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "a02",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "a03",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a09",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "a12",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "x04",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "x06",
+     "label": "critical",
+     "got": "high"
+    },
+    {
+     "id": "x07",
+     "label": "medium",
+     "got": "high"
+    }
+   ],
+   "explosive_flag": {
+    "g16": {
+     "expected": true,
+     "got": true
+    },
+    "g17": {
+     "expected": false,
+     "got": false
+    }
+   },
+   "confusion": {
+    "low": {
+     "low": 0,
+     "medium": 6,
+     "high": 5,
+     "critical": 0
+    },
+    "medium": {
+     "low": 0,
+     "medium": 3,
+     "high": 9,
+     "critical": 0
+    },
+    "high": {
+     "low": 0,
+     "medium": 0,
+     "high": 13,
+     "critical": 1
+    },
+    "critical": {
+     "low": 0,
+     "medium": 0,
+     "high": 1,
+     "critical": 12
+    }
+   }
+  },
+  "gauss_all_type1": {
+   "macro_f1": 0.1967,
+   "accuracy": 0.3,
+   "brier": 1.0041,
+   "ece": 0.4373,
+   "corridor_width_mean": 0.0,
+   "corridor_coverage": 0.28,
+   "macro_f1_by_group": {
+    "audio": 0.1,
+    "camera": 0.1,
+    "combined": 0.3651,
+    "gas": 0.1842
+   },
+   "misses": [
+    {
+     "id": "g01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "g02",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g03",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g07",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g08",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g09",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g10",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "g11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g12",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "g14",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c02",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c04",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c07",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c09",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "c10",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "c11",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "c12",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a01",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a02",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a03",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a06",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a07",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a08",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a09",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "a10",
+     "label": "medium",
+     "got": "high"
+    },
+    {
+     "id": "a11",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "a12",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "x04",
+     "label": "low",
+     "got": "high"
+    },
+    {
+     "id": "x05",
+     "label": "high",
+     "got": "critical"
+    },
+    {
+     "id": "x07",
+     "label": "medium",
+     "got": "high"
+    }
+   ],
+   "explosive_flag": {
+    "g16": {
+     "expected": true,
+     "got": true
+    },
+    "g17": {
+     "expected": false,
+     "got": false
+    }
+   },
+   "confusion": {
+    "low": {
+     "low": 0,
+     "medium": 0,
+     "high": 11,
+     "critical": 0
+    },
+    "medium": {
+     "low": 0,
+     "medium": 0,
+     "high": 12,
+     "critical": 0
+    },
+    "high": {
+     "low": 0,
+     "medium": 0,
+     "high": 2,
+     "critical": 12
+    },
+    "critical": {
+     "low": 0,
+     "medium": 0,
+     "high": 0,
+     "critical": 13
+    }
+   }
+  },
+  "tri_it2_no_escalation": {
+   "macro_f1": 0.9039,
+   "accuracy": 0.9,
+   "brier": 0.1907,
+   "ece": 0.0367,
+   "corridor_width_mean": 0.1059,
+   "corridor_coverage": 0.9,
+   "macro_f1_by_group": {
+    "audio": 1.0,
+    "camera": 0.9365,
+    "combined": 0.8667,
+    "gas": 0.8474
+   },
+   "misses": [
+    {
+     "id": "g09",
+     "label": "high",
+     "got": "medium"
+    },
+    {
+     "id": "g14",
+     "label": "high",
+     "got": "medium"
+    },
+    {
+     "id": "g15",
+     "label": "critical",
+     "got": "high"
+    },
+    {
+     "id": "c03",
+     "label": "low",
+     "got": "medium"
+    },
+    {
+     "id": "x02",
+     "label": "high",
+     "got": "medium"
+    }
+   ],
+   "explosive_flag": {
+    "g16": {
+     "expected": true,
+     "got": true
+    },
+    "g17": {
+     "expected": false,
+     "got": false
+    }
+   },
+   "confusion": {
+    "low": {
+     "low": 10,
+     "medium": 1,
+     "high": 0,
+     "critical": 0
+    },
+    "medium": {
+     "low": 0,
+     "medium": 12,
+     "high": 0,
+     "critical": 0
+    },
+    "high": {
+     "low": 0,
+     "medium": 3,
+     "high": 11,
+     "critical": 0
+    },
+    "critical": {
+     "low": 0,
+     "medium": 0,
+     "high": 1,
+     "critical": 12
+    }
+   }
+  }
+ },
+ "delta_sweep": {
+  "0.0": {
+   "corridor_width_mean": 0.0,
+   "corridor_coverage": 0.98,
+   "macro_f1": 0.9781
+  },
+  "0.5": {
+   "corridor_width_mean": 0.0583,
+   "corridor_coverage": 0.98,
+   "macro_f1": 0.9781
+  },
+  "1.0": {
+   "corridor_width_mean": 0.1081,
+   "corridor_coverage": 0.96,
+   "macro_f1": 0.9596
+  },
+  "2.0": {
+   "corridor_width_mean": 0.1744,
+   "corridor_coverage": 0.98,
+   "macro_f1": 0.9596
+  }
+ },
+ "latency_ms": {
+  "gas": {
+   "tri_type1": {
+    "mean": 0.686,
+    "p95": 0.818
+   },
+   "tri_it2": {
+    "mean": 1.475,
+    "p95": 2.969
+   }
+  },
+  "camera": {
+   "tri_type1": {
+    "mean": 0.276,
+    "p95": 0.318
+   },
+   "tri_it2": {
+    "mean": 0.431,
+    "p95": 0.505
+   }
+  },
+  "audio": {
+   "tri_type1": {
+    "mean": 0.267,
+    "p95": 0.294
+   },
+   "tri_it2": {
+    "mean": 0.72,
+    "p95": 1.179
+   }
+  },
+  "top": {
+   "tri_type1": {
+    "mean": 0.227,
+    "p95": 0.268
+   },
+   "tri_it2": {
+    "mean": 0.319,
+    "p95": 0.445
+   }
+  }
+ },
+ "monotonicity": {
+  "gas": {
+   "triangular": {
+    "falls": 0,
+    "steps": 32400,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "gaussian_inputs": {
+    "falls": 4414,
+    "steps": 32400,
+    "share": 0.1362,
+    "max_fall": 0.0458,
+    "level_drops": 48
+   },
+   "gaussian_all": {
+    "falls": 4764,
+    "steps": 32400,
+    "share": 0.147,
+    "max_fall": 0.0437,
+    "level_drops": 117
+   }
+  },
+  "camera": {
+   "triangular": {
+    "falls": 0,
+    "steps": 3630,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "gaussian_inputs": {
+    "falls": 162,
+    "steps": 3630,
+    "share": 0.0446,
+    "max_fall": 0.0462,
+    "level_drops": 11
+   },
+   "gaussian_all": {
+    "falls": 172,
+    "steps": 3630,
+    "share": 0.0474,
+    "max_fall": 0.0429,
+    "level_drops": 26
+   }
+  },
+  "audio": {
+   "triangular": {
+    "falls": 0,
+    "steps": 8232,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "gaussian_inputs": {
+    "falls": 615,
+    "steps": 8232,
+    "share": 0.0747,
+    "max_fall": 0.0185,
+    "level_drops": 1
+   },
+   "gaussian_all": {
+    "falls": 702,
+    "steps": 8232,
+    "share": 0.0853,
+    "max_fall": 0.0201,
+    "level_drops": 1
+   }
+  },
+  "top": {
+   "triangular": {
+    "falls": 0,
+    "steps": 3630,
+    "share": 0.0,
+    "max_fall": 0.0,
+    "level_drops": 0
+   },
+   "gaussian_inputs": {
+    "falls": 365,
+    "steps": 3630,
+    "share": 0.1006,
+    "max_fall": 0.018,
+    "level_drops": 0
+   },
+   "gaussian_all": {
+    "falls": 369,
+    "steps": 3630,
+    "share": 0.1017,
+    "max_fall": 0.018,
+    "level_drops": 1
+   }
+  }
+ },
+ "camera_bench": {
+  "actions": {
+   "rss_light_mb": 51,
+   "rss_actions_mb": 396,
+   "rss_after_unload_mb": 563,
+   "load_sec": 2.31,
+   "pose_ms_mean": 16.3,
+   "pose_ms_p95": 18.2,
+   "persons": 3,
+   "imgsz": 320,
+   "threads": 2
+  },
+  "motion": {
+   "fps": 10,
+   "seconds": 60,
+   "clips": {
+    "lighting": {
+     "before": {
+      "frames": 570,
+      "false_motion_rate": 0.042
+     },
+     "after": {
+      "frames": 570,
+      "false_motion_rate": 0.0
+     }
+    },
+    "foliage": {
+     "before": {
+      "frames": 570,
+      "false_motion_rate": 0.018
+     },
+     "after": {
+      "frames": 570,
+      "false_motion_rate": 0.004
+     }
+    },
+    "noise": {
+     "before": {
+      "frames": 570,
+      "false_motion_rate": 0.0
+     },
+     "after": {
+      "frames": 570,
+      "false_motion_rate": 0.0
+     }
+    },
+    "walk": {
+     "before": {
+      "frames": 570,
+      "recall": 1.0,
+      "latency_sec": [
+       0.1,
+       0.1,
+       0.1,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "crossings": 6,
+      "crossings_detected": 6,
+      "false_motion_rate": 0.333
+     },
+     "after": {
+      "frames": 570,
+      "recall": 1.0,
+      "latency_sec": [
+       0.2,
+       0.2,
+       0.2,
+       0.0,
+       0.0,
+       0.1
+      ],
+      "crossings": 6,
+      "crossings_detected": 6,
+      "false_motion_rate": 0.09
+     }
+    }
+   },
+   "fps_sweep": {
+    "1": {
+     "frames": 30,
+     "recall": 0.889,
+     "latency_sec": [
+      0.0,
+      1.0,
+      2.0
+     ],
+     "crossings": 3,
+     "crossings_detected": 3,
+     "false_motion_rate": 0.0
+    },
+    "2": {
+     "frames": 90,
+     "recall": 0.969,
+     "latency_sec": [
+      1.0,
+      0.0,
+      0.0,
+      0.5
+     ],
+     "crossings": 4,
+     "crossings_detected": 4,
+     "false_motion_rate": 0.059
+    },
+    "3": {
+     "frames": 150,
+     "recall": 1.0,
+     "latency_sec": [
+      0.67,
+      0.67,
+      0.0,
+      0.33,
+      0.0
+     ],
+     "crossings": 5,
+     "crossings_detected": 5,
+     "false_motion_rate": 0.053
+    },
+    "5": {
+     "frames": 270,
+     "recall": 1.0,
+     "latency_sec": [
+      0.4,
+      0.4,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "crossings": 5,
+     "crossings_detected": 5,
+     "false_motion_rate": 0.105
+    },
+    "10": {
+     "frames": 570,
+     "recall": 1.0,
+     "latency_sec": [
+      0.2,
+      0.2,
+      0.2,
+      0.0,
+      0.0,
+      0.1
+     ],
+     "crossings": 6,
+     "crossings_detected": 6,
+     "false_motion_rate": 0.09
+    },
+    "15": {
+     "frames": 870,
+     "recall": 1.0,
+     "latency_sec": [
+      0.13,
+      0.13,
+      0.13,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "crossings": 6,
+     "crossings_detected": 6,
+     "false_motion_rate": 0.103
+    }
+   },
+   "static_noise": {
+    "frames": 1710,
+    "p95_area_ratio": 0.0,
+    "max_area_ratio": 0.0066,
+    "note": "moving share of the frame reported by the adaptive detector on the lighting, foliage and noise clips (nobody there) — the motion_intensity error (A5)"
+   }
+  }
+ }
+}

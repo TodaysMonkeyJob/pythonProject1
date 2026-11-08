@@ -216,9 +216,29 @@ class DashboardState:
                 "ram_used_mb": round((memory.total - memory.available) / 1e6),
                 "ram_total_mb": round(memory.total / 1e6),
                 "uptime_sec": round(now - self.started),
-                "gas_thresholds": self.config.get("gas", {}).get("thresholds", {}),
+                "gas_limits": self._gas_limits(),                        # TOD-53: C_crit / LEL in vol %
                 "mode": self.mode["mode"]}                               # TOD-52: autonomous | multiagent
 
+
+    def _gas_limits(self) -> Dict[str, Dict[str, Any]]:
+        """G1 (TOD-53): {gas or alias: {c_crit_pct, lel_pct}} of config/gases.yaml for the gas chart (vol %)"""
+        if getattr(self, "_limits", None) is None:
+            from modules.hfs.gas_normalize import GasTable, UnitError
+            path = ((self.config.get("hfs") or {}).get("gas") or {}).get("gases", "config/gases.yaml")
+            limits: Dict[str, Dict[str, Any]] = {}
+            try:
+                table = GasTable.load(path)
+                for alias, name in table._names.items():
+                    substance = table.substances[name]
+                    try:
+                        limits[alias] = {"c_crit_pct": round(substance.c_crit_in("vol_pct"), 6),
+                                         "lel_pct": substance.lel_pct, "name_uk": substance.name_uk}
+                    except UnitError:                       # particles have no vol %
+                        continue
+            except OSError:
+                pass
+            self._limits = limits
+        return self._limits
 
     def _vision(self) -> Dict[str, Any]:
         """Heartbeat of the vision module (single camera) or the first camera pipeline (``vision@<device>``)."""

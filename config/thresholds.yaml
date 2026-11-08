@@ -1,6 +1,8 @@
 # F22 (TOD-33) cost-based thresholds — written by python -m tools.fit_thresholds; do not edit by hand.
 # Each value minimises C_miss * P_miss + C_fa * P_fa on the calibration split; cost_ratio = C_miss / C_fa is the only
 # expert input. config/fuzzy.yaml reads `values` through "@thresholds:values.<name>" references.
+# 2026-11-08 (TOD-53): the gas k_var / spans converted to the c / C_crit unit with the fitted κ kept — not a refit
+# (an offline refit on the v2 scripted set had no cached GPT answer and was degenerate; see reports/gas_scale_audit.md).
 version: 1
 fitted_at: '2026-10-23T15:09:48+00:00'
 cost_ratio: 10.0
@@ -36,8 +38,8 @@ values:
   gating: 0.68
   critical_floor: 0.76
   k_var:
-    gas_concentration: 0.9499
-    gas_trend: 0.9
+    gas_concentration: 0.23      # TOD-53: κ 1.5 × span 0.1533 (unit c / C_crit; was 0.9499 in %)
+    gas_trend: 0.18              # TOD-53: κ 1.5 × span 0.12 (C_crit / min; was 0.9 in %/min)
     motion_level: 0.225
     people_count: 1.8
     unknown_share: 0.225
@@ -207,8 +209,8 @@ fits:
   k_var:
     kappa: 1.5
     spans:
-      gas_concentration: 0.6333
-      gas_trend: 0.6
+      gas_concentration: 0.1533
+      gas_trend: 0.12
       motion_level: 0.15
       people_count: 1.2
       unknown_share: 0.15

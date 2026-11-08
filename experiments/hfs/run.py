@@ -162,6 +162,7 @@ def run_scenario(scenario: Dict[str, Any], config: Dict[str, Any], seed: int) ->
     memberships = system.top.engine.fuzzify(system.top.engine.output, payload["overall"])
     return {"level": payload["level"], "risk": payload["overall"], "interval": payload["interval"],
             "partial": payload["partial"], "probs": M.probabilities(memberships),
+            "explosive": bool(payload.get("explosive")),                      # G1 (TOD-53)
             "subsystems": {k: (v["level"], v["risk"], v["interval"]) for k, v in payload["subsystems"].items()},
             "ms": timings}
 
@@ -184,6 +185,9 @@ def evaluate(results: Dict[str, Dict[str, Any]], scenarios: List[Dict[str, Any]]
             "corridor_coverage": round(float(np.mean(covered)), 4), "macro_f1_by_group": by_group,
             "misses": [{"id": s["id"], "label": s["label"], "got": results[s["id"]]["level"]}
                        for s in scenarios if results[s["id"]]["level"] != s["label"]],
+            # G1 (TOD-53): scenarios labelled with the explosion flag, and whether the system raised it
+            "explosive_flag": {s["id"]: {"expected": s["explosive"], "got": results[s["id"]]["explosive"]}
+                               for s in scenarios if "explosive" in s},
             "confusion": M.confusion(truth, pred)}
 
 
@@ -263,6 +267,7 @@ def main(argv=None) -> int:
     git = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     manifest = {"seed": args.seed, "git": git, "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                 "scenarios": len(scenarios), "labels": spec.get("status"),
+                "labels_version": spec.get("labels_version", 1),
                 "files": {p: sha(p) for p in [args.scenarios, "config/uncertainty.yaml", "config/gases.yaml",
                                               *[os.path.join("config", "fuzzy", f"{lv}.yaml") for lv in LEVELS]]}}
     with open(os.path.join(args.out, "metrics.json"), "w", encoding="utf-8") as f:

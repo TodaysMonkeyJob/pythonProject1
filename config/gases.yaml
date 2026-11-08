@@ -9,6 +9,12 @@
 #   source      where c_crit comes from (checked 2026-11-06; CO2, Cl2, SO2, NO2, H2S checked 2026-11-07)
 #   group       effect group (TOD-50): the additive mixture index Σ c / c_crit is computed only inside a group
 #   name_uk     name in the Ukrainian explanations
+#   lel_pct     G1 (TOD-53): lower explosive limit, vol % (flammable gases only; NIOSH Pocket Guide, checked
+#               2026-11-08) — a reading at or above it is flagged «вибухонебезпечно» (modules/hfs/gas_safety.py)
+#
+# G1 (TOD-53) safety invariant: a gas whose lower bound (reading − sensor error) is ≥ c_crit makes the final level
+# critical in every mode, whatever the rules or agents say (modules/hfs/gas_safety.py). These entries are the only
+# gas scale of the system: there are no percentage thresholds anywhere else.
 #
 # TOD-50 multi-gas escalation (modules/hfs/gas_escalation.py): a gas is *active* when the lower bound of its
 # c / c_crit interval (reading − sensor error) is above `activity.calm_norm`; two or more active gases raise the gas
@@ -33,6 +39,8 @@ gases:
     group: irritant
     c_crit: 300
     unit: ppm
+    lel_pct: 15.0
+    lel_source: "NIOSH NPG: LEL 15 % (https://www.cdc.gov/niosh/npg/npgd0028.html)"
     molar_mass: 17.03
     source: "NIOSH IDLH (https://www.cdc.gov/niosh/idlh/)"
   carbon_monoxide:
@@ -41,6 +49,8 @@ gases:
     group: asphyxiant
     c_crit: 1200
     unit: ppm
+    lel_pct: 12.5
+    lel_source: "NIOSH NPG: LEL 12.5 % (https://www.cdc.gov/niosh/npg/npgd0105.html)"
     molar_mass: 28.01
     aliases: [co]
     source: "NIOSH IDLH (https://www.cdc.gov/niosh/idlh/)"
@@ -61,6 +71,8 @@ gases:
     group: solvents
     c_crit: 3300
     unit: ppm
+    lel_pct: 3.3
+    lel_source: "NIOSH NPG: LEL 3.3 % (https://www.cdc.gov/niosh/npg/npgd0262.html)"
     molar_mass: 46.07
     source: "NIOSH Pocket Guide IDLH 3300 ppm [10 % LEL] (https://www.cdc.gov/niosh/npg/npgd0262.html)"
   acetone:
@@ -69,6 +81,8 @@ gases:
     group: solvents
     c_crit: 2500
     unit: ppm
+    lel_pct: 2.5
+    lel_source: "NIOSH NPG: LEL 2.5 % (https://www.cdc.gov/niosh/npg/npgd0004.html)"
     molar_mass: 58.08
     source: "NIOSH Pocket Guide IDLH 2500 ppm [10 % LEL] (https://www.cdc.gov/niosh/npg/npgd0004.html)"
   toluene:
@@ -77,6 +91,8 @@ gases:
     group: solvents
     c_crit: 500
     unit: ppm
+    lel_pct: 1.1
+    lel_source: "NIOSH NPG: LEL 1.1 % (https://www.cdc.gov/niosh/npg/npgd0619.html)"
     molar_mass: 92.14
     aliases: [toluol]
     source: "NIOSH Pocket Guide IDLH 500 ppm (https://www.cdc.gov/niosh/npg/npgd0619.html)"
@@ -123,6 +139,8 @@ gases:
     group: asphyxiant
     c_crit: 100
     unit: ppm
+    lel_pct: 4.0
+    lel_source: "NIOSH NPG: LEL 4.0 % (https://www.cdc.gov/niosh/npg/npgd0337.html)"
     molar_mass: 34.08
     aliases: [h2s]
     source: "NIOSH IDLH 100 ppm (https://www.cdc.gov/niosh/idlh/intridl4.html)"

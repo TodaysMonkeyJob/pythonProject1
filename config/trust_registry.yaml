@@ -95,7 +95,7 @@ gas:
   range_margin: 0.5         # resistance beyond (1 ± margin) × training range → out_of_range
   baseline_tolerance: 0.25  # clean-air curve R_peak / Dirac point off the training clean-air mean by more → drift
   selftest_interval_sec: 600   # a clean-air self-test at most this often (when the classifier says clean_air)
-  disagreement_pct: "@trust_priors:policy.gas_disagreement_pct.value"
+  disagreement_norm: "@trust_priors:policy.gas_disagreement_norm.value"   # TOD-53: share of C_crit, not vol %
 identity:
   unknown_per_hour: 10      # more new unknown_N per hour → unknown_storm on every camera's face_identity
 

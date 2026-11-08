@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional
 from core.fuzzy import FuzzyEngine, load_yaml
 from core.fuzzy.engine2 import FuzzyEngine2
 from modules.hfs.base import ALPHA, CONFIG_DIR, summarise
+from modules.hfs.gas_safety import critical_floor, enforce
 from modules.hfs.policy import LEVELS, policy_level  # noqa: F401  (re-exported: the top-level policy)
 from modules.hfs.top_escalation import Analysis, TopEscalation, explain
 
@@ -38,6 +39,7 @@ class TopLevel:
         self.engine2 = FuzzyEngine2(self.engine, area_weighted=True)
         self.update_sec = float(cfg.get("update_sec", data.get("update_sec", 2.0)))
         self.escalation = TopEscalation(cfg, level_of=self.level_of)
+        self.critical_risk = critical_floor(self.engine)
 
     def level_of(self, risk: float) -> str:
         terms = self.engine.fuzzify("max_risk", risk)
@@ -70,7 +72,7 @@ class TopLevel:
                   "third_risk": counted[2] if len(counted) >= 3 else None}
         risks = {f"risk{i}": (present[name]["risk"] if name in present else None)
                  for i, name in enumerate(SUBSYSTEMS, start=1)}
-        return {**risks, "overall": crisp, "level": result["level"],
+        out = {**risks, "overall": crisp, "level": result["level"],
                 "interval": result["interval"], "corridor_width": result["corridor_width"],
                 "widened_by": [{**w, "variable": source[w["variable"]].name if source.get(w["variable"]) else
                                 w["variable"]} for w in result.get("widened_by", [])],
@@ -79,7 +81,14 @@ class TopLevel:
                 "explanation": explain(analysis, result["level"], inputs["third_risk"] > self.escalation.calm),
                 "subsystems": {name: {k: r[k] for k in ("risk", "level", "interval", "corridor_width", "inputs",
                                                         "deltas", "widened_by", "excluded", "escalation",
-                                                        "explanation", "saturated", "headline") if k in r}
+                                                        "explanation", "saturated", "headline", "safety",
+                                                        "explosive") if k in r}
                                for name, r in present.items()},
                 "fired_rules_by_level": {**{name: r["fired_rules"] for name, r in present.items()},
                                          "top": result["fired_rules"]}}
+        # G1 (TOD-53): a gas at / above C_crit (lower bound) is critical whatever the rules say; explosion flag
+        safety = (present.get("gas") or {}).get("safety")
+        if safety:
+            enforce(out, safety, "top rule base", self.critical_risk, risk_keys=("overall",))
+            out["explanation"] = "; ".join(x for x in (safety["text"], out.get("explanation")) if x)
+        return out

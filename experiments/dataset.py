@@ -69,6 +69,8 @@ class Dataset:
     root: str
     scenarios: List[Scenario]
     synthetic: bool = False
+    labels_version: int = 1          # G1 (TOD-53): 2 = gas relative to C_crit (config/gases.yaml)
+    gas_scale: str = "vol % against the old 3–5 % thresholds"
 
     @classmethod
     def load(cls, path: str) -> "Dataset":
@@ -87,7 +89,8 @@ class Dataset:
         ids = [s.scenario_id for s in scenarios]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate scenario ids in the manifest")
-        return cls(data.get("name", os.path.basename(root)), root, scenarios, bool(data.get("synthetic")))
+        return cls(data.get("name", os.path.basename(root)), root, scenarios, bool(data.get("synthetic")),
+                   int(data.get("labels_version", 1)), str(data.get("gas_scale") or cls.gas_scale))
 
     def labelled(self) -> List[Scenario]:
         return [s for s in self.scenarios if s.labels]

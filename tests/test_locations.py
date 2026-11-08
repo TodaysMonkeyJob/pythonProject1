@@ -28,10 +28,11 @@ def registry(tmp_path):
 # --- registry -----------------------------------------------------------------------------------------------------
 
 def test_location_crud_order_and_delete_moves_devices(registry):
-    warehouse = registry.create("Warehouse", icon="📦", rules={"gas_thresholds": {"acetone": "3"}, "junk": 1})
+    warehouse = registry.create("Warehouse", icon="📦", rules={"unknown_person_after": "20:00", "junk": 1,
+                                                               "gas_thresholds": {"acetone": "3"}})   # TOD-53: gone
     office = registry.create("Office")
     assert (warehouse["location_id"], warehouse["order"], office["order"]) == ("warehouse", 1, 2)
-    assert warehouse["rules"] == {"gas_thresholds": {"acetone": 3.0}}            # unknown keys dropped
+    assert warehouse["rules"] == {"unknown_person_after": "20:00"}               # unknown keys dropped
     assert [loc["location_id"] for loc in registry.list()] == ["warehouse", "office", "unassigned"]
     registry.reorder(["office", "warehouse"])
     assert [loc["location_id"] for loc in registry.list()][:2] == ["office", "warehouse"]
@@ -133,13 +134,30 @@ def test_warnings_gpt_risk_and_offline():
     assert [(c["location_id"], c["to"]) for c in changes] == [("warehouse", OFFLINE)]
 
 
+def test_gas_at_critical_concentration_is_danger_and_survives_acknowledge():
+    """G1 (TOD-53) safety invariant in the location state: independent of deciders, rules and acknowledges."""
+    world = World()
+    world.event("warehouse", type="gas_reading", concentration_pct=0.1, gas="acetone", trend="rising")
+    assert world.state("warehouse") == SAFE                                      # 0.4 × C_crit: the deciders judge
+    world.event("warehouse", type="gas_reading", concentration_pct=5.0, gas="acetone", trend="rising")
+    loc = world.engine.live["warehouse"]
+    assert world.state("warehouse") == DANGER and "2000 % від критичного рівня" in loc.reason
+    assert "вибухонебезпечно" in loc.reason
+    assert world.engine.acknowledge("warehouse", world.now) == [] and world.state("warehouse") == DANGER
+    summary = world.engine.summary("warehouse", world.now)
+    assert summary["gas_safety"]["explosive"] and summary["gas_safety"]["critical"]
+    world.event("warehouse", type="gas_reading", concentration_pct=5.0, gas="ammonia")
+    reason = world.engine.live["warehouse"].reason
+    assert "16667 % від критичного рівня" in reason and "вибух" not in reason        # LEL of NH₃ is 15 %
+    world.event("warehouse", type="gas_reading", concentration_pct=0.0, gas="clean_air")
+    assert world.state("warehouse") == SAFE                                      # the sensor's state replaced
+    world.event("warehouse", type="gas_reading", concentration_pct=5.0, gas="acetone")
+    world.now += 31                                                              # no fresh reading any more
+    assert world.engine.evaluate(world.now)[0]["to"] == SAFE
+
+
 def test_location_rules():
-    world = World(rules={"warehouse": {"gas_thresholds": {"acetone": 3.0}, "unknown_person_after": "20:00"}})
-    world.event("warehouse", type="gas_reading", concentration_pct=2.5, gas="acetone", trend="rising")
-    assert world.state("warehouse") == SAFE
-    world.event("warehouse", type="gas_reading", concentration_pct=3.4, gas="acetone", trend="rising")
-    assert world.state("warehouse") == DANGER and "≥ 3.0%" in world.engine.live["warehouse"].reason
-    world.engine.acknowledge("warehouse", world.now)
+    world = World(rules={"warehouse": {"unknown_person_after": "20:00"}})
     world.event("warehouse", type="person_identified", source="camera", severity="warning", identity="unknown_4",
                 track_id=1)
     assert world.state("warehouse") == SAFE                                      # noon: a visitor
@@ -248,7 +266,7 @@ def test_critical_in_one_location_snapshots_only_that_location(tmp_path):
 
     clock = [1000.0]
     locations = LocationRegistry(str(tmp_path / "devices.db"))
-    locations.create("Warehouse", rules={"gas_thresholds": {"acetone": 3.0}})
+    locations.create("Warehouse", rules={"unknown_person_after": "20:00"})
     locations.create("Office")
     config = {"aggregator": {"export_dir": str(tmp_path / "exports"), "incidents": {"enabled": False},
                              "snapshot_interval_sec": 60, "global_snapshot_min": 10}}
@@ -266,7 +284,7 @@ def test_critical_in_one_location_snapshots_only_that_location(tmp_path):
     assert snapshot["trigger"] == "critical_event" and len(snapshot["people"]) == 1
     row = aggregator.outbox.pending()[0]
     view = json.loads(row["digest"])                                               # F18 v2 view for GPT
-    assert view["location"] == "Warehouse" and view["rules"] == "acetone ≥ 3.0% is dangerous here"
+    assert view["location"] == "Warehouse" and view["rules"] == "unknown person suspicious after 20:00"
     assert aggregator.tick() is None                                            # office: nothing critical
     clock[0] += 61
     assert aggregator.tick()["location_id"] == "office"                         # its regular snapshot

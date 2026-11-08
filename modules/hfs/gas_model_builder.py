@@ -81,11 +81,12 @@ def reading_interval(value: float, unit: str, quantity: Dict[str, Any], substanc
     :param quantity: {range, resolution, accuracy} of the sensor (descriptor / reading)
     :return: (low, high, open) of c / C_crit — ±δ, and an open upper bound (high = NORM_MAX) at full scale
     """
-    norm = substance.norm(value, unit)
+    ratio = substance.ratio(value, unit)          # G1 (TOD-53): ±δ before clipping, or a far exceedance loses its
     delta = convert(delta_at(delta_spec(quantity), value), unit, substance.unit, substance.molar_mass) \
-        / substance.c_crit
+        / substance.c_crit                        # lower bound (5 vol % NH₃ − 10 % → still ≈ 150 × C_crit)
     is_open = saturated(value, quantity.get("range"), quantity.get("resolution"))
-    return max(0.0, norm - delta), (NORM_MAX if is_open else min(NORM_MAX, norm + delta)), is_open
+    return (min(NORM_MAX, max(0.0, ratio - delta)), (NORM_MAX if is_open else min(NORM_MAX, ratio + delta)),
+            is_open)
 
 
 def build(sensors: List[Dict[str, Any]], table: GasTable, rule_base: str = RULE_BASE) -> Dict[str, Any]:

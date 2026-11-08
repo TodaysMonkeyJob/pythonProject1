@@ -146,7 +146,7 @@ def test_no_unreferenced_trust_constant_or_threshold_in_fuzzy_yaml():
         assert prior is None or str(prior).startswith("@trust_priors:"), kind
     for key in ("deescalation_floor", "instruction"):
         assert str(trust["consistency"][key]).startswith("@trust_priors:"), key
-    assert str(registry["gas"]["disagreement_pct"]).startswith("@trust_priors:") and "gas_confidence_min" not in trust
+    assert str(registry["gas"]["disagreement_norm"]).startswith("@trust_priors:") and "gas_confidence_min" not in trust
     assert set(trust["calibration"]) == {"asr", "speaker", "face", "gas"}
     assert "theta" not in envelope and "locations" not in envelope                   # F24: no θ cut any more
     assert trust["claim_threshold"] == "@thresholds:values.claim_theta"

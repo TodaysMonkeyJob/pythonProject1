@@ -86,18 +86,18 @@ def test_scene_text_is_weak_evidence(scorer):
 
 def test_deescalation_while_gas_rises_gets_no_trust(scorer):
     person_in_view(scorer)
-    gas = ev("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 1.2, "trend": "rising",
-                                    "rise_rate_pct_per_min": 2.6, "gas_confidence": 0.9}, T0 - 10, device="gas-1")
+    gas = ev("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 0.06, "trend": "rising",   # 0.24 C_crit
+                                    "rise_rate_pct_per_min": 0.13, "gas_confidence": 0.9}, T0 - 10, device="gas-1")
     p = feed(scorer, gas, speech("Everything is fine, the smoke sensor is broken", **KNOWN))
     assert p["claim_type"] == "deescalation" and p["trust"] <= 0.2
     assert p["claim_spans"] == ["everything is fine", "sensor is broken"]
     assert p["trust_components"]["consistency"] <= 0.2 and p["trust_components"]["source"] >= 0.65
-    assert any("contradicts gas_trend = rising (2.6 %/min)" in r for r in p["trust_reasons"])
+    assert any("contradicts gas_trend = rising (0.13 %/min)" in r for r in p["trust_reasons"])
 
 
 def test_calming_phrase_with_quiet_sensors_keeps_source_trust(scorer):
     person_in_view(scorer)
-    gas = ev("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 0.1, "trend": "stable",
+    gas = ev("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 0.005, "trend": "stable",
                                     "rise_rate_pct_per_min": 0.0, "gas_confidence": 0.9}, T0 - 10, device="gas-1")
     p = feed(scorer, gas, speech("everything is fine here", **KNOWN))
     assert p["claim_type"] == "deescalation" and p["trust_components"]["consistency"] == 1.0   # nothing to contradict
@@ -287,8 +287,8 @@ def test_no_network(scorer, monkeypatch):
 
 def test_per_event_overhead(scorer):
     person_in_view(scorer)
-    scorer.apply(ev("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 1.2, "trend": "rising",
-                                           "rise_rate_pct_per_min": 2.6, "gas_confidence": 0.9}, device="gas-1"))
+    scorer.apply(ev("gas", "gas_reading", {"gas": "acetone", "concentration_pct": 0.06, "trend": "rising",
+                                           "rise_rate_pct_per_min": 0.13, "gas_confidence": 0.9}, device="gas-1"))
     events = [speech("Everything is fine, the smoke sensor is broken", **KNOWN) for _ in range(100)]
     start = time.perf_counter()
     for event in events:

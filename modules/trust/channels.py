@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.events import Event
+from modules.hfs.gas_normalize import flat_reading
 
 PHYSICAL_TYPES = ("gas_reading", "motion", "object_detected", "scene_active", "action", "sound")
 PHYSICAL_SOURCES = ("gas", "camera", "microphone", "audio")
@@ -119,7 +120,8 @@ class EvidenceState:
             track.person_id, track.last = p.get("person_id"), now
             loc.last_person_seen = now
         elif event.type == "gas_reading" and event.device_id:
-            loc.gas[event.device_id] = {"gas": p.get("gas"), "concentration": p.get("concentration_pct"),
+            flat = flat_reading(p)                      # TOD-53: any sensor format → vol % + c / C_crit
+            loc.gas[event.device_id] = {"gas": flat.get("gas"), "concentration": flat.get("concentration_pct"),
                                         "trend": p.get("trend"), "rate": p.get("rise_rate_pct_per_min"), "t": now}
         elif event.type == "alert" and event.source in PHYSICAL_SOURCES and event.severity == "critical":
             loc.alarms.append((now, str(p.get("reason") or p.get("message") or "alert")))

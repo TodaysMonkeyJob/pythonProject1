@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from core.events import Event
+from modules.hfs.gas_normalize import reading_text
 from system_setup.logger_setup import init_logger
 
 logger = init_logger()
@@ -51,7 +52,7 @@ def timeline_line(event: Event, local_offset) -> str:
         "action": lambda: f"#{p.get('track_id')} {p.get('action')}",
         "speech": lambda: f"\"{p.get('text', '')}\"",
         "sound": lambda: f"{p.get('rms_db')} dB",
-        "gas_reading": lambda: f"{p.get('gas')} {p.get('concentration_pct')}% {p.get('trend')}",
+        "gas_reading": lambda: reading_text(p),
         "alert": lambda: " ".join(str(x) for x in (p.get("reason"), p.get("gas") or p.get("module") or "") if x),
         "mic_state": lambda: f"{p.get('state')} ({p.get('reason')})",
         "scene_active": lambda: "active" if p.get("active") else "idle",
