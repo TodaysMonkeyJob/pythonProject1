@@ -157,6 +157,7 @@ class DashboardState:
         self.mode = {"mode": mode_of(config), "locations": dict(config.get("mode_locations") or {}),
                      "source": config.get("mode_source") or "config"}   # TOD-52: updated by mode_changed
         self.agents: Optional[Dict[str, Any]] = None     # B2: latest agent_status of the agents module
+        self.calibration: Dict[str, Dict[str, Any]] = {}  # C1 (TOD-54): device_id → latest calibration_status
         self.agents_at = 0.0
         self.publish = None        # BaseModule.publish of the dashboard module
         from dashboard.node import NodeHub
@@ -183,6 +184,10 @@ class DashboardState:
             if self.loop is not None and self.clients:
                 asyncio.run_coroutine_threadsafe(self.broadcast(data), self.loop)
             return
+        if event.type == "calibration_status":   # C1 (TOD-54): page «Пристрої» → «Калібрування»
+            device = event.payload.get("device_id") or event.device_id
+            self.calibration[device] = {**event.payload, "device_id": device, "location_id": event.location_id,
+                                        "at": event.timestamp}
         if event.type == "mic_state":
             self.mic_state = event.payload.get("state")
         elif event.type.startswith("identity_") and self.registry is not None:
@@ -694,6 +699,66 @@ def create_app(state: DashboardState, config: Dict[str, Any]):
         payload = {"mode": mode, "location_id": location, "by": user_of(request)}
         state.publish(make_event("system", "mode_control", payload))
         return {"accepted": True, **payload}
+
+    # --- C1 (TOD-54): persistent sensor calibration — status, recalibrate (device / location), cancel, restore ---
+    from core.sensor_calibration import CalibrationStore
+
+    calibration_store = CalibrationStore.from_config(config)
+
+    @app.get("/api/calibration", dependencies=[Depends(auth)])
+    def api_calibration(request: Request):
+        devices = {d["device_id"]: d for d in (state.devices.list() if state.devices is not None else [])}
+        rows = []
+        for device_id, status_ in sorted(state.calibration.items()):
+            device = devices.get(device_id) or {}
+            rows.append({**status_, "name": device.get("name") or device_id,
+                         "location_id": device.get("location_id") or status_.get("location_id")})
+        return {"devices": rows, "records": calibration_store.records(), "role": getattr(request.state, "role", None)}
+
+    def calibration_targets(body: Dict[str, Any]) -> List[str]:
+        if body.get("device_id"):
+            return [str(body["device_id"])]
+        location = body.get("location_id")
+        if location:
+            ids = [d for d, s in state.calibration.items() if s.get("location_id") == location]
+            if state.devices is not None:
+                ids += [d["device_id"] for d in state.devices.list() if d.get("location_id") == location
+                        and d["device_id"] in state.calibration]
+            return sorted(set(ids))
+        raise HTTPException(400, "device_id or location_id required")
+
+    def calibration_control(action: str, ids: List[str], request: Request, **extra) -> Dict[str, Any]:
+        from core.events import make_event
+
+        if state.publish is None:
+            raise HTTPException(503, "event bus not available")
+        if not ids:
+            raise HTTPException(404, "no calibrated devices there")
+        payload = {"action": action, "device_ids": ids, "by": user_of(request), **extra}
+        state.publish(make_event("system", "calibration_control", payload))
+        return {"accepted": True, **payload}
+
+    @app.post("/api/calibration/recalibrate", dependencies=[Depends(auth), Depends(admin)])
+    def api_calibration_recalibrate(body: Dict[str, Any], request: Request):
+        if body.get("confirm") is not True:
+            raise HTTPException(400, "confirm: true required (the dashboard shows the instructions first)")
+        return calibration_control("recalibrate", calibration_targets(body), request)
+
+    @app.post("/api/calibration/cancel", dependencies=[Depends(auth), Depends(admin)])
+    def api_calibration_cancel(body: Dict[str, Any], request: Request):
+        return calibration_control("cancel", calibration_targets(body), request)
+
+    @app.post("/api/calibration/restore", dependencies=[Depends(auth), Depends(admin)])
+    def api_calibration_restore(body: Dict[str, Any], request: Request):
+        if body.get("confirm") is not True:
+            raise HTTPException(400, "confirm: true required")
+        try:
+            record = calibration_store.restore(str(body.get("uid")), int(body.get("index", 0)), user_of(request))
+        except (KeyError, ValueError) as e:
+            raise HTTPException(404, str(e)) from e
+        device = record.get("device_id")
+        return calibration_control("reload", [device] if device else [], request, uid=record.get("uid"),
+                                   date=record.get("date"))
 
     # --- A7 (TOD-48): gas sensors found by the gas module (gas.mode drivers); driver choice for unknown devices ---
     gas_cfg = config.get("gas") or {}

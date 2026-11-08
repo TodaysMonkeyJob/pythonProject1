@@ -69,6 +69,15 @@ class HierarchicalFuzzySystem:
 
     def observe(self, event: Event) -> None:
         now = self.clock()
+        if event.type == "calibration_status":         # C1 (TOD-54): wider δ while a device is not checked
+            factor = float(event.payload.get("uncertainty_factor") or 1.0)
+            device = event.payload.get("device_id") or event.device_id
+            for subsystem in self.subsystems.values():
+                if factor > 1.0:
+                    subsystem.calibration_factors[device] = factor
+                else:
+                    subsystem.calibration_factors.pop(device, None)
+            return
         if event.type in ("device_offline", "device_online", "device_health"):
             self._health(event)
             return

@@ -167,7 +167,9 @@ def test_module_specs_from_config():
     assert specs["audio"].target == "modules.audio:run" and specs["audio"].subscribe[0] == "scene_active"
     assert DEFAULT_MODULES["actions"][2] == ["object_detected"]
     assert "identity_renamed" in DEFAULT_MODULES["identity"][2]
-    assert DEFAULT_MODULES["vision"][2] == ["person_identified"]
+    assert DEFAULT_MODULES["vision"][2] == ["person_identified", "calibration_control"]       # C1 (TOD-54)
+    assert "calibration_control" in DEFAULT_MODULES["gas"][2] and "calibration_control" in DEFAULT_MODULES["audio"][2]
+    assert "calibration_status" in DEFAULT_MODULES["hfs"][2]
 
 
 def test_child_config_disables_module_self_logging():

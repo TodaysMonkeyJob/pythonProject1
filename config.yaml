@@ -444,6 +444,21 @@ envelope:                   # F17 (TOD-28): fuzzy risk corridor around GPT decis
   enabled: true             # parameters: envelope section of trust.fuzzy_config (λ, h_min, levels, confirmation rules)
   log: true                 # every decision with all intermediate values → logs/<date>/envelope.jsonl
 
+sensor_calibration:         # C1 (TOD-54): calibrate once per device, keep it across restarts (docs/calibration.md)
+  dir: data/calibration/devices   # <device uid>.json, git-ignored; the dashboard «Калібрування» restores versions
+  history: 10                 # previous versions kept per device
+  warmup_uncertainty_factor: 2.0       # δ × this while a sensor warms up (stored values in use, TOD-45)
+  needs_check_uncertainty_factor: 2.0  # … and while its short check is pending / failed
+  kinds:                      # max_age_days: older → full recalibration; max_failures: failed checks in a row → full
+    graphene_fet: {max_age_days: 30, max_failures: 3, recheck_sec: 120, tolerance: 0.25, dirac_steps: 2,
+                   calibrate_samples: 30}       # check: first clean-air sweep vs the stored baseline
+    mos: {max_age_days: 30, max_failures: 3, warmup_sec: 180, tolerance: 0.5, calibrate_samples: 60}  # MQ heater
+    electrochemical: {factory: true, warmup_sec: 60}   # factory calibrated; stabilisation only
+    particle: {factory: true, warmup_sec: 30}          # fan spin-up
+    index_only: {factory: true, warmup_sec: 180}       # ENS160 start-up
+    mic: {max_age_days: 90, max_failures: 3, recheck_sec: 60, check_sec: 3, tolerance_db: 6, calibrate_sec: 60}
+    camera: {max_age_days: 30, max_failures: 3, recheck_sec: 60, check_frames: 15, tolerance: 20, calibrate_sec: 30}
+
 calibration:                # F22 (TOD-33): measured trust inputs (config/calibration/, trust_priors.yaml, thresholds.yaml)
   cost_ratio: 10            # C_miss / C_fa — the expert input of python -m tools.fit_thresholds
   call_cost: 0.2            # F28 (TOD-39): one GPT call vs one false alarm (C_fa = 1) — the gating threshold pays it

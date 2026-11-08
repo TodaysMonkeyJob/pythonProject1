@@ -70,6 +70,8 @@ EVENT_TYPES = (
     "gas_sensor_choice",    # A7: the user picked a driver for an unknown gas device (key, driver) → rediscovery
     "mode_control",         # M1 (TOD-52): the dashboard asks for a mode switch (mode, location_id?, by) — admin only
     "mode_changed",         # M1: the orchestrator switched (mode, locations, scope, from, to, by, at) → every module
+    "calibration_status",   # C1 (TOD-54): a device's calibration state (stored / factory / warm-up / check / …)
+    "calibration_control",  # C1: dashboard → workers: recalibrate / cancel / reload {device_ids, action, by}
 )
 SCHEMA_VERSION = 2
 UNASSIGNED = "unassigned"

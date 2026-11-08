@@ -36,19 +36,19 @@ logger = init_logger()
 IDENTITY_EVENTS = ["identity_created", "identity_renamed", "identity_merged", "identity_linked", "identity_deleted"]
 # name → (target, config section with `enabled`, event types forwarded to its control queue; "*" = all)
 DEFAULT_MODULES = {
-    "gas": ("modules.gas:run", "gas", ["gas_sensor_choice"]),     # TOD-48: a driver chosen on the dashboard
-    "vision": ("modules.vision.detector:run", "vision", ["person_identified"]),       # names on the overlay
+    "gas": ("modules.gas:run", "gas", ["gas_sensor_choice", "calibration_control"]),  # TOD-48 / C1 (TOD-54)
+    "vision": ("modules.vision.detector:run", "vision", ["person_identified", "calibration_control"]),  # + names
     "actions": ("modules.vision.actions:run", "actions", ["object_detected"]),
     "identity": ("modules.vision.identity:run", "identity", ["object_detected", *IDENTITY_EVENTS]),
     "audio": ("modules.audio.mic_controller:run", "audio",
-              ["scene_active", "object_detected", "person_identified", *IDENTITY_EVENTS]),
+              ["scene_active", "object_detected", "person_identified", "calibration_control", *IDENTITY_EVENTS]),
     "aggregator": ("modules.aggregator:run", "aggregator", ["*"]),
     "llm": ("modules.llm:run", "llm", [            # works from the SQLite outbox; F17 envelope needs the evidence
         "gas_reading", "motion", "object_detected", "person_identified", "action", "alert", "speech", "scene_text",
         "notification_acked", "escalation_resolved"]),   # F26: operator outcomes → fired-rule statistics
     "hfs": ("modules.hfs:run", "hfs", [            # A1 (TOD-41): gas / camera / audio subsystems → overall risk
         "gas_reading", "motion", "motion_level", "object_detected", "person_identified", "sound", "speech",
-        "sound_type", "audio_level", "mode_changed"]),
+        "sound_type", "audio_level", "mode_changed", "calibration_status"]),   # C1: wider δ while unchecked
     "agents": ("agents:run", "agents", ["*"]),     # B2 (TOD-49): plug-in agents; the host filters per agent scope
     "locations": ("modules.locations:run", "locations", ["*"]),   # F12 per-location state + notifications
     "dashboard": ("dashboard:run", "dashboard", ["*", "heartbeat", "location_summary", "agent_status"]),

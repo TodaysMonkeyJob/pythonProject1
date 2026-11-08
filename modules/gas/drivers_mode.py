@@ -25,14 +25,25 @@ from system_setup.logger_setup import init_logger
 logger = init_logger()
 
 
+# C1 (TOD-54): calibration kind of each driver (config.yaml sensor_calibration.kinds)
+CALIBRATION_KIND = {"graphene_fet": "graphene_fet", "mq_ads1115": "mos", "dfrobot_gravity": "electrochemical",
+                    "dfrobot_gravity_uart": "electrochemical", "pms5003": "particle", "sds011": "particle",
+                    "sps30": "particle", "ens160": "index_only"}
+
+
 class DriverPoller:
     def __init__(self, gas_config: Dict[str, Any], emit: Callable[..., Any],
-                 clock: Callable[[], float] = time.monotonic, discovery_factory: Optional[Callable[[], Any]] = None):
+                 clock: Callable[[], float] = time.monotonic, discovery_factory: Optional[Callable[[], Any]] = None,
+                 config: Optional[Dict[str, Any]] = None, store=None):
         """
         :param emit: ``BaseModule.emit`` (type, payload, severity=, confidence=, device_id=)
         :param discovery_factory: → a ``Discovery`` (tests pass one with fake buses)
+        :param config: the full config (C1 / TOD-54 ``sensor_calibration``; without it calibration is off)
+        :param store: a ``CalibrationStore`` (tests: in memory)
         """
         self.cfg, self.emit, self.clock = gas_config, emit, clock
+        self.config, self.store = config or {}, store
+        self.calibrators: Dict[str, Any] = {}           # device_id → calibrator
         self.discovery_factory = discovery_factory or self._discovery
         self.rediscover_sec = float(gas_config.get("rediscover_sec", 0) or 0)
         self.drivers: List[Any] = []
@@ -65,6 +76,7 @@ class DriverPoller:
         if generated:
             write(build(report(self.result)["sensors"], GasTable.load(self.cfg.get("gases", "config/gases.yaml"))),
                   generated)
+        self._calibrators()
         found = ", ".join(f"{d.descriptor.model} ({', '.join(sorted({q.unit for q in d.descriptor.quantities}))})"
                           for d in self.drivers)
         logger.info(f"gas sensors: {found or 'none'}; unknown: {len(self.result['unknown'])}")
@@ -78,9 +90,45 @@ class DriverPoller:
                 pass
         self.drivers, self.due = [], {}
 
+    def _calibrators(self) -> None:
+        """C1 (TOD-54): one calibrator per identified device; uid = driver + serial + bus position + firmware"""
+        from modules.calibration import Calibrator, GrapheneCalibrator, MosCalibrator, enabled
+
+        self.calibrators = {}
+        if not enabled(self.config) and self.store is None:
+            return
+        from core.sensor_calibration import device_uid
+
+        for driver in self.drivers:
+            desc = driver.descriptor
+            kind = CALIBRATION_KIND.get(desc.driver, "factory")
+            uid = device_uid(desc.driver, desc.serial or desc.model, f"{desc.bus}:{desc.address}",
+                             desc.details.get("firmware"))
+            device = desc.device_id
+
+            def emit(payload, device=device):
+                self.emit("calibration_status", payload, device_id=device)
+            args = (self.config, uid, device, emit, self.clock, self.store)
+            if kind == "graphene_fet":
+                vg, gates = desc.details.get("vg") or [0.0, 1.5], int(desc.details.get("gates", 16))
+                grid = [vg[0] + (vg[1] - vg[0]) * i / max(1, gates - 1) for i in range(gates)]
+                calibrator = GrapheneCalibrator(*args, voltages=grid)
+            elif kind == "mos":
+                calibrator = MosCalibrator(*args, driver=driver)
+            else:
+                calibrator = Calibrator(*args, kind=kind)
+            calibrator.start()
+            self.calibrators[device] = calibrator
+
+    def statuses(self) -> List[Dict[str, Any]]:
+        return [c.status() for c in self.calibrators.values()]
+
     def handle_event(self, event) -> None:
         if event.type == "gas_sensor_choice":
             self.discover()
+        elif event.type == "calibration_control":
+            for calibrator in self.calibrators.values():
+                calibrator.control(event.payload)
 
     def step(self) -> int:
         """:return: readings published"""
@@ -106,6 +154,13 @@ class DriverPoller:
             self.emit("alert", {"reason": "sensor_error", "sensor_id": desc.device_id, "driver": desc.driver,
                                 "error": str(e)}, severity="warning", device_id=desc.device_id)
             return False
+        calibrator = self.calibrators.get(desc.device_id)
+        if calibrator is not None:
+            calibrator.state.tick()
+            if calibrator.kind == "mos":
+                calibrator.observe(values.get("volts"))
+            elif calibrator.kind == "graphene_fet":
+                calibrator.observe(values["curve"], values["gas"])
         if desc.needs_model:
             return self._model_reading(desc, values)
         readings, indices = [], []

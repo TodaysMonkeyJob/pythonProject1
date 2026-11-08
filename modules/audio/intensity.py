@@ -9,7 +9,8 @@ level above **this microphone's** background, in dB:
   microphone, ``audio.mic.background_db`` or the device's config) overrides it;
 * intensity = frame level − background, ≥ 0, smoothed exponentially over ``smooth_sec`` (2 s).
 
-Until ``warmup_sec`` of audio has been seen the background is the quietest second so far.
+Until ``warmup_sec`` of audio has been seen the background is the quietest second so far — or, C1 (TOD-54), the
+microphone's stored calibration (``seed``).
 """
 import collections
 import math
@@ -28,6 +29,11 @@ class BackgroundLevel:
         self._second_start: Optional[float] = None
         self.intensity = 0.0
         self._last: Optional[float] = None
+
+    def seed(self, background_db: float) -> None:
+        """C1 (TOD-54): start from a stored background — the warm-up is skipped, the percentile keeps adapting"""
+        self.seconds.clear()
+        self.seconds.extend([float(background_db)] * max(1, int(self.warmup_sec)))
 
     @property
     def background(self) -> Optional[float]:
