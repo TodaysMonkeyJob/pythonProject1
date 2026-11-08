@@ -30,7 +30,7 @@ by the annotators) → the first decision ≥ high, incl. the LLM latency.
 
 ```bash
 python -m experiments.run --suite v2 --seed 42 --scripted --llm azure            # new GPT answers are cached
-python -m experiments.run --suite v2 --seed 42 --scripted --llm azure --offline  # cache read-only, no network
+python -m experiments.run --suite v2 --seed 42 --scripted --offline             # TOD-53: no GPT at all (corridor only)
 ```
 
 The new design `proposed_v2` (IT2 corridor + trust registry + two-sided corridor + the TOD-39 C / E) against the

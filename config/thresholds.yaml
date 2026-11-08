@@ -1,10 +1,8 @@
 # F22 (TOD-33) cost-based thresholds — written by python -m tools.fit_thresholds; do not edit by hand.
 # Each value minimises C_miss * P_miss + C_fa * P_fa on the calibration split; cost_ratio = C_miss / C_fa is the only
 # expert input. config/fuzzy.yaml reads `values` through "@thresholds:values.<name>" references.
-# 2026-11-08 (TOD-53): the gas k_var / spans converted to the c / C_crit unit with the fitted κ kept — not a refit
-# (an offline refit on the v2 scripted set had no cached GPT answer and was degenerate; see reports/gas_scale_audit.md).
 version: 1
-fitted_at: '2026-10-23T15:09:48+00:00'
+fitted_at: '2026-11-08T11:48:35+00:00'
 cost_ratio: 10.0
 c_fa: 1.0
 c_miss: 10.0
@@ -13,21 +11,20 @@ bandwidth: 0.05
 dataset:
   path: data/eval/scripted
   name: scripted-42
-  hash: f6d67b63603b83466fe4703ff321927d604bc23be740e2f226106e73689b5414
+  hash: d8187b307a849b3b02f4f94f1a6603d0b32666b5c53c3d1d485a87e7a79d8a94
   synthetic: true
   split: calibration
   seed: 42
   scenarios: 36
   evidence_events: 63
-  gate_evaluations: 79
+  gate_evaluations: 73
 fuzzy_config:
   path: config/fuzzy.yaml
-  sha256: 0eee7b14c3747b3f0fee87661960dc6e5adb3939568c913cee7df648c2d4047d
+  sha256: bbf2c075de06e3144860adb0c39743cfb62e54834e3301280d134b621a65d861
 llm:
-  backend: azure
-  offline: true
-  calls: 44
-  cache_misses: 0
+  gpt: none (offline, TOD-53)
+  calls: 0
+  unrecorded: 0
 values:
   claim_theta: 0.42
   levels:
@@ -38,28 +35,28 @@ values:
   gating: 0.68
   critical_floor: 0.76
   k_var:
-    gas_concentration: 0.23      # TOD-53: κ 1.5 × span 0.1533 (unit c / C_crit; was 0.9499 in %)
-    gas_trend: 0.18              # TOD-53: κ 1.5 × span 0.12 (C_crit / min; was 0.9 in %/min)
-    motion_level: 0.225
-    people_count: 1.8
-    unknown_share: 0.225
-    action_risk: 0.375
-    known_present: 0.375
+    gas_concentration: 0.1533
+    gas_trend: 0.12
+    motion_level: 0.15
+    people_count: 1.2
+    unknown_share: 0.15
+    action_risk: 0.25
+    known_present: 0.25
   lambda: 0.0
 expected_cost:
-  claim_theta: 0.027
+  claim_theta: 0.032
   level_medium: 0.0009
   level_high: 0.0063
   level_critical: 0.0258
   gating: 0.7296
   h_min: 1.6364
-  k_var: 0.2084
+  k_var: 0.2178
   lambda: 0.0
 fits:
   claim_theta:
     threshold: 0.42
-    expected_cost: 0.027
-    p_miss: 0.0012
+    expected_cost: 0.032
+    p_miss: 0.0017
     p_fa: 0.0146
     empirical_p_miss: 0.0
     empirical_p_fa: 0.0
@@ -74,6 +71,8 @@ fits:
     empirical_p_fa: 0.0
     n_pos: 24
     n_neg: 12
+    kept_from: '2026-10-23T15:09:48+00:00'
+    kept_reason: only 0 calibration scenarios with recorded GPT answers
   level_high:
     threshold: 0.5
     expected_cost: 0.0063
@@ -83,6 +82,8 @@ fits:
     empirical_p_fa: 0.0
     n_pos: 22
     n_neg: 14
+    kept_from: '2026-10-23T15:09:48+00:00'
+    kept_reason: only 0 calibration scenarios with recorded GPT answers
   level_critical:
     threshold: 0.76
     expected_cost: 0.0258
@@ -92,6 +93,8 @@ fits:
     empirical_p_fa: 0.0
     n_pos: 13
     n_neg: 23
+    kept_from: '2026-10-23T15:09:48+00:00'
+    kept_reason: only 0 calibration scenarios with recorded GPT answers
   gating:
     threshold: 0.68
     expected_cost: 0.7296
@@ -103,6 +106,8 @@ fits:
     n_neg: 45
     flag_cost: 0.2
     flagged_share: 0.6471
+    kept_from: '2026-10-23T15:09:48+00:00'
+    kept_reason: 'no recorded GPT answers (offline: GPT takes no part)'
   h_min:
     threshold: 0.85
     expected_cost: 1.6364
@@ -206,8 +211,10 @@ fits:
       expected_cost: 1.6364
       youden_j: 0.2051
     answers: recorded
+    kept_from: '2026-10-23T15:09:48+00:00'
+    kept_reason: 'no recorded GPT answers (offline: GPT takes no part)'
   k_var:
-    kappa: 1.5
+    kappa: 1.0
     spans:
       gas_concentration: 0.1533
       gas_trend: 0.12
@@ -218,42 +225,42 @@ fits:
       known_present: 0.25
     by_kappa:
     - kappa: 0.0
-      interval_score: 0.2471
+      interval_score: 0.254
       mean_width: 0.0
-      coverage: 0.0278
+      coverage: 0.0556
     - kappa: 0.1
-      interval_score: 0.2427
-      mean_width: 0.0009
-      coverage: 0.0278
+      interval_score: 0.2541
+      mean_width: 0.0001
+      coverage: 0.0556
     - kappa: 0.25
-      interval_score: 0.2365
-      mean_width: 0.0022
-      coverage: 0.0278
+      interval_score: 0.2527
+      mean_width: 0.0003
+      coverage: 0.0556
     - kappa: 0.5
-      interval_score: 0.2223
-      mean_width: 0.0052
+      interval_score: 0.2423
+      mean_width: 0.0027
       coverage: 0.0556
     - kappa: 0.75
-      interval_score: 0.2207
-      mean_width: 0.0134
-      coverage: 0.0556
-    - kappa: 1.0
-      interval_score: 0.2107
-      mean_width: 0.0163
+      interval_score: 0.2263
+      mean_width: 0.0117
       coverage: 0.0833
+    - kappa: 1.0
+      interval_score: 0.2178
+      mean_width: 0.0156
+      coverage: 0.1111
     - kappa: 1.5
-      interval_score: 0.2084
-      mean_width: 0.0225
+      interval_score: 0.2231
+      mean_width: 0.0241
       coverage: 0.1389
     - kappa: 2.0
-      interval_score: 0.2317
-      mean_width: 0.0457
-      coverage: 0.1389
-    - kappa: 3.0
-      interval_score: 0.2756
-      mean_width: 0.097
+      interval_score: 0.2465
+      mean_width: 0.0665
       coverage: 0.1944
-    expected_cost: 0.2084
+    - kappa: 3.0
+      interval_score: 0.2642
+      mean_width: 0.0951
+      coverage: 0.2222
+    expected_cost: 0.2178
   lambda:
     threshold: 0.0
     expected_cost: 0.0
@@ -347,10 +354,10 @@ fits:
     n_adversarial: 12
     n_normal: 12
 level_scenarios:
-  used: 36
-  skipped_without_recorded_gpt: 0
+  used: 0
+  skipped_without_recorded_gpt: 36
 previous_levels:
-  medium: 0.25
-  high: 0.51
+  medium: 0.24
+  high: 0.5
   critical: 0.76
 not_applicable: {}

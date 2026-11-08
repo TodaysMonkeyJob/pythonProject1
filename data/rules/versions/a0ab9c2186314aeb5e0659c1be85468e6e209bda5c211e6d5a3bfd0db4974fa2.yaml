@@ -1,6 +1,6 @@
 # Fuzzy inference core (F15 / TOD-26): linguistic variables, membership functions, rule base → crisp risk 0..1.
 # Shared by the fuzzy trust layer (TOD-27) and the fuzzy risk corridor around the LLM (TOD-28). Deterministic,
-# local, never calls the LLM. Explain a case: python -m core.fuzzy gas_concentration=4.2 gas=acetone
+# local, never calls the LLM. Explain a case: python -m core.fuzzy gas_concentration=1.0 (c / C_crit)
 #
 # Terms: [tri, a, b, c] | [trap, a, b, c, d] (a == b / c == d = shoulder) | [gauss, mean, sigma];
 # a list of shapes = their max (wraps around midnight). Every universe must be fully covered (checked on load).
@@ -11,31 +11,24 @@ operators: {and: min, or: max, implication: min, aggregation: max}
 default_output: 0.0                # crisp risk when no rule fires
 
 variables:
-  gas_concentration:               # TOD-19 classifier, concentration_pct (gas.thresholds: 3–5 %)
-    universe: [0, 10, 0.01]
-    unit: "%"
+  gas_concentration:               # G1 (TOD-53): c / C_crit of config/gases.yaml (NIOSH IDLH) — no % thresholds;
+    universe: [0, 1.2, 0.005]      # callers normalise (modules.hfs.gas_normalize.fuzzy_gas); clipped at 1.2
+    unit: "C_crit"
     default: 0                     # no gas sensor in this location → clean
-    terms:                         # base = the stricter 3 % limit (ammonia, toluol, unknown gases)
-      clean: [trap, 0, 0, 0.2, 0.5]
-      slight: [trap, 0.2, 0.5, 1.0, 1.8]
-      elevated: [trap, 1.0, 1.8, 2.6, 3.4]
-      dangerous: [trap, 2.6, 3.4, 10, 10]
-    variants_by: gas               # inputs["gas"] picks the gas's own terms
-    variants:
-      ethanol: &limit5             # gas.thresholds 5 %
-        slight: [trap, 0.2, 0.5, 1.5, 2.5]
-        elevated: [trap, 1.5, 2.5, 4.0, 5.0]
-        dangerous: [trap, 4.0, 5.0, 10, 10]
-      acetone: *limit5
-  gas_trend:                       # % per minute (gas.rise_rate_threshold: 2 %/min)
-    universe: [-10, 10, 0.01]
-    unit: "%/min"
+    terms:                         # the former 5 % terms divided by their limit: dangerous = at / above C_crit
+      clean: [trap, 0, 0, 0.04, 0.1]
+      slight: [trap, 0.04, 0.1, 0.3, 0.5]
+      elevated: [trap, 0.3, 0.5, 0.8, 1.0]
+      dangerous: [trap, 0.8, 1.0, 1.2, 1.2]
+  gas_trend:                       # C_crit per minute (the former %/min terms divided by the 5 % limit)
+    universe: [-2, 2, 0.005]
+    unit: "C_crit/min"
     default: 0
     terms:
-      falling: [trap, -10, -10, -0.5, -0.1]
-      stable: [trap, -0.5, -0.1, 0.1, 0.5]
-      rising: [trap, 0.1, 0.5, 1.5, 2.5]
-      sharply_rising: [trap, 1.5, 2.5, 10, 10]
+      falling: [trap, -2, -2, -0.1, -0.02]
+      stable: [trap, -0.1, -0.02, 0.02, 0.1]
+      rising: [trap, 0.02, 0.1, 0.3, 0.5]
+      sharply_rising: [trap, 0.3, 0.5, 2, 2]
   motion_level:                    # share of the frame / time with motion
     universe: [0, 1, 0.01]
     default: 0

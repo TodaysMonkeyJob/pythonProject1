@@ -23,11 +23,15 @@ Truth per snapshot for gating: the scenario's expert level from the danger onset
 kernel smoothed (``--bandwidth``), so the result moves with the cost ratio even where the calibration split is
 separable. One replay with the current config (no fixed-point iteration). F25: λ (risk attitude of the lower bound
 L, see ``fit_lambda``) and h_min (agreement threshold: a GPT answer whose fuzzy set meets the corridor less than
-h_min is a conflict — positive = GPT's level differs from the truth at that time). GPT answers come from the
-experiment cache
-(``--llm azure``, offline: a cache miss is answered by the local simulator, counted, and that scenario is left out of
-the level fit — its final risk would not be GPT's; θ / gating do not depend on the answer text); nothing is sent. λ and
-h_min are fitted too (TOD-36).
+h_min is a conflict — positive = GPT's level differs from the truth at that time). λ and h_min are fitted too
+(TOD-36).
+
+TOD-53: offline means **GPT takes no part** — no call, no simulator. By default the replay has no GPT at all (every
+snapshot that would go to GPT is decided by the corridor): θ, κ (k_var) and λ do not need GPT and are fitted; the level
+boundaries, h_min and the gating threshold need GPT answers and are kept from the current thresholds.yaml (with the
+reason). ``--recorded-gpt`` uses the real GPT answers already recorded in ``experiments/cache/llm_azure.sqlite``
+(read-only, hits only — a snapshot without a recorded answer is decided by the corridor, never simulated); the
+GPT-dependent values are refitted only from scenarios whose every answer was recorded. Nothing is ever sent.
 
     python -m tools.fit_thresholds                      # cost ratio from config.yaml
     python -m tools.fit_thresholds --cost-ratio 5       # → config/thresholds.yaml + reports/thresholds_log.jsonl
@@ -61,22 +65,22 @@ Each value minimises C_miss * P_miss + C_fa * P_fa on the calibration split; cos
 expert input. config/fuzzy.yaml reads `values` through "@thresholds:values.<name>" references."""
 
 
-class OfflineLLM:
+class RecordedGPT:
     """
-    Read-only view of the experiment cache (sqlite opened with mode=ro, so nothing is ever written to it): a hit
-    returns the recorded GPT answer, a miss is answered by the local simulator and counted. No network.
+    TOD-53: the real GPT answers recorded in the experiment cache (sqlite opened with mode=ro, nothing is written).
+    ``analyze`` returns the recorded answer or None — a missing answer is never simulated; the pipeline then lets the
+    corridor decide. No network.
     """
 
-    def __init__(self, backend: str, cache_path: str):
+    def __init__(self, cache_path: str = "experiments/cache/llm_azure.sqlite", backend: str = "azure"):
         import sqlite3
 
         from experiments.llm import PROMPT_V1, PROMPT_V2, SimAnalyst, load_prompt
 
-        self.sim = SimAnalyst()
-        self.backend_name = backend
+        self.backend_name = backend                    # the cache key fields of experiments.llm (azure / sim)
         if backend == "sim":
-            self.model, self.temperature = self.sim.model, self.sim.temperature
-        else:                                                   # same key fields as experiments.llm.AzureAnalyst
+            self.model, self.temperature = SimAnalyst.model, SimAnalyst.temperature
+        else:
             from core.config import load_config
 
             llm = load_config("config.yaml").get("llm", {})
@@ -97,8 +101,7 @@ class OfflineLLM:
         row = self.db.execute("SELECT response FROM responses WHERE key = ?", (key,)).fetchone() if self.db else None
         if row is None:
             self.misses += 1
-            decision, usage = self.sim.analyze(payload, prompt_version)
-            return LLMDecision(**decision), {**usage, "cache_hit": False, "offline_sim": True}
+            return None
         cached = json.loads(row[0])
         return LLMDecision(**cached["decision"]), {**cached["usage"], "cache_hit": True}
 
@@ -116,11 +119,10 @@ def collect(scenarios, llm, fuzzy: str, min_interval: float) -> Dict[str, List[D
     outcomes, evidence, gates, decisions = [], [], [], []
     for scenario in scenarios:
         trace: Dict[str, List[Dict[str, Any]]] = {"evidence": [], "gate": []}
-        misses = getattr(llm, "misses", 0)
         result = run_scenario(scenario, PROPOSED, llm, fuzzy, None, min_interval, trace=trace)
         outcomes.append({"scenario_id": scenario.scenario_id, "category": scenario.category,
                          "expert_level": scenario.expert_level, "risk_final": result.final_risk,
-                         "recorded_llm": getattr(llm, "misses", 0) == misses})
+                         "recorded_llm": llm is not None and result.no_gpt == 0 and result.llm_calls > 0})
         for item in trace["evidence"]:
             if item["type"] not in ("speech", "scene_text"):     # F24: the threshold only gates language claims
                 continue
@@ -174,14 +176,24 @@ def fit_all(data: Dict[str, List[Dict[str, Any]]], cost_ratio: float, bandwidth:
             lo = round(fit["threshold"] + 0.05, 4)
     gates = [g for g in data["gate"] if g["override"] is None]
     wrong = [level_of(g["floor"], levels) != g["truth"] for g in gates]
-    fits["gating"] = fit_cost_threshold([g["score"] for g in gates], wrong, cost_ratio, np.linspace(0.05, 0.95, 91),
-                                        bandwidth, positive_above=True, flag_cost=call_cost)
+    no_gpt = not outcomes and kept                      # TOD-53: the gate's agreement input and h_min need GPT
+    if no_gpt:
+        reason = "no recorded GPT answers (offline: GPT takes no part)"
+        for name in ("gating", "h_min"):
+            fits[name] = {**(kept.get("fits") or {}).get(name, {}), "kept_from": kept.get("fitted_at"),
+                          "kept_reason": reason}
+    else:
+        fits["gating"] = fit_cost_threshold([g["score"] for g in gates], wrong, cost_ratio,
+                                            np.linspace(0.05, 0.95, 91), bandwidth, positive_above=True,
+                                            flag_cost=call_cost)
     decisions = data.get("decision") or []
-    if decisions:                                       # F25: below h_min a GPT answer is a conflict → a bound holds
+    if decisions and not no_gpt:                        # F25: below h_min a GPT answer is a conflict → a bound holds
         fits["h_min"] = fit_h_min(decisions, levels, cost_ratio)
     used = {"used": len(outcomes), "skipped_without_recorded_gpt": len(data["outcomes"]) - len(outcomes)}
+    old = (kept or {}).get("values") or {}
     values = {"claim_theta": fits["claim_theta"]["threshold"], "levels": levels,
-              "h_min": fits["h_min"]["threshold"] if "h_min" in fits else 0.5, "gating": fits["gating"]["threshold"],
+              "h_min": old.get("h_min", 0.5) if no_gpt else fits["h_min"]["threshold"] if "h_min" in fits else 0.5,
+              "gating": old.get("gating", 0.5) if no_gpt else fits["gating"]["threshold"],
               "critical_floor": levels["critical"]}
     return {"values": values, "fits": fits, "previous_levels": current_levels, "level_scenarios": used}
 
@@ -341,7 +353,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--bandwidth", type=float, default=0.05, help="kernel width of the smoothed rates")
     parser.add_argument("--call-cost", type=float, help="F28: cost of one GPT call vs a false alarm (default: "
                         "calibration.call_cost or 0)")
-    parser.add_argument("--llm", choices=("azure", "sim"), default="azure", help="whose cached answers (offline)")
+    parser.add_argument("--recorded-gpt", action="store_true", help="use GPT answers already recorded in the "
+                        "experiment cache (read-only, never simulated); default: no GPT at all (TOD-53)")
     parser.add_argument("--fuzzy", default="config/fuzzy.yaml")
     parser.add_argument("--min-interval", type=float, default=300.0)
     parser.add_argument("--out", default=OUT)
@@ -356,21 +369,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         from experiments.scripted import build
 
         build(args.dataset, args.seed)
+    from core.calibration import read_yaml
+
+    previous = read_yaml(args.out) if os.path.isfile(args.out) else read_yaml(OUT) if os.path.isfile(OUT) else None
     if not os.path.isfile(args.out):
-        write_yaml(args.out, {"version": 1, "bootstrap": True, "values": BOOTSTRAP}, HEADER)
+        write_yaml(args.out, previous or {"version": 1, "bootstrap": True, "values": BOOTSTRAP}, HEADER)
     dataset = Dataset.load(args.dataset)
     calibration, _ = dataset.split(args.seed, args.calibration_share)
-    llm = OfflineLLM(args.llm, f"experiments/cache/llm_{args.llm}.sqlite")
+    llm = RecordedGPT() if args.recorded_gpt else None                    # TOD-53: default no GPT at all
     try:
         from core.fuzzy import load_yaml
 
         current = (load_yaml(args.fuzzy).get("envelope") or {}).get("thresholds") or {}
         data = collect(calibration, llm, args.fuzzy, args.min_interval)
     finally:
-        llm.close()
-    from core.calibration import read_yaml
-
-    result = fit_all(data, cost_ratio, args.bandwidth, current, read_yaml(args.out), call_cost)
+        if llm is not None:
+            llm.close()
+    result = fit_all(data, cost_ratio, args.bandwidth, current, previous, call_cost)
     k_fit = fit_k(calibration, args.fuzzy, cost_ratio)                  # F24: FOU scale of the IT2 corridor
     result["values"]["k_var"] = k_fit["k_var"]
     result["fits"]["k_var"] = {key: v for key, v in k_fit.items() if key != "k_var"}
@@ -386,7 +401,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                           "gate_evaluations": len(data["gate"])},
               "fuzzy_config": {"path": os.path.relpath(args.fuzzy) if not os.path.relpath(args.fuzzy).startswith("..")
                                else os.path.basename(args.fuzzy), "sha256": sha256_files([args.fuzzy])},
-              "llm": {"backend": args.llm, "offline": True, "calls": llm.calls, "cache_misses": llm.misses},
+              "llm": {"gpt": "recorded answers only" if llm is not None else "none (offline, TOD-53)",
+                      "calls": getattr(llm, "calls", 0), "unrecorded": getattr(llm, "misses", 0)},
               "values": result["values"],
               "expected_cost": {name: fit.get("expected_cost") for name, fit in result["fits"].items()},
               "fits": result["fits"], "level_scenarios": result["level_scenarios"],
@@ -397,11 +413,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     with open(args.log, "a", encoding="utf-8") as f:
         f.write(json.dumps({"fitted_at": output["fitted_at"], "cost_ratio": cost_ratio, "bandwidth": args.bandwidth,
                             "dataset_hash": output["dataset"]["hash"], "values": result["values"],
-                            "expected_cost": output["expected_cost"], "cache_misses": llm.misses,
+                            "expected_cost": output["expected_cost"], "gpt": output["llm"]["gpt"],
                             "levels_kept": any("kept_from" in f for f in result["fits"].values())},
                            ensure_ascii=False) + "\n")
     print(json.dumps({"cost_ratio": cost_ratio, "values": result["values"], "expected_cost": output["expected_cost"],
-                      "cache_misses": llm.misses, "calls": llm.calls}, indent=1))
+                      "gpt": output["llm"]}, indent=1))
     print(f"→ {args.out} (+ {args.log})")
     return 0
 

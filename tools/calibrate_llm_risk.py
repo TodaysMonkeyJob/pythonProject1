@@ -19,8 +19,9 @@ F28 (TOD-39): the sets are constrained (monotone centres, supports ≥ ``--min-w
 leave-one-out Brier / ECE (``cv``) and the constraint check next to the in-sample metrics. ``--harness`` fits on the
 whole calibration split of the evaluation set (``experiments.dataset.Dataset.split``, same seed / share as
 ``experiments.run``) with LOO as the evaluation; GPT answers are read from ``experiments/cache/llm_<backend>.sqlite``
-(read-only, misses answered by the simulator and left out; answers the corridor rejected as manipulated —
-``deescalation_rejected`` — left out too) — fewer than 10 recorded answers → nothing is written.
+(read-only, hits only — TOD-53: a missing answer is never simulated, the scenario is left out; answers the
+corridor rejected as manipulated — ``deescalation_rejected`` — left out too) — fewer than 10 recorded answers →
+nothing is written.
 """
 import argparse
 import csv
@@ -74,20 +75,21 @@ def split(rows: List[Row], eval_share: float) -> Tuple[List[Row], List[Row]]:
 
 
 def from_harness(dataset_path: str, seed: int, share: float, backend: str, fuzzy: str) -> Tuple[List[Row], int]:
-    """:return: (rows with recorded GPT answers of the calibration split, number of scenarios answered by the sim)"""
+    """:return: (rows with recorded GPT answers of the calibration split, number of scenarios without them — TOD-53:
+    a missing answer is never simulated, the scenario is left out)"""
     from experiments.configs import PROPOSED
     from experiments.dataset import Dataset
     from experiments.pipeline import run_scenario
-    from tools.fit_thresholds import OfflineLLM
+    from tools.fit_thresholds import RecordedGPT
 
     calibration, _ = Dataset.load(dataset_path).split(seed, share)
-    llm = OfflineLLM(backend, f"experiments/cache/llm_{backend}.sqlite")
+    llm = RecordedGPT(f"experiments/cache/llm_{backend}.sqlite", backend)
     rows, simulated = [], 0
     try:
         for scenario in calibration:
-            misses, trace = llm.misses, {}
+            trace = {}
             result = run_scenario(scenario, PROPOSED, llm, fuzzy, None, trace=trace)
-            if llm.misses != misses:
+            if result.no_gpt:
                 simulated += 1
             elif (trace.get("decision") or [{}])[-1].get("branch") == "deescalation_rejected":
                 continue                                  # a talked-down answer is not GPT's honest verbal risk
@@ -166,7 +168,7 @@ def main(argv=None) -> int:
 def fit_harness(args, rows: List[Row], simulated: int) -> int:
     """F28: fit on the whole calibration split, judged by leave-one-out (no further split of 36 scenarios)"""
     print(f"harness {args.harness}: {len(rows)} calibration scenarios with recorded GPT answers, {simulated} "
-          f"answered by the simulator (left out)")
+          f"without recorded answers (left out, never simulated)")
     if len(rows) < 10:
         print("Fewer than 10 recorded answers: refresh the cache with python -m experiments.run --llm azure first; "
               "nothing written", file=sys.stderr)

@@ -104,11 +104,20 @@ the old keys cannot come back unnoticed.
   - An overruled record is logged as an error, carries `safety_overruled` and is appended to
     `gas_safety.VIOLATIONS`. `tests/conftest.py` fails any test that causes a violation it did not ask for.
 
+## Updated after review
+
+- `data/rules/versions/*.yaml` (the four approved rule versions): their `gas_concentration` / `gas_trend` blocks are
+  now the C_crit ones. The rules and the version hashes are unchanged, and the change is in the changelog
+  (`rescale`). A `rollback` can no longer bring back the % terms.
+- Offline runs (`experiments.run --offline`, `tools.fit_thresholds`, the rules gate): GPT takes no part. There is no
+  call, no cache and no simulator; the fuzzy corridor decides. The earlier offline runs answered missing GPT answers
+  with the simulator. The refit described in the thresholds row above was run with `--out` set to an empty scratch
+  file, so there were no previous values to keep. Run correctly, the GPT-dependent values are kept.
+
 ## Left as they are
 
 | What | Why |
 | -- | -- |
-| `data/rules/versions/*.yaml` (approved rule base history) | append-only history of tools.rules. A `rollback` to one of these versions would bring back the old % variable terms, so rolling back across 2026-11-08 needs the variable block of the current file |
 | `logs/*/events.jsonl` | the user's history; the old alerts in them stay as they were |
 | `reports/experiment_2026-10-19*`, `_2026-10-23`, `experiment_v2_2026-10-24` | the manifests now carry `old_scale` (TOD-53 note). The numbers in them were obtained on the old scale |
 | `reports/channel_eval/gas_trend.json` + the `gas_trend` prior in `config/trust_priors.yaml` | measured on the %/min trend label (1380 / 1380 correct). Re-measured on the C_crit label in this task: 111 632 / 111 632 correct, but the longer C_crit ramps give 80 × more correlated samples, which would set u0 = 0. How to sample is a separate decision, so the measured prior stays the old one |

@@ -181,8 +181,9 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   channel, r0 / s0 on held-out data → τ0, u0, Wilson LB; no data → `prior_status: unmeasured`, r0 = s0 = 0, never a
   typed value; counts from `tools/measure_channels.py` → `reports/channel_eval/`; `policy.*` = rules + interim
   values, `measured: false`), `config/thresholds.yaml` (`tools/fit_thresholds.py`: min C_miss·P_miss +
-  C_fa·P_fa on the calibration split, `calibration.cost_ratio` in config.yaml; reads the GPT cache read-only, misses →
-  simulator, level boundaries kept when < 10 scenarios have recorded answers; log `reports/thresholds_log.jsonl`) and
+  C_fa·P_fa on the calibration split, `calibration.cost_ratio` in config.yaml; TOD-53: no GPT by default — θ, κ, λ
+  fitted, levels / h_min / gating kept from the current file; `--recorded-gpt` = recorded answers only (`RecordedGPT`,
+  never simulated); log `reports/thresholds_log.jsonl`) and
   `trust.calibration` maps `config/calibration/{asr,speaker,face,gas}.yaml` (`tools/calibrate_channels.py`: isotonic /
   logistic / Bayes bins; the scorer falls back to the `trust.asr` / `trust.identity` rule bases without them).
   Data: `tools/synth_speech.py` (macOS `say` voices + noise → git-ignored `data/calibration/speech/`), committed
@@ -266,7 +267,10 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   reviews / h and share right = GPT level ≤ expert level) and `failure_stats`; `report.write_v2`: questions.md
   (department questions answered by numbers + McNemar verdict), corridor.md, failure.md, ablation / McNemar vs
   proposed_v2, figures width_vs_u / h_hist / branches / failure; manifest hashes thresholds / trust files.
-  `--offline` = `tools.fit_thresholds.OfflineLLM` (cache read-only, misses → simulator, counted).
+  `--offline` (TOD-53): GPT takes no part — no call, cache or simulator; only `configs.OFFLINE` (rules_only + the
+  corridor without GPT: `proposed_local`, `proposed_v2_local[_type1|_static_trust]`), GPT configs listed as `not_run`,
+  McNemar vs the corridor. `run_scenario(llm=None)`: a snapshot for GPT is decided by the corridor (`fuzzy_only`). The
+  rules gate (`tools.rules_gate`) always runs without GPT.
 - A1 (TOD-41) autonomous mode (Article 1): `config.yaml` `mode: autonomous | hybrid` (`core/mode.py` `apply_mode`:
   autonomous → no LLM worker / envelope / GPT rule suggestions, aggregator `queue_for_llm: false`, local Whisper; the
   orchestrator never imports `LLM_PACKAGES`). `modules/hfs/` hierarchical fuzzy system: level-1 subsystems gas /
@@ -387,6 +391,8 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   viewer (`DASHBOARD_VIEWERS`), `/api/mode` GET / POST (admin, `confirm: true`), header chip + dialog
   (`views/mode.js`), fallback banner, card badge. Article 2 harness: `article1` = mode autonomous; summary
   `by_mode_effective`.
+- G1 (TOD-53) the stored rule versions `data/rules/versions/*.yaml` use the same C_crit gas variables (changelog
+  action `rescale`; rule hashes unchanged), so a rollback cannot bring back the % terms.
 - G1 (TOD-53) one gas scale (`reports/gas_scale_audit.md`): no percentage thresholds anywhere — `config/gases.yaml`
   (C_crit = NIOSH IDLH + `lel_pct`, NIOSH) is the only scale. `modules/hfs/gas_safety.py`: a gas whose lower bound
   (reading − sensor error) is ≥ C_crit makes the final level critical in every mode — `hfs_risk` (gas + top level),

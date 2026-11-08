@@ -25,6 +25,10 @@ the TOD-39 C / E) and one question per variant:
 | proposed_v2_floor_only | the F17 max-projection (lower bound only, no fuzzy intersection / upper bound) |
 | proposed_v2_no_B / _no_C / _no_E | ablations as before |
 | proposed_v2_local | no GPT: the corridor's L decides every snapshot, language goes to the local claim detector (B) |
+
+Offline (``experiments.run --offline``, TOD-53): GPT takes no part — only ``OFFLINE`` runs (rules_only + the corridor
+without GPT: ``proposed_local`` / ``proposed_v2_local`` and its type-1 / static-trust variants); every configuration
+that asks GPT is listed as not run.
 """
 from dataclasses import asdict, dataclass, replace
 from typing import Dict, List
@@ -70,4 +74,18 @@ V2 = [RULES_ONLY, LLM_ONLY, LLM_PATTERN, PROPOSED_V2,
       replace(PROPOSED_V2, name="proposed_v2_no_E", gating=False),
       replace(PROPOSED_V2, name="proposed_v2_local", local=True, gating=False)]
 FAILURE = ["proposed_v2", "proposed_v2_static_trust"]       # the sensor-failure block: registry vs static trust
-BY_NAME = {c.name: c for c in ALL + EXTRA + V2}
+# TOD-53 offline runs: GPT takes no part (no call, no cache, no simulator) — only the configurations that decide
+# without GPT; the corridor variants of the v2 questions that do not need GPT, and the failure block on them
+PROPOSED_LOCAL = replace(PROPOSED, name="proposed_local", local=True, gating=False)
+LOCAL_V2 = [replace(PROPOSED_V2, name="proposed_v2_local", local=True, gating=False),
+            replace(PROPOSED_V2, name="proposed_v2_local_type1", local=True, gating=False, type1=True),
+            replace(PROPOSED_V2, name="proposed_v2_local_static_trust", local=True, gating=False, static_trust=True)]
+OFFLINE = {"v1": [RULES_ONLY, PROPOSED_LOCAL], "v2": [RULES_ONLY, *LOCAL_V2]}
+OFFLINE_REFERENCE = {"v1": "proposed_local", "v2": "proposed_v2_local"}
+FAILURE_OFFLINE = ["proposed_v2_local", "proposed_v2_local_static_trust"]
+BY_NAME = {c.name: c for c in ALL + EXTRA + V2 + [PROPOSED_LOCAL] + LOCAL_V2}
+
+
+def needs_gpt(config: Config) -> bool:
+    """:return: the configuration asks GPT (cannot be run offline)"""
+    return config.llm and not config.local

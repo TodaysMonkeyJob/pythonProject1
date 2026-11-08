@@ -244,7 +244,7 @@ def test_routine_hour_needs_far_fewer_gpt_calls():
     result = replay(synthetic_routine(60), FUZZY, 300.0)
     stats = result["stats"]
     assert stats["snapshots"] >= 30
-    assert stats["gated_calls"] <= 0.4 * stats["baseline_calls"]                       # ≥ 60 % fewer
+    assert stats.get("gated_calls", 0) <= 0.4 * stats["baseline_calls"]                # ≥ 60 % fewer (0: none needed)
     assert result["mismatches"] == []                                                   # same final risk levels
 
 
