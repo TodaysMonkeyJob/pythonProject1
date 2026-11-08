@@ -84,6 +84,16 @@ class FuzzySubsystem:
                                             getattr(self, "table", None))
         self.uncertainty_scale = float(hfs.get("uncertainty_scale", 1.0))   # A6 experiments: corridor vs δ
         self.it2 = bool(hfs.get("it2", True))            # false: the type-1 system, every δ ignored
+        # C1 (TOD-54): device → δ multiplier while its calibration is warming up / unchecked / failing (shared dict,
+        # filled by HierarchicalFuzzySystem from calibration_status events)
+        self.calibration_factors: Dict[str, float] = {}
+
+    def calibration_factor(self, location_id: Optional[str]) -> float:
+        """:return: the largest δ multiplier of this location's fresh devices (1 = calibrated)"""
+        if not self.calibration_factors or location_id is None:
+            return 1.0
+        return max([self.calibration_factors.get(d, 1.0) for d in self.devices_of(location_id, self.clock())],
+                   default=1.0)
 
     def engine_for(self, location_id: Optional[str]) -> FuzzyEngine:
         """Per-location overrides from the ``locations:`` block of the rule base (same format as fuzzy.yaml)."""
@@ -130,7 +140,8 @@ class FuzzySubsystem:
         """
         if inputs is None:
             return None
-        deltas = {k: float(v) * self.uncertainty_scale for k, v in (inputs.get("_deltas") or {}).items()
+        widen = self.calibration_factor(location_id)
+        deltas = {k: float(v) * self.uncertainty_scale * widen for k, v in (inputs.get("_deltas") or {}).items()
                   if v and self.it2}
         extras = {("input_intervals" if k == "_intervals" else k[1:]): v for k, v in inputs.items()
                   if k[:1] == "_" and k != "_deltas"}
@@ -138,8 +149,11 @@ class FuzzySubsystem:
         engine = self.engine_for(location_id)
         key = location_id if location_id in (self.data.get("locations") or {}) else None
         it2 = self._engines2[key].infer(crisp, deltas=deltas) if any(d > 0 for d in deltas.values()) else None
-        return {**summarise(engine, engine.infer(crisp, alpha=ALPHA), it2), "partial": False,
-                "deltas": {k: round(v, 4) for k, v in deltas.items()}, **extras}
+        out = {**summarise(engine, engine.infer(crisp, alpha=ALPHA), it2), "partial": False,
+               "deltas": {k: round(v, 4) for k, v in deltas.items()}, **extras}
+        if widen > 1.0:
+            out["calibration_factor"] = widen
+        return out
 
     def evaluate(self, location_id: str, now: float, available: bool) -> Optional[Dict[str, Any]]:
         return self.infer(self.features(location_id, now, available), location_id)

@@ -1,0 +1,136 @@
+{
+ "measured_at": "2026-11-08T17:19:37+00:00",
+ "policy": {
+  "graphene_fet": {
+   "max_age_days": 30,
+   "max_failures": 3,
+   "recheck_sec": 120,
+   "tolerance": 0.25,
+   "dirac_steps": 2,
+   "calibrate_samples": 30
+  },
+  "mos": {
+   "max_age_days": 30,
+   "max_failures": 3,
+   "warmup_sec": 180,
+   "tolerance": 0.5,
+   "calibrate_samples": 60
+  },
+  "electrochemical": {
+   "factory": true,
+   "warmup_sec": 60
+  },
+  "particle": {
+   "factory": true,
+   "warmup_sec": 30
+  },
+  "index_only": {
+   "factory": true,
+   "warmup_sec": 180
+  },
+  "mic": {
+   "max_age_days": 90,
+   "max_failures": 3,
+   "recheck_sec": 60,
+   "check_sec": 3,
+   "tolerance_db": 6,
+   "calibrate_sec": 60
+  },
+  "camera": {
+   "max_age_days": 30,
+   "max_failures": 3,
+   "recheck_sec": 60,
+   "check_frames": 15,
+   "tolerance": 20,
+   "calibrate_sec": 30
+  }
+ },
+ "rows": {
+  "mic": {
+   "first_start": {
+    "ready_after_sec": 60.03,
+    "status": "ready",
+    "text": "відкалібровано (нова калібровка, 2026-11-08)",
+    "full_calibration": true
+   },
+   "restart": {
+    "ready_after_sec": 3.06,
+    "status": "ready",
+    "text": "відкалібровано (збережено, 2026-11-08)",
+    "full_calibration": false
+   }
+  },
+  "camera": {
+   "first_start": {
+    "ready_after_sec": 30.1,
+    "status": "ready",
+    "text": "відкалібровано (нова калібровка, 2026-11-08)",
+    "full_calibration": true
+   },
+   "restart": {
+    "ready_after_sec": 1.5,
+    "status": "ready",
+    "text": "відкалібровано (збережено, 2026-11-08)",
+    "full_calibration": false
+   }
+  },
+  "graphene_fet": {
+   "first_start": {
+    "ready_after_sec": 30.0,
+    "status": "ready",
+    "text": "відкалібровано (нова калібровка, 2026-11-08)",
+    "full_calibration": true
+   },
+   "restart": {
+    "ready_after_sec": 1.0,
+    "status": "ready",
+    "text": "відкалібровано (збережено, 2026-11-08)",
+    "full_calibration": false
+   }
+  },
+  "mos": {
+   "first_start": {
+    "ready_after_sec": 239.0,
+    "status": "ready",
+    "text": "відкалібровано (нова калібровка, 2026-11-08)",
+    "full_calibration": true
+   },
+   "restart": {
+    "ready_after_sec": 180.0,
+    "status": "ready",
+    "text": "відкалібровано (збережено, 2026-11-08)",
+    "full_calibration": false
+   }
+  },
+  "electrochemical": {
+   "first_start": {
+    "ready_after_sec": 60.0,
+    "status": "factory",
+    "text": "заводська калібровка",
+    "full_calibration": false
+   },
+   "restart": {
+    "ready_after_sec": 60.0,
+    "status": "factory",
+    "text": "заводська калібровка",
+    "full_calibration": false
+   }
+  },
+  "particle": {
+   "first_start": {
+    "ready_after_sec": 30.0,
+    "status": "factory",
+    "text": "заводська калібровка",
+    "full_calibration": false
+   },
+   "restart": {
+    "ready_after_sec": 30.0,
+    "status": "factory",
+    "text": "заводська калібровка",
+    "full_calibration": false
+   }
+  }
+ },
+ "total_first_sec": 239.0,
+ "total_restart_sec": 180.0
+}

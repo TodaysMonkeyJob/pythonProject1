@@ -406,6 +406,14 @@ Plus scripts that compare Whisper models (accuracy / latency / memory).
   range starts at or above C_crit (`modules.gas.data.MODEL_RANGE_VOL_PCT`, `modules/gas/MODEL_CARD.md`): a non-zero
   graphene reading counts as at least that floor (`detection_floor` / range start, `below_model_range`,
   `model_note`). Scripted scenarios: labels v3, shares of C_crit from a low-range ppm sensor (never graphene).
+- C1 (TOD-54) persistent sensor calibration (`docs/calibration.md`): `core/sensor_calibration.py` (`device_uid`,
+  `CalibrationStore` = one JSON per device in `sensor_calibration.dir` data/calibration/devices — git-ignored, guarded;
+  history + restore, corrupt → moved aside; `DeviceCalibration` states ready / factory / warming_up / checking /
+  needs_check / calibrating, policy `sensor_calibration.kinds`) + `modules/calibration/` (Mic / Camera / Graphene / Mos
+  calibrators in the mic controller, vision detector, gas worker and `DriverPoller`; off without a
+  `sensor_calibration` section). Events `calibration_status` (→ HFS: δ × `uncertainty_factor` per device) and
+  `calibration_control` (dashboard → gas / vision / audio). Dashboard Devices → «Калібрування» (`views/calibration.js`,
+  `/api/calibration…`, admin). `python -m tools.calibration_restart` → `reports/calibration_restart/` (ready times).
 - `modules/locations/` — F12: `state.LocationStateEngine` (safe / attention / danger / offline per location from its
   events + the latest `llm_decision` of that location; danger cools down after `cooldown_min`, Acknowledge clears it;
   per-location rules) and `module.LocationsModule` (emits `location_state_changed`, pushes `location_summary` —

@@ -22,9 +22,10 @@ benchmark ``tools/camera_bench.py``):
 ``MotionResult.area_ratio`` is the moving share of the frame after these filters (the HFS camera subsystem's
 ``motion_intensity``, smoothed by the detector module).
 """
+import base64
 import collections
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Sequence
+from typing import Any, Deque, Dict, List, Optional, Sequence
 
 import cv2
 import numpy as np
@@ -92,6 +93,56 @@ class MotionDetector:
         self._noise: Optional[np.ndarray] = None
         self._recent: Deque[bool] = collections.deque(maxlen=persist_window)
         self._mask: Optional[np.ndarray] = None
+
+    # --- C1 (TOD-54): persistent calibration -------------------------------------------------------------------
+
+    def export_state(self, width: int = 160) -> Optional[Dict[str, Any]]:
+        """
+        :return: what this camera learned — the background image (grey, ``width`` px, PNG base64), the per-cell
+                 noise levels and the frame-to-frame jitter; None before the background exists
+        """
+        background = self.subtractor.getBackgroundImage()
+        if background is None or self.frames_seen <= self.warmup_frames:
+            return None
+        if background.ndim == 3:
+            background = cv2.cvtColor(background, cv2.COLOR_BGR2GRAY)
+        h, w = background.shape[:2]
+        small = cv2.resize(background, (width, max(1, int(round(h * width / w)))), interpolation=cv2.INTER_AREA)
+        ok, png = cv2.imencode(".png", small)
+        return {"background_png": base64.b64encode(png.tobytes()).decode("ascii") if ok else None,
+                "frame_size": [int(w), int(h)], "grid": self.grid,
+                "noise": None if self._noise is None else np.round(self._noise, 5).tolist(),
+                "jitter": round(float(self._jitter), 4)}
+
+    @staticmethod
+    def background_of(state: Dict[str, Any], size: Optional[Sequence[int]] = None) -> Optional[np.ndarray]:
+        """:return: the stored background image (grey uint8), resized to ``size`` = (w, h) when given"""
+        data = state.get("background_png")
+        if not data:
+            return None
+        image = cv2.imdecode(np.frombuffer(base64.b64decode(data), np.uint8), cv2.IMREAD_GRAYSCALE)
+        if image is not None and size:
+            image = cv2.resize(image, (int(size[0]), int(size[1])), interpolation=cv2.INTER_LINEAR)
+        return image
+
+    def restore_state(self, state: Dict[str, Any]) -> bool:
+        """
+        Starts from a stored calibration instead of learning from scratch: the background model is seeded with the
+        stored image, the noise levels and jitter are taken over, the warm-up is skipped; the short hold-off of an
+        illumination change follows so the seeded model settles on the live frames. :return: restored
+        """
+        background = self.background_of(state, state.get("frame_size"))
+        if background is None:
+            return False
+        seed = cv2.GaussianBlur(background, (self.blur_kernel, self.blur_kernel), 0)
+        for _ in range(3):
+            self.subtractor.apply(seed, learningRate=1.0)
+        if state.get("noise") is not None and int(state.get("grid") or 0) == self.grid:
+            self._noise = np.asarray(state["noise"], dtype=np.float32)
+        self._jitter = float(state.get("jitter") or self._jitter)
+        self.frames_seen = self.warmup_frames + 1
+        self._holdoff = self.holdoff_frames
+        return True
 
     def _static_mask(self, shape) -> Optional[np.ndarray]:
         if not self.mask_rects:

@@ -82,7 +82,7 @@ class TopLevel:
                 "subsystems": {name: {k: r[k] for k in ("risk", "level", "interval", "corridor_width", "inputs",
                                                         "deltas", "widened_by", "excluded", "escalation",
                                                         "explanation", "saturated", "headline", "safety",
-                                                        "explosive") if k in r}
+                                                        "explosive", "calibration_factor") if k in r}
                                for name, r in present.items()},
                 "fired_rules_by_level": {**{name: r["fired_rules"] for name, r in present.items()},
                                          "top": result["fired_rules"]}}

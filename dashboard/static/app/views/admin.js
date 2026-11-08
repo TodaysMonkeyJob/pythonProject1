@@ -2,6 +2,7 @@
 // Devices (locations, on/off, pairing, RTSP, ONVIF), Locations (create / rename / reorder / rules / delete).
 import { api, loadDevices, loadDuplicates, loadLocations, loadPersons, store } from "../store.js";
 import { dialog, h, hms, toast } from "../ui.js";
+import { calibrationSection } from "./calibration.js";
 
 const LLM_STATUS = { ok: "працює", auth_error: "ключ не прийнято", not_found: "немає деплойменту",
                      rate_limited: "ліміт запитів", unreachable: "недоступний", disabled: "вимкнено (немає ключів)",
@@ -130,6 +131,7 @@ export function renderDevices(root) {
       h("button", { onclick: guard(onvif) }, "Пошук ONVIF")),
     h("div", { class: "devlist" }, rows.length ? rows : h("div", { class: "muted" }, "пристроїв ще немає")),
     h("h2", {}, "Газові сенсори"), gasSensors(),
+    h("h2", {}, "Калібрування"), calibrationSection(),
     h("h2", {}, "Система"), system, h("h2", {}, "Модулі"), modules));
 }
 

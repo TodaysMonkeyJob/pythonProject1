@@ -292,6 +292,7 @@ class MicController(BaseModule):
         self.burst = SoundBurst(self.sample_rate, float(cfg.get("burst_min_db", 10)),
                                 float(cfg.get("burst_min_sec", 0.3)), float(cfg.get("burst_max_sec", 3)))
         self.level_event_sec = float(cfg.get("level_event_sec", 2))
+        self.calibration = None                     # C1 (TOD-54): stored background + noise profile, short check
         self._last_level_at, self._last_level = float("-inf"), 0.0
         self.sound_types = None                     # SoundTypeClassifier, created in the sound thread
         self.danger_words = None                    # keywords.DangerWords
@@ -339,6 +340,15 @@ class MicController(BaseModule):
         # sound types never wait behind a slow Whisper call
         self.sound_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sound-type")
         self.executor.submit(self._warm_up)  # in the Whisper thread: start-up and scene handling stay fast
+        from modules.calibration import MicCalibrator, enabled
+
+        if enabled(self.config) and self.calibration is None:
+            from core.sensor_calibration import device_uid
+
+            self.calibration = MicCalibrator(self.config, device_uid("mic", self.device_id), self.device_id,
+                                             lambda p: self.emit("calibration_status", p), self.clock,
+                                             background=self.background, noise=self.noise)
+            self.calibration.start()
         self._open_source()
 
     def teardown(self) -> None:
@@ -372,6 +382,8 @@ class MicController(BaseModule):
         elif event.type in ("object_detected", "person_identified"):
             with self._lock:
                 self.presence.on_event(event)
+        elif event.type == "calibration_control" and self.calibration is not None:
+            self.calibration.control(event.payload)
         # identity_* events: the registry is polled before each speaker identification
 
     def step(self) -> None:
@@ -411,6 +423,8 @@ class MicController(BaseModule):
         now = self.clock()
         intensity = self.background.update(db, now)
         relative = self.background.relative(db)
+        if self.calibration is not None:
+            self.calibration.observe(db, speech, now)
         self.noise.update(frame, speech)
         self._update_state(loud, speech, db)
         self._publish_level(intensity, db, now)

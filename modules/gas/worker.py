@@ -166,12 +166,13 @@ class GasWorker(BaseModule):
         self._last_selftest = float("-inf")
         self._drift: Optional[Dict[str, Any]] = None
         self.poller = None                      # TOD-48 gas.mode drivers
+        self.calibration = None                 # C1 (TOD-54): the graphene board's stored clean-air baseline
 
     def setup(self) -> None:
         if self.gas_config.get("mode") == "drivers":
             from modules.gas.drivers_mode import DriverPoller
 
-            self.poller = self.poller or DriverPoller(self.gas_config, self.emit, self.clock)
+            self.poller = self.poller or DriverPoller(self.gas_config, self.emit, self.clock, config=self.config)
             self.poller.discover()
             return
         if self.predictor is None:
@@ -179,6 +180,16 @@ class GasWorker(BaseModule):
             self.predictor = GasPredictor(self.gas_config["classifier_path"], self.gas_config["regressor_path"])
         if self.reader is None:
             self.reader = load_reader(self.gas_config)
+        from modules.calibration import GrapheneCalibrator, enabled
+
+        if enabled(self.config) and self.calibration is None:
+            from core.sensor_calibration import device_uid
+
+            uid = device_uid("graphene_fet", self.sensor_id, str(self.gas_config.get("mode", "replay")))
+            self.calibration = GrapheneCalibrator(self.config, uid, self.device_id,
+                                                  lambda p: self.emit("calibration_status", p), self.clock,
+                                                  voltages=self.predictor.voltages)
+            self.calibration.start()
         if self.health_cfg is not None and self.health is None:
             from modules.trust.health import GasHealth
 
@@ -189,10 +200,14 @@ class GasWorker(BaseModule):
                 logger.warning(f"Gas self-diagnostics off: {e}")
 
     def handle_control(self, message: Any) -> None:
-        if self.poller is not None and isinstance(message, str) and message.startswith("{"):
+        if isinstance(message, str) and message.startswith("{"):
             from core.events import Event
 
-            self.poller.handle_event(Event.from_json(message))
+            event = Event.from_json(message)
+            if self.poller is not None:
+                self.poller.handle_event(event)
+            elif event.type == "calibration_control" and self.calibration is not None:
+                self.calibration.control(event.payload)
             return
         super().handle_control(message)
 
@@ -230,6 +245,8 @@ class GasWorker(BaseModule):
             return None
 
         gas, concentration = prediction["gas"], prediction["concentration_pct"]
+        if self.calibration is not None:
+            self.calibration.observe(curve, gas)
         substance = self.table.get(gas)
         floor = (MODEL_RANGE_VOL_PCT.get(gas) or (None,))[0] if substance is not None else None
         effective = max(concentration, floor) if floor is not None and concentration > 0 else concentration

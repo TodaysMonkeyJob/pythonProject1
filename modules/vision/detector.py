@@ -124,6 +124,7 @@ class VisionDetector(BaseModule):
         self._camera_ok: Optional[bool] = None
         self.last_stats: Dict[str, float] = {}
         self.person_names: Dict[int, str] = {}  # track id → display name (forwarded person_identified)
+        self.calibration = None                 # C1 (TOD-54): stored motion background + cell noise, short check
         from modules.trust.health import CameraHealth, HealthPublisher, registry_config
 
         health_cfg = registry_config(config)    # F23 (TOD-34): camera self-diagnostics → device_health
@@ -160,6 +161,8 @@ class VisionDetector(BaseModule):
                     self.person_names.pop(p["track_id"], None)
                 else:
                     self.person_names[p["track_id"]] = str(p["identity"])
+            elif event.type == "calibration_control" and self.calibration is not None:
+                self.calibration.control(p)
         else:
             super().handle_control(message)
 
@@ -178,6 +181,15 @@ class VisionDetector(BaseModule):
             limit_threads(cfg.get("threads", 2))  # after loading: importing ultralytics resets torch's threads
         if self.frame_buffer is None and cfg.get("shared_buffer"):
             self.frame_buffer = SharedFrameBuffer.create(cfg["shared_buffer"], width, height)
+        from modules.calibration import CameraCalibrator, enabled
+
+        if enabled(self.config) and self.calibration is None:
+            from core.sensor_calibration import device_uid
+
+            self.calibration = CameraCalibrator(self.config, device_uid("camera", self.device_id), self.device_id,
+                                                lambda p: self.emit("calibration_status", p), self.clock,
+                                                motion=self.motion)
+            self.calibration.start()
         if cfg.get("log_events", True):
             log_cfg = self.config.get("logging", {})
             self.event_log = JsonlLogger("camera", log_cfg.get("dir", "logs"), log_cfg.get("max_total_mb", 2048))
@@ -216,6 +228,8 @@ class VisionDetector(BaseModule):
         started = time.perf_counter()
         motion = self.motion.detect(frame)
         self.frame_fps.add(time.perf_counter() - started)
+        if self.calibration is not None:
+            self.calibration.observe(frame, motion.motion, now)
 
         change = self.motion_state.update(motion.motion, now)
         if change:
