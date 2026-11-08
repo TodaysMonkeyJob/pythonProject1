@@ -57,6 +57,7 @@ class ScenarioResult:
     max_level: str = "low"
     decisions: List[Decision] = field(default_factory=list)
     llm_calls: int = 0
+    no_gpt: int = 0                     # TOD-53: snapshots decided by the corridor because no GPT answer exists
     cache_hits: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
@@ -109,6 +110,9 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
                  prices: Optional[Dict[str, float]] = None,
                  trace: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> ScenarioResult:
     """
+    :param llm: GPT (``analyze(payload, prompt) → (decision, usage)`` or None for "no answer"). None = offline:
+        GPT takes no part — a snapshot that would go to GPT is decided by the corridor's lower bound (``fuzzy_only``,
+        as the live LLM worker without keys); a configuration without a corridor cannot run offline (ValueError)
     :param trace: Optional {"evidence": [], "gate": []} filled for the threshold fit (F22): every scored evidence
         event (type, trust, claim_type) and every gate evaluation (score, override, corridor floor, time)
     """
@@ -193,7 +197,17 @@ def run_scenario(scenario: Scenario, config: Config, llm=None, fuzzy_path: str =
             payload = pattern_filter(payload, detector)
         if envelope is not None and config.envelope and config.view:
             payload = with_risk_floor(payload, envelope.floor_term(location, now))
-        decision, usage = llm.analyze(payload, "v2" if config.view else "v1")
+        answer = llm.analyze(payload, "v2" if config.view else "v1") if llm is not None else None
+        if answer is None:                                 # TOD-53: no GPT answer → the corridor decides
+            if envelope is None:
+                raise ValueError(f"{config.name} needs GPT: without a corridor it cannot decide offline")
+            fallback = envelope.fallback(location, now)
+            result.no_gpt += 1
+            result.decisions.append(Decision(now, row["trigger"], "fuzzy_only", envelope.level(fallback["r_final"]),
+                                             fallback["r_final"], truth=truth_at(now),
+                                             **corridor_fields(corridor, fallback)))
+            return
+        decision, usage = answer
         result.llm_calls += 1
         result.cache_hits += bool(usage.get("cache_hit"))
         result.tokens_in += int(usage.get("prompt_tokens", 0))

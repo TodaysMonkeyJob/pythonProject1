@@ -81,9 +81,7 @@ def toy_dataset(tmp_path_factory):
 
 
 def sim_llm():
-    from tools.fit_thresholds import OfflineLLM
-
-    return OfflineLLM("sim", "/nonexistent/cache.sqlite")             # no cache: the local simulator answers
+    return None                                                        # TOD-53: the gate runs without GPT
 
 
 def weaken_gas(data):

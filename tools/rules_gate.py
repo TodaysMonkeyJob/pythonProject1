@@ -7,9 +7,10 @@ pipeline twice — with the current rule base and with a candidate — and block
 * its macro-F1 is lower than the baseline's by more than ``rules.gate.f1_tolerance``;
 * its ECE is higher than the baseline's by more than ``rules.gate.ece_tolerance``.
 
-GPT answers come from the experiment cache read-only (``tools.fit_thresholds.OfflineLLM``; a miss is answered by the
-local simulator in both runs, so the comparison stays like for like, nothing is sent). Rules that never fire on the
-whole set are reported as warnings. Output: a dict and a Markdown report with the per-scenario decision diff.
+TOD-53: the gate runs offline and GPT takes no part — no call, no cache, no simulator: every snapshot that would go to
+GPT is decided by the fuzzy corridor (``fuzzy_only``), so the gate measures exactly what the rules decide. Rules that
+never fire on the whole set are reported as warnings. Output: a dict and a Markdown report with the per-scenario
+decision diff.
 
     python -m tools.rules_gate candidate.yaml               # → reports/rules_gate/<candidate version>.md
 """
@@ -95,19 +96,10 @@ def gate(candidate: str, baseline: str = "config/fuzzy.yaml", dataset: str = "da
 
     tol = {**DEFAULT_GATE, **(tolerances or {})}
     scenarios = Dataset.load(dataset).scenarios
-    own_llm = llm is None
-    if own_llm:
-        from tools.fit_thresholds import OfflineLLM
-
-        llm = OfflineLLM("azure", "experiments/cache/llm_azure.sqlite")
-    try:
-        base = replay(baseline, scenarios, llm)
-        with staged(candidate, config_dir) as path:
-            cand = replay(path, scenarios, llm)
-            cand_data = load_yaml(path)
-    finally:
-        if own_llm:
-            llm.close()
+    base = replay(baseline, scenarios, llm)                 # llm None (default): no GPT at all (TOD-53)
+    with staged(candidate, config_dir) as path:
+        cand = replay(path, scenarios, llm)
+        cand_data = load_yaml(path)
     reasons = []
     failing = attack_successes(cand["results"])
     if cand["asr"] > tol["max_asr"] + 1e-9:
@@ -126,8 +118,8 @@ def gate(candidate: str, baseline: str = "config/fuzzy.yaml", dataset: str = "da
             "versions": {"baseline": version_hash(load_yaml(baseline)), "candidate": version_hash(cand_data)},
             "baseline": {k: round(base[k], 4) for k in ("macro_f1", "asr", "ece")},
             "candidate": {k: round(cand[k], 4) for k in ("macro_f1", "asr", "ece")},
-            "fired": dict(cand["fired"]), "llm": {"calls": getattr(llm, "calls", None),
-                                                  "cache_misses": getattr(llm, "misses", None)}}
+            "fired": dict(cand["fired"]), "llm": {"gpt": "none" if llm is None else type(llm).__name__,
+                                                  "calls": getattr(llm, "calls", 0)}}
 
 
 def markdown(report: Dict[str, Any]) -> str:
@@ -141,8 +133,10 @@ def markdown(report: Dict[str, Any]) -> str:
     for name in ("baseline", "candidate"):
         m = report[name]
         lines.append(f"| {name} | {m['macro_f1']:.3f} | {m['asr']:.3f} | {m['ece']:.3f} |")
-    lines += ["", f"Tolerances: {report['tolerances']}. GPT answers: experiment cache, read-only "
-                  f"({report['llm']['cache_misses']} of {report['llm']['calls']} calls answered by the simulator).",
+    gpt = report["llm"]
+    lines += ["", f"Tolerances: {report['tolerances']}. GPT: "
+                  + ("none — offline, every snapshot decided by the fuzzy corridor (TOD-53)."
+                     if gpt["gpt"] == "none" else f"{gpt['gpt']} ({gpt['calls']} calls)."),
               "", f"## Changed decisions ({len(report['diff'])})", ""]
     if report["diff"]:
         lines += ["| scenario | category | expert | baseline | candidate |", "| -- | -- | -- | -- | -- |"]

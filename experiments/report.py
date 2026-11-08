@@ -173,16 +173,22 @@ def _results_md(out_dir: str, summaries, mcnemar, manifest) -> None:
     if manifest["dataset"].get("synthetic"):
         caveats.append("the dataset is **scripted** (generated from templates by `experiments/scripted.py`) — it "
                        "validates the harness, it is not the recorded evaluation set")
-    if manifest["llm"]["backend"] == "sim":
+    llm = manifest["llm"]
+    if llm.get("backend") == "sim":
         caveats.append("the LLM is the deterministic **simulated** analyst (`experiments/llm.py`), not GPT — numbers "
                        "of the LLM configurations say nothing about GPT yet")
+    if llm.get("offline"):                              # TOD-53: GPT took no part
+        caveats.append("**offline run: GPT took no part** (no call, no cache, no simulator) — only the "
+                       "configurations that decide without GPT; not run: "
+                       + (", ".join(llm.get("not_run") or []) or "none"))
     if caveats:
         lines += ["> **Caveats:** " + "; ".join(caveats) + ".", ""]
     split = manifest["split"]
+    who = "none (offline)" if llm.get("offline") else \
+        f"{llm['backend']} / {llm['model']}, temperature {llm['temperature']}"
     lines += [f"Evaluation split: {split['evaluation']} scenarios (calibration {split['calibration']}, seed "
               f"{manifest['seed']}); annotator agreement κ = {_fmt((manifest.get('kappa') or {}).get('kappa'))}; "
-              f"LLM: {manifest['llm']['backend']} / {manifest['llm']['model']}, temperature "
-              f"{manifest['llm']['temperature']}.", ""]
+              f"LLM: {who}.", ""]
     with open(os.path.join(out_dir, "metrics.md"), encoding="utf-8") as f:
         lines += ["## Metrics", "", f.read()]
     if "proposed" in summaries:
@@ -340,11 +346,8 @@ def write_v2(out_dir: str, summaries, results, tests, manifest, corridor, failur
         caveats.append("the dataset is **scripted** (`experiments/scripted.py`) — it validates the method, it is not "
                        "the recorded evaluation set")
     llm = manifest["llm"]
-    if llm["backend"] == "sim":
+    if llm.get("backend") == "sim":
         caveats.append("the LLM is the deterministic **simulated** analyst, not GPT")
-    if llm.get("simulated_misses"):
-        caveats.append(f"{llm['simulated_misses']} of {llm['calls']} GPT calls were not in the cache and were answered "
-                       "by the simulator (offline run)")
     if caveats:
         lines += ["> **Caveats:** " + "; ".join(caveats) + ".", ""]
     split = manifest["split"]
